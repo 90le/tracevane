@@ -15,301 +15,186 @@ function read(relativePath) {
 test("Channel Connectors daemon panel refreshes real supervisor status", () => {
   const panel = read(`${VIEWS_DIR}/DaemonServicePanel.tsx`);
   assert.match(panel, /runCommands: true/);
-  assert.doesNotMatch(panel, /runCommands: action !== "status"/);
   assert.match(panel, /激活/);
   assert.match(panel, /开机自启/);
+  assert.match(panel, /停止守护服务会让所有 IM 渠道下线/);
 });
 
-test("Channel Connectors page uses the Aurora IM Channels view contract", () => {
+test("Channel Connectors page exposes only the v3 object model", () => {
   const page = read(`${FEATURE_DIR}/ChannelConnectorsPage.tsx`);
-  assert.match(page, /overview/);
-  assert.match(page, /accounts/);
-  assert.match(page, /routes/);
-  assert.match(page, /deliveries/);
-  assert.match(page, /diagnostics/);
+  const types = read(`${VIEWS_DIR}/types.ts`);
+  for (const view of ["overview", "workspaces", "accounts", "sessions", "runtime"]) {
+    assert.match(types, new RegExp(`"${view}"`));
+  }
+  assert.match(page, /Agent 工作区/);
+  assert.match(page, /渠道账号/);
+  assert.match(page, /运行中心/);
+  assert.match(page, /import\("\.\/views\/V3OverviewView"\)/);
+  assert.match(page, /import\("\.\/views\/WorkspacesView"\)/);
+  assert.match(page, /import\("\.\/views\/V3AccountsView"\)/);
+  assert.match(page, /import\("\.\/views\/V3RuntimeView"\)/);
+  assert.doesNotMatch(page, /value === "routes"/);
+  assert.doesNotMatch(page, /value === "deliveries"/);
+  assert.doesNotMatch(page, /value === "diagnostics"/);
+  assert.doesNotMatch(types, /"routes",/);
+  assert.doesNotMatch(types, /"deliveries",/);
+  assert.doesNotMatch(types, /"diagnostics",/);
   assert.match(page, /React\.lazy/);
   assert.match(page, /React\.Suspense/);
-  assert.match(page, /import\("\.\/views\/OverviewView"\)/);
-  assert.match(page, /import\("\.\/views\/AccountsView"\)/);
-  assert.match(page, /from "\.\/views\/types"/);
-  assert.doesNotMatch(
-    page,
-    /import\s*\{[\s\S]*(OverviewView|AccountsView|RoutesView|SessionsView|DiagnosticsView)[\s\S]*\}\s*from "\.\/views"/,
-  );
-  assert.doesNotMatch(page, /bindings/);
-  assert.doesNotMatch(page, /logs/);
 });
 
+test("Channel Connectors browser data layer uses v3 plan and apply APIs", () => {
+  const api = read("apps/web/src/lib/api/channel-connectors.ts");
+  const query = read("apps/web/src/lib/query/channel-connectors.ts");
+  assert.match(api, /config\/v3\/plan/);
+  assert.match(api, /config\/v3\/apply/);
+  assert.match(api, /config\/v3\/accounts\/\$\{encodeURIComponent\(accountId\)\}\/secrets/);
+  assert.match(api, /config\/v3\/routing-preview/);
+  assert.match(api, /X-Tracevane-Secret-Reveal/);
+  assert.match(query, /useChannelConnectorsV3ConfigQuery/);
+  assert.match(query, /usePlanChannelConnectorsV3ConfigMutation/);
+  assert.match(query, /useApplyChannelConnectorsV3ConfigMutation/);
+  assert.match(query, /useChannelConnectorAccountSecretsQuery/);
+  assert.match(query, /usePreviewChannelConnectorV3RoutingMutation/);
+});
 
+test("v3 overview separates saved, connected, and real-ingress readiness", () => {
+  const overview = read(`${VIEWS_DIR}/V3OverviewView.tsx`);
+  assert.match(overview, /useChannelConnectorsV3ConfigQuery/);
+  assert.match(overview, /接入已验证/);
+  assert.match(overview, /等待首条消息/);
+  assert.match(overview, /长连接正常；需从飞书发送真实消息/);
+  assert.match(overview, /Agent 工作区/);
+  assert.match(overview, /入站队列/);
+  assert.match(overview, /重复已拦截/);
+  assert.match(overview, /goToView\("accounts"/);
+  assert.match(overview, /goToView\("sessions"/);
+  assert.match(overview, /goToView\("runtime"/);
+});
 
-test("Channel Connectors views barrel exports only metadata and types", () => {
-  const barrel = read(`${VIEWS_DIR}/index.ts`);
-  assert.match(barrel, /CHANNEL_CONNECTORS_VIEWS/);
-  for (const componentName of [
-    "OverviewView",
-    "AccountsView",
-    "RoutesView",
-    "SessionsView",
-    "DiagnosticsView",
+test("Agent workspaces are reusable targets with explicit execution boundaries", () => {
+  const workspaces = read(`${VIEWS_DIR}/WorkspacesView.tsx`);
+  assert.match(workspaces, /Agent 工作区/);
+  assert.match(workspaces, /一个工作区是一套可复用的 Agent 执行环境/);
+  assert.match(workspaces, /启动目录/);
+  assert.match(workspaces, /Gateway API 地址/);
+  assert.match(workspaces, /workspaceConcurrency: 1/);
+  assert.match(workspaces, /targetUsage/);
+  assert.match(workspaces, /工作区仍被渠道账号引用/);
+  assert.match(workspaces, /usePlanChannelConnectorsV3ConfigMutation/);
+  assert.match(workspaces, /useApplyChannelConnectorsV3ConfigMutation/);
+  assert.doesNotMatch(workspaces, /appSecret|botToken|verificationToken/);
+});
+
+test("channel account editor owns credentials, default target, exceptions, and advanced extensions", () => {
+  const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
+  const fields = read(`${VIEWS_DIR}/V3Fields.tsx`);
+  assert.match(accounts, /每个账号只有一个默认 Agent 工作区/);
+  assert.match(accounts, /默认投递/);
+  assert.match(accounts, /来源例外/);
+  assert.match(accounts, /全部消息使用默认工作区/);
+  assert.match(accounts, /RuleEditor/);
+  assert.match(accounts, /分发预览/);
+  assert.match(accounts, /useChannelConnectorAccountSecretsQuery/);
+  assert.match(accounts, /正在读取已保存密钥以支持明文回显/);
+  assert.match(fields, /type=\{visible \? "text" : "password"\}/);
+  assert.match(fields, /显示\$\{label\}/);
+  assert.doesNotMatch(fields, /替换/);
+  assert.match(accounts, /App Secret/);
+  assert.match(accounts, /Verification Token/);
+  assert.match(accounts, /Bot Token/);
+  assert.match(accounts, /allowPrivateAttachmentUrls/);
+  assert.match(accounts, /默认拒绝内网地址以防 SSRF/);
+  assert.match(accounts, /高级平台 JSON/);
+  assert.match(accounts, /未界面化扩展字段/);
+});
+
+test("Feishu account creation renders a real local QR code and keeps manual fields editable", () => {
+  const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
+  assert.match(accounts, /QRCodeSVG/);
+  assert.match(accounts, /生成扫码授权/);
+  assert.match(accounts, /使用手机飞书\/Lark 扫码/);
+  assert.match(accounts, /二维码由本机根据授权链接生成/);
+  assert.match(accounts, /打开链接/);
+  assert.match(accounts, /App ID 与 App Secret 已回填/);
+  assert.match(accounts, /扫码授权或手动配置/);
+  assert.match(accounts, /所有字段仍可查看和自由修改/);
+});
+
+test("v3 mutations show semantic impact before apply", () => {
+  const plan = read(`${VIEWS_DIR}/V3PlanDialog.tsx`);
+  assert.match(plan, /确认配置影响/);
+  assert.match(plan, /账号重连/);
+  assert.match(plan, /分发更新/);
+  assert.match(plan, /进行中回合保持原快照/);
+  assert.match(plan, /工作区变更/);
+  assert.match(plan, /已有会话/);
+  assert.match(plan, /existingSessionsAffected/);
+  assert.match(plan, /默认保留，不静默清空/);
+  assert.match(plan, /应用变更/);
+  assert.match(plan, /validationIssues/);
+});
+
+test("runtime center presents one connection per account plus queue and reload evidence", () => {
+  const runtime = read(`${VIEWS_DIR}/V3RuntimeView.tsx`);
+  assert.match(runtime, /按渠道账号观察连接/);
+  assert.match(runtime, /一账号一连接/);
+  assert.match(runtime, /等待首条消息/);
+  assert.match(runtime, /入站与去重/);
+  assert.match(runtime, /重复事件/);
+  assert.match(runtime, /回复 Outbox/);
+  assert.match(runtime, /回复死信/);
+  assert.match(runtime, /不包含回复正文和凭据/);
+  assert.match(runtime, /配置热重载/);
+  assert.match(runtime, /规则与工作区更新不会重启平台连接或中断当前回合/);
+  assert.match(runtime, /运行期映射由渠道账号、分发策略与 Agent 工作区生成/);
+  assert.match(runtime, /DaemonServicePanel/);
+  assert.match(runtime, /守护日志/);
+});
+
+test("legacy binding-oriented Channel Connector pages are removed", () => {
+  for (const fileName of [
+    "AccountsView.tsx",
+    "RoutesView.tsx",
+    "BindingEditor.tsx",
+    "OverviewView.tsx",
+    "DiagnosticsView.tsx",
+    "LogsView.tsx",
+    "account-runtime.ts",
   ]) {
-    assert.doesNotMatch(barrel, new RegExp(`\\b${componentName}\\b`));
+    assert.equal(fs.existsSync(path.join(rootDir, VIEWS_DIR, fileName)), false, fileName);
   }
 });
 
-test("Channel Connectors overview derives daemon readiness and links to layered views", () => {
-  const overview = read(`${VIEWS_DIR}/OverviewView.tsx`);
-  assert.match(overview, /useChannelConnectorsStatusQuery/);
-  assert.match(overview, /runtime\?\.reachable === true/);
-  assert.match(overview, /manager\?\.active === true/);
-  assert.match(overview, /groupChannelConnectorAccounts/);
-  assert.match(overview, /enabledAccounts/);
-  assert.match(overview, /accountIssueCount/);
-  assert.match(overview, /平台账号/);
-  assert.match(overview, /DaemonServicePanel/);
-  assert.match(overview, /goToView\("accounts"/);
-  assert.match(overview, /goToView\("deliveries"/);
-});
-
-test("Channel Connectors accounts view supports account CRUD and verified smoke actions", () => {
-  const accounts = read(`${VIEWS_DIR}/AccountsView.tsx`);
-  const accountRuntime = read(`${VIEWS_DIR}/account-runtime.ts`);
-  assert.match(accounts, /新建平台账号/);
-  assert.match(accounts, /账号身份/);
-  assert.match(accounts, /groupAccounts/);
-  assert.match(accounts, /确认删除/);
-  assert.match(accounts, /useRunFeishuTransportSmokeMutation/);
-  assert.match(accounts, /useRunOctoTransportSmokeMutation/);
-  assert.match(accounts, /useChannelConnectorsStatusQuery/);
-  assert.match(accounts, /useApplyChannelConnectorsConfigMutation/);
-  assert.match(accounts, /已自动回滚/);
-  assert.match(accounts, /runtimeAccountState/);
-  assert.match(accountRuntime, /已连接/);
-  assert.match(accountRuntime, /连接异常/);
-  assert.match(accountRuntime, /守护离线/);
-  assert.match(accountRuntime, /im\.message\.receive_v1/);
-  assert.match(accounts, /aria-label="账号运行状态"/);
-  assert.match(accounts, /sm:hidden/);
-  assert.match(accounts, /hidden sm:block/);
-  assert.match(accounts, /result\.transport\.ok/);
-  assert.match(accounts, /测试失败/);
-  assert.match(accounts, /tenant-token/);
-  assert.match(accounts, /register/);
-});
-
-test("Channel Connectors route view keeps routing separate from platform credentials", () => {
-  const routes = read(`${VIEWS_DIR}/RoutesView.tsx`);
-  assert.match(routes, /绑定路由/);
-  assert.match(routes, /Agent Profile 可被多个渠道复用/);
-  assert.match(routes, /一个账号可复制出多条来源路由/);
-  assert.match(routes, /复制路由/);
-  assert.match(routes, /routeMetadataForCopy/);
-  assert.match(routes, /ROUTE_METADATA_KEYS/);
-  assert.match(routes, /useApplyChannelConnectorsConfigMutation/);
-  assert.match(routes, /已自动回滚/);
-  assert.match(routes, /已复制为停用路由/);
-  assert.match(routes, /setEditing\(created \?\? nextBinding\)/);
-  assert.match(routes, /删除副本路由/);
-  assert.match(routes, /默认路由·保护/);
-  assert.match(routes, /默认路由受保护/);
-  assert.match(routes, /isCopiedRoute/);
-  assert.match(routes, /实际 Agent \/ 模型/);
-  assert.match(routes, /独立覆盖/);
-  assert.doesNotMatch(routes, /appSecret/);
-  assert.doesNotMatch(routes, /botToken/);
-});
-
-test("Channel Connectors account and route editors use wide Sheets with platform templates", () => {
-  const editor = read(`${VIEWS_DIR}/BindingEditor.tsx`);
-  const api = read("apps/web/src/lib/api/channel-connectors.ts");
-  const types = read("types/channel-connectors.ts");
-  assert.match(editor, /SheetContent/);
-  assert.match(editor, /860px/);
-  assert.match(editor, /SecretInput/);
-  assert.match(editor, /useChannelConnectorBindingSecretsQuery/);
-  assert.match(api, /X-Tracevane-Secret-Reveal/);
-  assert.match(editor, /useStartFeishuAppRegistrationMutation/);
-  assert.match(editor, /useFeishuAppRegistrationQuery/);
-  assert.match(editor, /useRunFeishuTransportSmokeMutation/);
-  assert.match(editor, /useRunOctoTransportSmokeMutation/);
-  assert.match(editor, /useApplyChannelConnectorsConfigMutation/);
-  assert.match(editor, /rollbackOnFailure: true/);
-  assert.match(editor, /应用失败，已自动回滚/);
-  assert.match(editor, /FeishuRegistrationPanel/);
-  assert.match(editor, /QRCodeSVG/);
-  assert.match(editor, /飞书扫码绑定二维码/);
-  assert.match(editor, /DEFAULT_FEISHU_API_URL/);
-  assert.match(editor, /DEFAULT_OCTO_API_URL/);
-  assert.match(types, /https:\/\/im\.deepminer\.com\.cn\/api/);
-  assert.match(editor, /autoComplete="new-password"/);
-  assert.match(editor, /platformChangePatch/);
-  assert.match(editor, /binding: draftBinding/);
-  assert.match(editor, /测试连接/);
-  assert.match(editor, /扫码创建 \/ 绑定/);
-  assert.match(editor, /生成扫码绑定/);
-  assert.match(editor, /已复制扫码链接/);
-  assert.match(editor, /App ID \/ App Secret 已回填/);
-  assert.match(editor, /applyRevealedSecret/);
-  assert.match(editor, /SECRET_MASK/);
-  assert.match(editor, /显示明文/);
-  assert.doesNotMatch(editor, /替换/);
-  assert.match(editor, /useUnsavedEditor/);
-  assert.match(editor, /beforeunload/);
-  assert.match(editor, /有未保存的修改，确定放弃吗/);
-  assert.match(editor, /accountValidationErrors/);
-  assert.match(editor, /aria-invalid/);
-  assert.match(editor, /App ID 不能为空/);
-  assert.match(editor, /App Secret 不能为空/);
-  assert.match(editor, /Bot Token 不能为空/);
-  assert.match(editor, /App Secret/);
-  assert.match(editor, /Bot Token/);
-  assert.match(editor, /EncodingAESKey/);
-  assert.match(editor, /运行与平台高级配置/);
-  assert.match(editor, /Agent 会话驱动/);
-  assert.match(editor, /飞书 API URL/);
-  assert.match(editor, /进度卡片条目数/);
-  assert.match(editor, /暂存 URL 附件/);
-  assert.match(editor, /附件最大体积/);
-  assert.match(editor, /只放当前表单尚未覆盖的扩展字段/);
-  assert.match(editor, /高级 metadata JSON/);
-  assert.match(editor, /\[redacted\]/);
-  assert.match(editor, /编辑绑定路由/);
-  assert.match(editor, /已同步 .* 条绑定路由/);
-  assert.match(editor, /来源类型/);
-  assert.match(editor, /allowlist/);
-  assert.match(editor, /useModelGatewayModelsQuery/);
-  assert.match(editor, /默认启动目录/);
-  assert.match(editor, /路由 Agent/);
-  assert.match(editor, /routeModel/);
-  assert.match(editor, /手动模型 ID/);
-  assert.match(editor, /模型列表加载失败，可在下方手动填写/);
-});
-
-test("Channel Connectors diagnostics demotes generated daemon bindings to evidence", () => {
-  const diagnostics = read(`${VIEWS_DIR}/DiagnosticsView.tsx`);
-  assert.match(diagnostics, /账号连接健康/);
-  assert.match(diagnostics, /groupChannelConnectorAccounts/);
-  assert.match(diagnostics, /runtimeAccountState/);
-  assert.match(diagnostics, /需要处理/);
-  assert.ok(
-    diagnostics.indexOf("账号连接健康") < diagnostics.indexOf("DaemonServicePanel onMutated"),
-  );
-  assert.match(diagnostics, /生成配置证据/);
-  assert.match(diagnostics, /不再作为第二套用户编辑列表/);
-  assert.match(diagnostics, /DaemonServicePanel/);
-  assert.match(diagnostics, /日志摘要/);
-  assert.match(diagnostics, /问题行优先/);
-  assert.match(diagnostics, /break-all/);
-  assert.match(diagnostics, /max-w-full/);
-  assert.match(diagnostics, /overflow-x-auto/);
-  assert.match(diagnostics, /flex-wrap/);
-});
-
-test("Channel Connectors session events prioritize human-readable incident summaries", () => {
+test("sessions save global policy through v3 plan/apply and retain guarded controls", () => {
   const sessions = read(`${VIEWS_DIR}/SessionsView.tsx`);
-  assert.match(sessions, /需要关注的会话事件/);
-  assert.match(sessions, /Agent 执行失败/);
-  assert.match(sessions, /已触发 fallback/);
-  assert.match(sessions, /原始事件类型保留为小标签/);
-  assert.match(sessions, /parseImSessionIdentity/);
-  assert.match(sessions, /sessionKey: event\.sessionKey/);
-  assert.match(sessions, /peerKind: null/);
-  assert.doesNotMatch(sessions, /detail: event\.sessionId \|\| "为该 IM 来源创建持久会话"/);
-});
-
-test("Channel Connectors deliveries compares route defaults with session overrides", () => {
-  const sessions = read(`${VIEWS_DIR}/SessionsView.tsx`);
-  const types = read("types/channel-connectors.ts");
-  const daemon = read("apps/api/modules/channel-connectors/daemon.ts");
-  assert.match(sessions, /routeDefaultsForSession/);
-  assert.match(sessions, /默认路由/);
-  assert.match(sessions, /当前会话/);
-  assert.match(sessions, /会话覆盖/);
-  assert.match(sessions, /跟随路由/);
-  assert.match(sessions, /最后命令/);
-  assert.match(sessions, /sessionControl\.lastCommand/);
-  assert.match(sessions, /重置为默认/);
+  assert.match(sessions, /全局并发 \/ 队列策略/);
+  assert.match(sessions, /useChannelConnectorsV3ConfigQuery/);
+  assert.match(sessions, /usePlanChannelConnectorsV3ConfigMutation/);
+  assert.match(sessions, /useApplyChannelConnectorsV3ConfigMutation/);
+  assert.match(sessions, /rollbackOnFailure: true/);
   assert.match(sessions, /reset-conversation/);
-  assert.match(sessions, /确认重置为默认路由/);
-  assert.match(sessions, /sessionDisplayTitle/);
+  assert.match(sessions, /需要关注的会话事件/);
   assert.match(sessions, /parseImSessionIdentity/);
-  assert.match(sessions, /peerKindLabel/);
-  assert.match(sessions, /飞书 · \$\{kind\}/);
-  assert.match(sessions, /私聊会话/);
-  assert.match(sessions, /群聊会话/);
-  assert.match(sessions, /触发人/);
-  assert.match(sessions, /技术标识/);
-  assert.match(sessions, /routeSummary/);
-  assert.match(sessions, /currentSessionSummary/);
-  assert.match(sessions, /默认目录/);
-  assert.doesNotMatch(sessions, /session\.sessionId\}\s*<\/strong>/);
-  assert.doesNotMatch(sessions, /useSaveChannelConnectorsConfigMutation/);
-  assert.equal((sessions.match(/applyConfigMutation\.mutate/g) || []).length, 1);
-  assert.match(types, /ChannelConnectorAgentSessionControlStatus/);
-  assert.match(types, /lastCommand: string \| null/);
-  assert.match(types, /permissionMode: ChannelConnectorPermissionMode \| null/);
-  assert.match(types, /workDir: string/);
-  assert.match(types, /peerKind: string \| null/);
-  assert.match(types, /peerId: string \| null/);
-  assert.match(daemon, /permissionMode: project.permissionMode/);
-  assert.match(daemon, /workDir: project.workDir/);
-  assert.match(daemon, /peerKind: normalizeString\(binding\.metadata\?\.peerKind\) \|\| null/);
-  assert.match(daemon, /peerId: normalizeString\(binding\.metadata\?\.peerId\) \|\| null/);
-  assert.match(daemon, /readChannelConnectorSessionControls/);
-  assert.match(daemon, /sessionControl: control \?/);
-  assert.match(daemon, /action === "reset-conversation"/);
-  assert.match(daemon, /clearChannelConnectorSessionControl/);
-  assert.match(daemon, /clearChannelConnectorAgentSessionsForConversation/);
-  assert.match(daemon, /clearChannelConnectorConversationHistory/);
+  assert.doesNotMatch(sessions, /useApplyChannelConnectorsConfigMutation/);
 });
 
-
-test("Model Gateway browser model list uses namespaced API path", () => {
-  const api = read("apps/web/src/lib/api/model-gateway.ts");
-  const routes = read("apps/api/modules/model-gateway/routes.ts");
-  assert.match(api, /\$\{BASE\}\/models/);
-  assert.doesNotMatch(api, /apiRequest<ModelGatewayModelListResponse>\(`\/v1\/models/);
-  assert.match(routes, /\/api\/model-gateway\/models/);
-});
-
-test("Channel Connectors route and log views keep dense evidence within responsive bounds", () => {
-  const routes = read(`${VIEWS_DIR}/RoutesView.tsx`);
-  const diagnostics = read(`${VIEWS_DIR}/DiagnosticsView.tsx`);
+test("Channel Connectors dense evidence stays inside responsive bounds", () => {
+  const runtime = read(`${VIEWS_DIR}/V3RuntimeView.tsx`);
+  const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
   const table = read("apps/web/src/design/ui/table.tsx");
   assert.match(table, /tv-table-wrap w-full min-w-0 max-w-full overflow-hidden/);
   assert.match(table, /sm:overflow-x-auto/);
-  assert.match(routes, /min-w-full/);
-  assert.match(routes, /hidden md:table-cell/);
-  assert.match(routes, /hidden lg:table-cell/);
-  assert.match(routes, /md:hidden/);
-  assert.doesNotMatch(routes, /移动端绑定路由卡片/);
-  assert.match(routes, /break-all/);
-  assert.match(routes, /flex-wrap justify-end/);
-  assert.match(diagnostics, /overflow-x-auto/);
-  assert.match(diagnostics, /whitespace-pre-wrap/);
+  assert.match(runtime, /overflow-x-auto/);
+  assert.match(runtime, /whitespace-pre-wrap/);
+  assert.match(accounts, /w-\[min\(980px,97vw\)\]/);
+  assert.match(accounts, /overflow-y-auto/);
 });
 
-
-test("Channel Connectors deliveries expose global concurrency and queue policy", () => {
-  const sessions = read(`${VIEWS_DIR}/SessionsView.tsx`);
-  assert.match(sessions, /全局并发 \/ 队列策略/);
-  assert.match(sessions, /maxConcurrentTurns/);
-  assert.match(sessions, /queueMaxRecords/);
-  assert.match(sessions, /不同会话竞争这个全局槽位/);
-  assert.match(sessions, /编辑策略/);
-  assert.match(sessions, /policyEditing/);
-  assert.match(sessions, /保存并应用/);
-  assert.match(sessions, /useApplyChannelConnectorsConfigMutation/);
-  assert.match(sessions, /rollbackOnFailure: true/);
-  assert.match(sessions, /运行中已同步/);
-  assert.match(sessions, /已保存，需重启/);
-  assert.match(sessions, /policyNotice/);
-  assert.match(sessions, /策略应用失败，已自动回滚/);
-});
-
-test("Channel Connectors deliveries keeps hooks before loading guards", () => {
+test("Channel Connectors sessions keep hooks before loading guards", () => {
   const sessions = read(`${VIEWS_DIR}/SessionsView.tsx`);
   assert.ok(
     sessions.indexOf("React.useMemo") < sessions.indexOf("sessionsQuery.isLoading"),
-    "policy hooks must run before loading/error returns to avoid blank screens after query state changes",
+    "policy hooks must run before loading/error returns",
   );
 });

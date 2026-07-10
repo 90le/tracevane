@@ -18,10 +18,13 @@ export interface ChannelConnectorAgentSessionRecord {
   updatedAt: string;
   lastMessageId: string | null;
   lastStatus: string | null;
+  accountId?: string | null;
+  targetId?: string | null;
+  targetRevision?: string | null;
 }
 
 export interface ChannelConnectorAgentSessionState {
-  version: 1;
+  version: 3;
   updatedAt: string;
   sessions: Record<string, ChannelConnectorAgentSessionRecord>;
 }
@@ -42,6 +45,25 @@ export interface ChannelConnectorAgentSessionUpdate extends ChannelConnectorAgen
   status?: string | null;
   name?: string | null;
   now?: Date;
+}
+
+export interface ChannelConnectorDeliverySessionUpdate
+  extends Omit<ChannelConnectorAgentSessionUpdate, "bindingId" | "projectId" | "agent" | "workDir"> {
+  accountId: string;
+  targetId: string;
+  targetRevision: string;
+}
+
+export interface ChannelConnectorDeliverySessionLookup {
+  accountId: string;
+  targetId: string;
+  sessionKey: string;
+}
+
+export interface ChannelConnectorDeliverySessionInput
+  extends ChannelConnectorDeliverySessionLookup {
+  targetRevision: string;
+  session: ChannelConnectorAgentSessionLookup;
 }
 
 function nowIso(): string {
@@ -66,9 +88,18 @@ export function channelConnectorAgentSessionId(input: ChannelConnectorAgentSessi
   ].map((part) => encodeKeyPart(part)).join("|");
 }
 
+export function channelConnectorDeliverySessionId(input: ChannelConnectorDeliverySessionLookup): string {
+  return [
+    "v3",
+    input.accountId,
+    input.sessionKey,
+    input.targetId,
+  ].map((part) => encodeKeyPart(part)).join("|");
+}
+
 function emptyState(): ChannelConnectorAgentSessionState {
   return {
-    version: 1,
+    version: 3,
     updatedAt: nowIso(),
     sessions: {},
   };
@@ -108,10 +139,13 @@ export function readChannelConnectorAgentSessions(filePath: string): ChannelConn
         updatedAt: normalizeString(value.updatedAt) || nowIso(),
         lastMessageId: normalizeString(value.lastMessageId) || null,
         lastStatus: normalizeString(value.lastStatus) || null,
+        accountId: normalizeString(value.accountId) || null,
+        targetId: normalizeString(value.targetId) || null,
+        targetRevision: normalizeString(value.targetRevision) || null,
       };
     }
     return {
-      version: 1,
+      version: 3,
       updatedAt: normalizeString(raw.updatedAt) || nowIso(),
       sessions,
     };
@@ -127,7 +161,7 @@ export function writeChannelConnectorAgentSessions(
 ): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const next = {
-    version: 1 as const,
+    version: 3 as const,
     updatedAt: nowIso(),
     sessions: state.sessions,
   };
@@ -142,6 +176,38 @@ export function getChannelConnectorAgentSession(
 ): ChannelConnectorAgentSessionRecord | null {
   const state = readChannelConnectorAgentSessions(filePath);
   return state.sessions[channelConnectorAgentSessionId(lookup)] || null;
+}
+
+export function getChannelConnectorAgentSessionByDeliveryIdentity(
+  filePath: string,
+  lookup: ChannelConnectorDeliverySessionLookup,
+): ChannelConnectorAgentSessionRecord | null {
+  const state = readChannelConnectorAgentSessions(filePath);
+  return Object.values(state.sessions).find((record) => (
+    record.accountId === lookup.accountId
+      && record.targetId === lookup.targetId
+      && record.sessionKey === lookup.sessionKey
+  )) || null;
+}
+
+export function setChannelConnectorAgentSessionDeliveryIdentity(
+  filePath: string,
+  input: ChannelConnectorDeliverySessionInput,
+): ChannelConnectorAgentSessionRecord | null {
+  const state = readChannelConnectorAgentSessions(filePath);
+  const sessionId = channelConnectorAgentSessionId(input.session);
+  const record = state.sessions[sessionId];
+  if (!record) return null;
+  const next: ChannelConnectorAgentSessionRecord = {
+    ...record,
+    accountId: input.accountId,
+    targetId: input.targetId,
+    targetRevision: input.targetRevision,
+    updatedAt: nowIso(),
+  };
+  state.sessions[sessionId] = next;
+  writeChannelConnectorAgentSessions(filePath, state);
+  return next;
 }
 
 export function listChannelConnectorAgentSessionsForConversation(
@@ -187,6 +253,34 @@ export function upsertChannelConnectorAgentSession(
     lastStatus: normalizeString(update.status) || null,
   };
   state.sessions[id] = next;
+  writeChannelConnectorAgentSessions(filePath, state);
+  return next;
+}
+
+export function updateChannelConnectorAgentSessionDeliveryIdentity(
+  filePath: string,
+  sessionId: string,
+  update: ChannelConnectorDeliverySessionUpdate,
+): ChannelConnectorAgentSessionRecord | null {
+  const state = readChannelConnectorAgentSessions(filePath);
+  const current = state.sessions[sessionId];
+  if (!current) return null;
+  const now = (update.now || new Date()).toISOString();
+  const next: ChannelConnectorAgentSessionRecord = {
+    ...current,
+    name: update.name === undefined ? current.name : normalizeString(update.name) || null,
+    model: update.model,
+    agentNativeSessionId: normalizeString(update.agentNativeSessionId) || current.agentNativeSessionId || null,
+    codexThreadId: normalizeString(update.codexThreadId) || current.codexThreadId || null,
+    turnCount: current.turnCount + 1,
+    updatedAt: now,
+    lastMessageId: normalizeString(update.messageId) || null,
+    lastStatus: normalizeString(update.status) || null,
+    accountId: update.accountId,
+    targetId: update.targetId,
+    targetRevision: update.targetRevision,
+  };
+  state.sessions[sessionId] = next;
   writeChannelConnectorAgentSessions(filePath, state);
   return next;
 }

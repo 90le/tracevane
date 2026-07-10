@@ -60,11 +60,15 @@ import {
 } from "./codex-app-server-driver.js";
 import { createNativeCliSessionDriverFactory } from "./cli-agent-session-driver.js";
 import {
+  setChannelConnectorAgentSessionDeliveryIdentity,
   clearChannelConnectorAgentSessionsForConversation,
   deleteChannelConnectorAgentSession,
   getChannelConnectorAgentSession,
+  getChannelConnectorAgentSessionByDeliveryIdentity,
   listChannelConnectorAgentSessionsForConversation,
+  updateChannelConnectorAgentSessionDeliveryIdentity,
   upsertChannelConnectorAgentSession,
+  type ChannelConnectorAgentSessionLookup,
   type ChannelConnectorAgentSessionRecord,
 } from "./agent-session-store.js";
 import {
@@ -111,6 +115,42 @@ import {
 import {
   compactChannelConnectorConversation as compactChannelConnectorConversationCore,
 } from "./conversation-compact.js";
+import {
+  applyChannelConnectorV3ResolutionToRuntimeRef,
+  channelConnectorAccountConnectionKey,
+  channelConnectorRuntimeRouteRefs,
+  channelConnectorRuntimeAccountId,
+  diffChannelConnectorV3AccountConnections,
+  groupChannelConnectorOctoAccountRoutes,
+  selectChannelConnectorRuntimeRoute,
+  selectChannelConnectorOctoAccountRoute,
+  selectExactChannelConnectorRuntimeRoute,
+  selectChannelConnectorV3RuntimeRoute,
+  type ChannelConnectorOctoAccountRouteGroup,
+  type ChannelConnectorRuntimeRouteRef,
+} from "./runtime-account-routing.js";
+import { createChannelConnectorTargetExecutionCoordinator } from "./target-execution-coordinator.js";
+import {
+  createChannelConnectorIngressQueue,
+  type ChannelConnectorIngressQueue,
+} from "./ingress-queue.js";
+import {
+  feishuIngressEnvelope,
+  octoIngressEnvelope,
+} from "./ingress-envelope.js";
+import {
+  enqueueChannelConnectorReply,
+  markChannelConnectorReplyDelivered,
+  markChannelConnectorReplyFailed,
+  markChannelConnectorReplySending,
+  readChannelConnectorReplyOutbox,
+  type ChannelConnectorReplyOutboxInput,
+  type ChannelConnectorReplyOutboxRecord,
+} from "./reply-outbox-store.js";
+import {
+  replayDueChannelConnectorReplies,
+  type ChannelConnectorReplyReplayOutcome,
+} from "./reply-outbox-worker.js";
 import {
   resolveChannelConnectorContextBudget,
 } from "./context-budget.js";
@@ -376,9 +416,13 @@ const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPo
     }),
   }),
 });
+const channelTargetExecutionCoordinator = createChannelConnectorTargetExecutionCoordinator();
+let channelIngressQueue: ChannelConnectorIngressQueue | null = null;
 
 interface ChannelDaemonOctoConnectionState extends OctoWukongSocketStatus {
+  bindingIds: string[];
   accountId: string;
+  externalAccountId: string;
   botId: string | null;
   robotId: string | null;
   apiUrl: string | null;
@@ -541,9 +585,19 @@ interface ChannelDaemonFeishuGroup {
   lockPath: string | null;
   lastLockRetryAt: string | null;
   recycleCurrentClient: ((reason: string) => void) | null;
+  abortController: AbortController | null;
+  retired: boolean;
 }
 
-type ChannelDaemonRunLifecycleStatus = "running" | "delivering";
+interface ChannelDaemonOctoConnectionHandle {
+  accountId: string;
+  groupKey: string;
+  bindingId: string;
+  socket: OctoWukongSocket;
+  restHeartbeatTimer: NodeJS.Timeout | null;
+}
+
+type ChannelDaemonRunLifecycleStatus = "starting" | "running" | "delivering";
 
 type ChannelDaemonReplyDeliveryStatus = "not_required" | "delivered" | "failed";
 
@@ -627,6 +681,7 @@ interface ChannelDaemonState {
     outboundFileErrors?: string[];
   }>;
   autoCompacts: ChannelDaemonAutoCompactRecord[];
+  ingressQueue: ReturnType<ChannelConnectorIngressQueue["status"]>;
   reload: ChannelConnectorsDaemonReloadState;
 }
 
@@ -1397,6 +1452,7 @@ const RUNTIME_DEBOUNCE_MS = 2000;
 
 function markRuntimeDirty(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelDaemonState): void {
   state.agentSessionDriver = buildAgentSessionDriverState(config);
+  state.ingressQueue = channelIngressQueue?.status() || state.ingressQueue;
   state.updatedAt = new Date().toISOString();
   runtimeDirty = true;
   runtimeDirtyAt = Date.now();
@@ -1419,6 +1475,7 @@ function flushRuntime(config: ChannelConnectorsDaemonRuntimeConfig, state: Chann
   }
   runtimeDirty = false;
   state.agentSessionDriver = buildAgentSessionDriverState(config);
+  state.ingressQueue = channelIngressQueue?.status() || state.ingressQueue;
   state.updatedAt = new Date().toISOString();
   ensureDir(path.dirname(config.paths.runtime));
   fs.writeFileSync(config.paths.runtime, `${JSON.stringify(state, null, 2)}\n`, "utf8");
@@ -1521,6 +1578,18 @@ function restoreOctoHistoryCutoffs(config: ChannelConnectorsDaemonRuntimeConfig)
   return pruneOctoHistoryCutoffs(records);
 }
 
+function daemonRuntimeProjectSummaries(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+): ChannelDaemonState["projects"] {
+  const projects = new Map<string, ChannelDaemonState["projects"][number]>();
+  for (const { project } of channelConnectorRuntimeRouteRefs(config)) {
+    const current = projects.get(project.id);
+    if (current) current.platformBindings += 1;
+    else projects.set(project.id, { id: project.id, agent: project.agent, platformBindings: 1 });
+  }
+  return [...projects.values()];
+}
+
 function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): ChannelDaemonState {
   const now = new Date().toISOString();
   return {
@@ -1529,11 +1598,7 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
     startedAt: now,
     updatedAt: now,
     management: config.management,
-    projects: config.projects.map((project) => ({
-      id: project.id,
-      agent: project.agent,
-      platformBindings: project.platformBindings.length,
-    })),
+    projects: daemonRuntimeProjectSummaries(config),
     octoConnections: {},
     feishuConnections: {},
     agentSessionDriver: buildAgentSessionDriverState(config),
@@ -1541,6 +1606,13 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
     activeRuns: [],
     agentRuns: [],
     autoCompacts: [],
+    ingressQueue: channelIngressQueue?.status() || {
+      activeAccounts: 0,
+      queued: 0,
+      completed: 0,
+      failed: 0,
+      duplicates: 0,
+    },
     reload: {
       status: "idle",
       mode: null,
@@ -1605,10 +1677,9 @@ function buildAgentSessionDriverState(
   config: ChannelConnectorsDaemonRuntimeConfig,
   activeSessions: ChannelConnectorAgentSessionDriverStatus[] = channelAgentSessionDriverPool.status(),
 ): ChannelDaemonAgentSessionDriverState {
-  const bindings = config.projects.flatMap((project) => {
-    return project.platformBindings.map((binding) => {
-      const mode = effectiveAgentSessionDriverMode({ binding, project });
-      return {
+  const bindings = channelConnectorRuntimeRouteRefs(config).map(({ project, binding }) => {
+    const mode = effectiveAgentSessionDriverMode({ binding, project });
+    return {
         projectId: project.id,
         bindingId: binding.id,
         platform: binding.platform,
@@ -1623,8 +1694,7 @@ function buildAgentSessionDriverState(
         requestedMode: mode.requestedMode,
         effectiveMode: mode.effectiveMode,
         reason: mode.reason,
-      };
-    });
+    };
   });
   const controls = readChannelConnectorSessionControls(sessionControlsPath(config)).controls;
   const enrichedActiveSessions = activeSessions.map((session) => {
@@ -2318,7 +2388,7 @@ async function acquireChannelSessionAgentRun(
     agent: input.agent,
     model: input.model,
     startedAt: new Date().toISOString(),
-    status: "running",
+    status: "starting",
   };
   if (input.parallel) {
     return {
@@ -2399,8 +2469,8 @@ function startHttp(
         ok: true,
         implementation: "tracevane-native",
         pid: process.pid,
-        projects: config.projects.length,
-        platformBindings: config.projects.reduce((sum, project) => sum + project.platformBindings.length, 0),
+        projects: state.projects.length,
+        platformBindings: channelConnectorRuntimeRouteRefs(config).length,
         octoConnections: Object.values(state.octoConnections),
         feishuConnections: Object.values(state.feishuConnections),
         agentSessionDriver: state.agentSessionDriver,
@@ -2411,6 +2481,8 @@ function startHttp(
         agentRuns: state.agentRuns,
         autoCompacts: state.autoCompacts || [],
         pendingAgentRuns: summarizePendingAgentRuns(config),
+        replyOutbox: summarizeReplyOutbox(config),
+        ingressQueue: channelIngressQueue?.status() || state.ingressQueue,
         reload: state.reload,
       }));
       return;
@@ -3283,7 +3355,7 @@ function outboundFileMaxBytes(binding: ChannelConnectorRuntimeBinding): number {
   ], DEFAULT_CHANNEL_CONNECTOR_OUTBOUND_FILE_MAX_BYTES);
 }
 
-function stripLegacyPlatformActionBlocks(replyText: string): { replyText: string; errors: string[] } {
+function stripUnsupportedPlatformActionBlocks(replyText: string): { replyText: string; errors: string[] } {
   const errors: string[] = [];
   const stripped = replyText.replace(
     /```[ \t]*(tracevane-feishu-actions|tracevane-octo-actions)[^\r\n]*\r?\n[\s\S]*?```/gi,
@@ -3309,8 +3381,8 @@ function prepareAgentOutboundReply(input: {
   declaredMessageCount: number;
   maxBytes: number;
 } {
-  const legacyActions = stripLegacyPlatformActionBlocks(input.replyText || "");
-  const extractedMessages = extractChannelConnectorOutboundMessages(legacyActions.replyText);
+  const unsupportedActions = stripUnsupportedPlatformActionBlocks(input.replyText || "");
+  const extractedMessages = extractChannelConnectorOutboundMessages(unsupportedActions.replyText);
   const extracted = extractChannelConnectorOutboundFiles(extractedMessages.replyText);
   const maxBytes = outboundFileMaxBytes(input.binding);
   const resolved = resolveChannelConnectorOutboundFiles({
@@ -3325,7 +3397,7 @@ function prepareAgentOutboundReply(input: {
     files: resolved.files,
     messages: extractedMessages.messages,
     errors: [
-      ...legacyActions.errors,
+      ...unsupportedActions.errors,
       ...extractedMessages.errors,
       ...extracted.errors,
       ...resolved.errors,
@@ -3401,38 +3473,61 @@ async function runChannelConnectorAgentTurnWithSessionDriver(input: {
   request: Parameters<typeof runChannelConnectorAgentTurn>[0];
   fallbackOnCrash?: boolean;
 }): Promise<ChannelConnectorAgentTurnResult> {
-  const mode = effectiveAgentSessionDriverMode({
-    binding: input.binding,
-    project: input.project,
-  }).effectiveMode;
-  const run = (request: Parameters<typeof runChannelConnectorAgentTurn>[0]) => channelAgentSessionDriverPool.runTurn({
-    mode,
-    key: {
-      bindingId: input.binding.id,
-      projectId: input.project.id,
-      sessionKey: input.sessionKey,
-      agent: input.project.agent,
-      model: input.project.model,
-      workDir: input.project.workDir,
-      permissionMode: input.project.permissionMode,
-    },
-    messageId: input.messageId,
-    agentTurnRequest: request,
-    signal: request.signal || null,
-    onProgress: request.onProgress,
-    fallbackOnCrash: input.fallbackOnCrash,
-    runOneShot: () => runChannelConnectorAgentTurn(request),
+  const workspaceKey = (() => {
+    try {
+      return fs.realpathSync.native(input.project.workDir);
+    } catch {
+      return path.resolve(input.project.workDir);
+    }
+  })();
+  const workspaceLease = await channelTargetExecutionCoordinator.acquire({
+    workspaceKey,
+    maxActive: Math.max(1, Math.floor(metadataNumber(input.binding, [
+      "workspaceConcurrency",
+      "workspace_concurrency",
+    ], 1))),
+    queueLimit: Math.max(0, Math.floor(metadataNumber(input.binding, [
+      "workspaceQueueLimit",
+      "workspace_queue_limit",
+    ], 20))),
+    signal: input.request.signal || null,
   });
-  const first = await run(input.request);
-  if (!isStaleAgentSessionResumeFailure(first)) return first;
-  const freshRequest: Parameters<typeof runChannelConnectorAgentTurn>[0] = {
-    ...input.request,
-    session: {
-      agentNativeSessionId: null,
-      codexThreadId: null,
-    },
-  };
-  return run(freshRequest);
+  try {
+    const mode = effectiveAgentSessionDriverMode({
+      binding: input.binding,
+      project: input.project,
+    }).effectiveMode;
+    const run = (request: Parameters<typeof runChannelConnectorAgentTurn>[0]) => channelAgentSessionDriverPool.runTurn({
+      mode,
+      key: {
+        bindingId: input.binding.id,
+        projectId: input.project.id,
+        sessionKey: input.sessionKey,
+        agent: input.project.agent,
+        model: input.project.model,
+        workDir: input.project.workDir,
+        permissionMode: input.project.permissionMode,
+      },
+      messageId: input.messageId,
+      agentTurnRequest: request,
+      signal: request.signal || null,
+      onProgress: request.onProgress,
+      fallbackOnCrash: input.fallbackOnCrash,
+      runOneShot: () => runChannelConnectorAgentTurn(request),
+    });
+    const first = await run(input.request);
+    if (!isStaleAgentSessionResumeFailure(first)) return first;
+    const freshRequest: Parameters<typeof runChannelConnectorAgentTurn>[0] = {
+      ...input.request,
+      session: {
+        agentNativeSessionId: null,
+        codexThreadId: null,
+      },
+    };
+    return await run(freshRequest);
+  } finally {
+    workspaceLease.release();
+  }
 }
 
 async function sendOctoOutboundFiles(input: {
@@ -3605,6 +3700,63 @@ function agentSessionsPath(config: ChannelConnectorsDaemonRuntimeConfig): string
   return path.join(config.paths.state, "channel-sessions.json");
 }
 
+function channelConnectorDeliverySessionIdentity(
+  binding: ChannelConnectorRuntimeBinding,
+  sessionKey: string,
+): { accountId: string; targetId: string; targetRevision: string; sessionKey: string } | null {
+  const accountId = channelConnectorRuntimeAccountId(binding);
+  const targetId = metadataString(binding, ["deliveryTargetId"]);
+  const targetRevision = metadataString(binding, ["deliveryTargetRevision"]);
+  if (!accountId || !targetId || !targetRevision) return null;
+  return { accountId, targetId, targetRevision, sessionKey };
+}
+
+function getChannelConnectorRuntimeAgentSession(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  binding: ChannelConnectorRuntimeBinding;
+  lookup: ChannelConnectorAgentSessionLookup;
+}): ChannelConnectorAgentSessionRecord | null {
+  const filePath = agentSessionsPath(input.config);
+  const delivery = channelConnectorDeliverySessionIdentity(input.binding, input.lookup.sessionKey);
+  if (!delivery) return getChannelConnectorAgentSession(filePath, input.lookup);
+  return getChannelConnectorAgentSessionByDeliveryIdentity(filePath, delivery);
+}
+
+function upsertChannelConnectorRuntimeAgentSession(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  binding: ChannelConnectorRuntimeBinding;
+  update: Parameters<typeof upsertChannelConnectorAgentSession>[1];
+}): ChannelConnectorAgentSessionRecord {
+  const filePath = agentSessionsPath(input.config);
+  const delivery = channelConnectorDeliverySessionIdentity(input.binding, input.update.sessionKey);
+  if (delivery) {
+    const existing = getChannelConnectorAgentSessionByDeliveryIdentity(filePath, delivery);
+    if (
+      existing
+      && existing.agent === input.update.agent
+      && existing.workDir === input.update.workDir
+    ) {
+      const updated = updateChannelConnectorAgentSessionDeliveryIdentity(filePath, existing.id, {
+        ...delivery,
+        model: input.update.model,
+        agentNativeSessionId: input.update.agentNativeSessionId,
+        codexThreadId: input.update.codexThreadId,
+        messageId: input.update.messageId,
+        status: input.update.status,
+        name: input.update.name,
+        now: input.update.now,
+      });
+      if (updated) return updated;
+    }
+  }
+  const record = upsertChannelConnectorAgentSession(filePath, input.update);
+  if (!delivery) return record;
+  return setChannelConnectorAgentSessionDeliveryIdentity(filePath, {
+    ...delivery,
+    session: input.update,
+  }) || record;
+}
+
 function sessionControlsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "channel-session-controls.json");
 }
@@ -3625,8 +3777,153 @@ function replyBufferPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "channel-reply-buffers.json");
 }
 
+function replyOutboxPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "channel-reply-outbox.json");
+}
+
+function summarizeReplyOutbox(config: ChannelConnectorsDaemonRuntimeConfig) {
+  const records = Object.values(readChannelConnectorReplyOutbox(replyOutboxPath(config)).records);
+  const pending = records.filter((record) => record.status === "pending");
+  return {
+    pending: pending.length,
+    delivered: records.filter((record) => record.status === "delivered").length,
+    deadLetter: records.filter((record) => record.status === "dead-letter").length,
+    oldestPendingAt: pending.map((record) => record.createdAt).sort()[0] || null,
+    recentDeadLetters: records
+      .filter((record) => record.status === "dead-letter")
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .slice(0, 20)
+      .map((record) => ({
+        id: record.id,
+        platform: record.platform,
+        accountId: record.accountId,
+        sourceMessageId: record.sourceMessageId,
+        attempts: record.attempts,
+        updatedAt: record.updatedAt,
+        lastError: record.lastError,
+      })),
+  };
+}
+
+function ingressQueuePath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "channel-ingress-queue.json");
+}
+
 function governanceStatePath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "channel-governance.json");
+}
+
+async function deliverChannelConnectorTextWithOutbox<T>(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  record: ChannelConnectorReplyOutboxInput;
+  send: () => Promise<T>;
+  outcome: (value: T) => {
+    ok: boolean | null;
+    error: string | null;
+    statusCode?: number | null;
+    platformMessageId?: string | null;
+  };
+}): Promise<{ deduplicated: boolean; value: T | null }> {
+  const filePath = replyOutboxPath(input.config);
+  const queued = enqueueChannelConnectorReply(filePath, input.record);
+  if (queued.status === "delivered") return { deduplicated: true, value: null };
+  markChannelConnectorReplySending(filePath, queued.id);
+  try {
+    const value = await input.send();
+    const outcome = input.outcome(value);
+    if (outcome.ok === true) {
+      markChannelConnectorReplyDelivered(
+        filePath,
+        queued.id,
+        outcome.platformMessageId || null,
+      );
+    } else {
+      const statusCode = outcome.statusCode ?? null;
+      const retryable = statusCode === null || statusCode === 429 || statusCode >= 500;
+      markChannelConnectorReplyFailed(
+        filePath,
+        queued.id,
+        outcome.error || "Final reply delivery failed.",
+        { retryable },
+      );
+    }
+    return { deduplicated: false, value };
+  } catch (error) {
+    markChannelConnectorReplyFailed(filePath, queued.id, shortMessage(error), { retryable: true });
+    throw error;
+  }
+}
+
+function findChannelConnectorReplyBinding(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  record: ChannelConnectorReplyOutboxRecord,
+): { project: ChannelConnectorRuntimeProject; binding: ChannelConnectorRuntimeBinding } | null {
+  let accountFallback: { project: ChannelConnectorRuntimeProject; binding: ChannelConnectorRuntimeBinding } | null = null;
+  for (const { project, binding } of channelConnectorRuntimeRouteRefs(config)) {
+    if (binding.platform !== record.platform) continue;
+    if (binding.id === record.bindingId) return { project, binding };
+    const accountId = channelConnectorRuntimeAccountId(binding) || normalizeString(binding.accountId);
+    if (!accountFallback && accountId === normalizeString(record.accountId)) {
+      accountFallback = { project, binding };
+    }
+  }
+  return accountFallback;
+}
+
+async function deliverPersistedChannelConnectorReply(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  record: ChannelConnectorReplyOutboxRecord,
+): Promise<ChannelConnectorReplyReplayOutcome> {
+  const ref = findChannelConnectorReplyBinding(config, record);
+  if (!ref) {
+    return {
+      ok: false,
+      error: `No ${record.platform} account configuration is available for ${record.accountId}.`,
+      retryable: true,
+    };
+  }
+  if (record.platform === "octo") {
+    if (record.destinationType === null) {
+      return {
+        ok: false,
+        error: "Octo outbox record has no destination channel type.",
+        retryable: false,
+      };
+    }
+    const transport = octoTransportFromMetadata(ref.binding.metadata);
+    if (!transport) {
+      return { ok: false, error: "Octo transport configuration is unavailable.", retryable: true };
+    }
+    const replyPlan = renderOctoOutboundText({
+      channelId: record.destinationId,
+      channelType: record.destinationType,
+      content: record.text,
+      onBehalfOf: octoOnBehalfOfFromBinding(nativeBindingFromRuntime(ref.project, ref.binding, null)),
+    });
+    if (!replyPlan) return { ok: false, error: "Octo reply content is empty.", retryable: false };
+    const result = await sendOctoTextReply(transport, replyPlan);
+    return {
+      ok: result.ok === true,
+      error: result.error,
+      statusCode: result.statusCode,
+    };
+  }
+
+  const transport = feishuTransportFromMetadata(ref.binding.metadata, ref.binding.accountId);
+  if (!transport) {
+    return { ok: false, error: "Feishu transport configuration is unavailable.", retryable: true };
+  }
+  const result = await sendFeishuTextMessage(transport, {
+    chatId: record.destinationId,
+    replyToMessageId: record.replyToMessageId,
+    content: record.text,
+  }, feishuTokenCachePath(config));
+  return {
+    ok: result.ok === true,
+    error: result.error,
+    statusCode: result.statusCode,
+    platformMessageId: result.messageId || result.messageIds?.[0] || null,
+  };
 }
 
 async function compactChannelConnectorConversation(input: {
@@ -3720,13 +4017,17 @@ async function nativeCompactChannelConnectorConversation(input: {
       error: "No live persistent Agent session exists for native compact.",
     };
   }
-  const currentSession = getChannelConnectorAgentSession(agentSessionsPath(input.config), {
-    bindingId: input.binding.id,
-    sessionKey: input.sessionKey,
-    projectId: input.project.id,
-    agent: input.project.agent,
-    model: input.project.model,
-    workDir: input.project.workDir,
+  const currentSession = getChannelConnectorRuntimeAgentSession({
+    config: input.config,
+    binding: input.binding,
+    lookup: {
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      projectId: input.project.id,
+      agent: input.project.agent,
+      model: input.project.model,
+      workDir: input.project.workDir,
+    },
   });
   const messageId = `compact:${normalizeString(input.message.messageId) || Date.now()}`;
   try {
@@ -3753,17 +4054,21 @@ async function nativeCompactChannelConnectorConversation(input: {
       fallbackOnCrash: false,
     });
     if (result.session.agentNativeSessionId || result.session.codexThreadId) {
-      upsertChannelConnectorAgentSession(agentSessionsPath(input.config), {
-        bindingId: input.binding.id,
-        sessionKey: input.sessionKey,
-        projectId: input.project.id,
-        agent: input.project.agent,
-        model: input.project.model,
-        workDir: input.project.workDir,
-        agentNativeSessionId: result.session.agentNativeSessionId || result.session.codexThreadId || null,
-        codexThreadId: result.session.codexThreadId || null,
-        messageId,
-        status: result.status,
+      upsertChannelConnectorRuntimeAgentSession({
+        config: input.config,
+        binding: input.binding,
+        update: {
+          bindingId: input.binding.id,
+          sessionKey: input.sessionKey,
+          projectId: input.project.id,
+          agent: input.project.agent,
+          model: input.project.model,
+          workDir: input.project.workDir,
+          agentNativeSessionId: result.session.agentNativeSessionId || result.session.codexThreadId || null,
+          codexThreadId: result.session.codexThreadId || null,
+          messageId,
+          status: result.status,
+        },
       });
     }
     writeJsonLine(input.binding.platform === "feishu" ? input.config.paths.feishuEvents : input.config.paths.octoEvents, {
@@ -4829,6 +5134,7 @@ function connectionState(
 ): ChannelDaemonOctoConnectionState {
   return {
     bindingId: binding.id,
+    bindingIds: status.bindingIds || [binding.id],
     wsUrl: status.wsUrl || "",
     connected: status.connected || false,
     state: status.state || "idle",
@@ -4837,7 +5143,8 @@ function connectionState(
     lastDisconnectedAt: status.lastDisconnectedAt || null,
     reconnects: status.reconnects || 0,
     receivedMessages: status.receivedMessages || 0,
-    accountId: binding.accountId,
+    accountId: channelConnectorRuntimeAccountId(binding) || binding.accountId,
+    externalAccountId: binding.accountId,
     botId: binding.botId,
     robotId: status.robotId || null,
     apiUrl: status.apiUrl || null,
@@ -4974,6 +5281,11 @@ function updateFeishuRuntime(
   state: ChannelDaemonState,
   group: ChannelDaemonFeishuGroup,
 ): void {
+  if (group.retired) {
+    delete state.feishuConnections[group.key];
+    markRuntimeDirty(config, state);
+    return;
+  }
   state.feishuConnections[group.key] = feishuConnectionState(group);
   markRuntimeDirty(config, state);
 }
@@ -5193,10 +5505,22 @@ function selectFeishuBindingRefs(
   const requestedBindingId = normalizeString(parsed.bindingId);
   if (requestedBindingId) return group.refs.filter((ref) => ref.binding.id === requestedBindingId);
   const chatId = normalizeString(parsed.channelId);
+  const chatType = normalizeString(parsed.chatType).toLowerCase();
+  const peerKind = chatType.includes("group") ? "group" : "private";
+  const exactRoute = selectExactChannelConnectorRuntimeRoute(group.refs, {
+    peerKind,
+    peerId: chatId,
+  });
+  if (exactRoute) return [exactRoute];
   const chatSpecific = chatId
     ? group.refs.filter((ref) => feishuChatFilters(ref.binding).includes(chatId))
     : [];
   if (chatSpecific.length) return chatSpecific;
+  const routed = selectChannelConnectorRuntimeRoute(group.refs, {
+    peerKind,
+    peerId: chatId,
+  });
+  if (routed) return [routed];
   const defaults = group.refs.filter((ref) => feishuChatFilters(ref.binding).length === 0);
   return defaults.length ? [defaults[0]] : group.refs.slice(0, 1);
 }
@@ -8180,13 +8504,17 @@ function buildFeishuCommandCard(input: {
     customCommandsPath: customCommandsPath(input.config),
   }, current);
   const skills = listChannelConnectorSkillSummaries(current, input.binding);
-  const session = getChannelConnectorAgentSession(agentSessionsPath(input.config), {
-    bindingId: input.binding.id,
-    projectId: current.id,
-    sessionKey: input.sessionKey,
-    agent: current.agent,
-    model: current.model,
-    workDir: current.workDir,
+  const session = getChannelConnectorRuntimeAgentSession({
+    config: input.config,
+    binding: input.binding,
+    lookup: {
+      bindingId: input.binding.id,
+      projectId: current.id,
+      sessionKey: input.sessionKey,
+      agent: current.agent,
+      model: current.model,
+      workDir: current.workDir,
+    },
   });
   const sessionList = listChannelConnectorAgentSessionsForConversation(agentSessionsPath(input.config), {
     bindingId: input.binding.id,
@@ -8593,10 +8921,11 @@ async function dispatchOctoMessage(input: {
   message: ChannelConnectorOctoInboundMessage;
   seenMessages: Map<string, number>;
   octoTimelines: ChannelDaemonOctoTimelineRegistry;
+  ingressDeduplicated?: boolean;
 }): Promise<void> {
   const { config, state, activeRunCancels, project, binding, robotId, seenMessages, octoTimelines } = input;
   let message = input.message;
-  if (shouldSkipSeenMessage(seenMessages, message.messageId)) return;
+  if (!input.ingressDeduplicated && shouldSkipSeenMessage(seenMessages, message.messageId)) return;
   recordOctoRealtimeTimeline({
     timelines: octoTimelines,
     binding,
@@ -8939,7 +9268,7 @@ async function dispatchOctoMessage(input: {
     messageId: message.messageId,
     agent: effectiveProject.agent,
     model: effectiveProject.model,
-    status: "running",
+    status: "starting",
     sessionResumed: false,
     agentNativeSessionId: null,
     codexThreadId: null,
@@ -8953,7 +9282,7 @@ async function dispatchOctoMessage(input: {
   activeRunCancels.set(activeRunId, {
     controller: abortController,
     startedAt: runStartedAt,
-    status: "running",
+    status: "starting",
     deliveryStartedAt: null,
     bindingId: binding.id,
     sessionKey,
@@ -9040,7 +9369,7 @@ async function dispatchOctoMessage(input: {
     adapter: "octo",
     messageId: message.messageId,
   });
-  let currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+  let currentSession = getChannelConnectorRuntimeAgentSession({ config, binding, lookup: effectiveSessionLookup });
   updateActiveRunAgentModel({
     state,
     activeRunCancels,
@@ -9407,6 +9736,7 @@ async function dispatchOctoMessage(input: {
           previousProgressAtMs = progressAtMs;
           const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
           if (activeRun) {
+            activeRun.status = "running";
             activeRun.updatedAt = event.checkedAt;
             activeRun.progressEventCount = progressEventCount;
             activeRun.latestProgress = latestProgress;
@@ -9461,7 +9791,7 @@ async function dispatchOctoMessage(input: {
         model: turnProject.model,
         workDir: turnProject.workDir,
       };
-      currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+      currentSession = getChannelConnectorRuntimeAgentSession({ config, binding, lookup: effectiveSessionLookup });
       runtimeDir = agentRuntimeDir(config, turnProject, binding);
       channelSkillContext = buildChannelConnectorSkillContext(turnProject, { binding });
       updateActiveRunAgentModel({
@@ -9540,6 +9870,7 @@ async function dispatchOctoMessage(input: {
             previousProgressAtMs = progressAtMs;
             const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
             if (activeRun) {
+              activeRun.status = "running";
               activeRun.updatedAt = event.checkedAt;
               activeRun.progressEventCount = progressEventCount;
               activeRun.latestProgress = latestProgress;
@@ -9699,13 +10030,17 @@ async function dispatchOctoMessage(input: {
     });
   }
   if (!dropStaleSession && (agent.session.agentNativeSessionId || agent.session.codexThreadId || currentSession?.agentNativeSessionId || currentSession?.codexThreadId)) {
-    nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
-      ...effectiveSessionLookup,
-      agentNativeSessionId: agent.session.agentNativeSessionId || currentSession?.agentNativeSessionId || agent.session.codexThreadId || currentSession?.codexThreadId || null,
-      codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
-      messageId: message.messageId,
-      status: agent.status,
-      name: control?.sessionName || currentSession?.name || null,
+    nextSession = upsertChannelConnectorRuntimeAgentSession({
+      config,
+      binding,
+      update: {
+        ...effectiveSessionLookup,
+        agentNativeSessionId: agent.session.agentNativeSessionId || currentSession?.agentNativeSessionId || agent.session.codexThreadId || currentSession?.codexThreadId || null,
+        codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
+        messageId: message.messageId,
+        status: agent.status,
+        name: control?.sessionName || currentSession?.name || null,
+      },
     });
   }
   const agentFinishedAt = new Date().toISOString();
@@ -9779,10 +10114,35 @@ async function dispatchOctoMessage(input: {
     replyPreviewRunes = preparedReply.previewRunes;
     const replyPlan = renderOctoTextReply(message, preparedReply.replyText);
     if (replyPlan) {
-      const result = await sendOctoTextReply(transport, replyPlan);
-      replySent = result.ok === true;
-      replyRequestCount = result.requestCount;
-      if (!result.ok) replyError = result.error || "Octo final reply delivery failed.";
+      const delivery = await deliverChannelConnectorTextWithOutbox({
+        config,
+        record: {
+          platform: "octo",
+          accountId: channelConnectorRuntimeAccountId(binding) || binding.accountId,
+          bindingId: binding.id,
+          sourceMessageId: message.messageId,
+          destinationId: replyPlan.channelId,
+          destinationType: replyPlan.channelType,
+          replyToMessageId: message.messageId,
+          text: preparedReply.replyText,
+        },
+        send: () => sendOctoTextReply(transport, replyPlan),
+        outcome: (result) => ({
+          ok: result.ok,
+          error: result.error,
+          statusCode: result.statusCode,
+        }),
+      });
+      if (delivery.deduplicated) {
+        replySent = true;
+        replyRequestCount = 0;
+      } else if (delivery.value) {
+        replySent = delivery.value.ok === true;
+        replyRequestCount = delivery.value.requestCount;
+        if (!delivery.value.ok) {
+          replyError = delivery.value.error || "Octo final reply delivery failed.";
+        }
+      }
     }
   }
   if (transport && agent.ok === true && outboundReply.files.length > 0) {
@@ -9828,12 +10188,38 @@ async function dispatchOctoMessage(input: {
     }
   }
   if (transport && agent.ok === false) {
-    const replyPlan = renderOctoTextReply(message, renderAgentTerminalFailureReply(agent));
+    const failureReply = renderAgentTerminalFailureReply(agent);
+    const replyPlan = renderOctoTextReply(message, failureReply);
     if (replyPlan) {
-      const result = await sendOctoTextReply(transport, replyPlan);
-      replySent = result.ok === true;
-      replyRequestCount = result.requestCount;
-      if (!result.ok) replyError = result.error || "Octo failure reply delivery failed.";
+      const delivery = await deliverChannelConnectorTextWithOutbox({
+        config,
+        record: {
+          platform: "octo",
+          accountId: binding.accountId,
+          bindingId: binding.id,
+          sourceMessageId: message.messageId,
+          destinationId: replyPlan.channelId,
+          destinationType: replyPlan.channelType,
+          replyToMessageId: message.messageId,
+          text: failureReply,
+        },
+        send: () => sendOctoTextReply(transport, replyPlan),
+        outcome: (result) => ({
+          ok: result.ok,
+          error: result.error,
+          statusCode: result.statusCode,
+        }),
+      });
+      if (delivery.deduplicated) {
+        replySent = true;
+        replyRequestCount = 0;
+      } else if (delivery.value) {
+        replySent = delivery.value.ok === true;
+        replyRequestCount = delivery.value.requestCount;
+        if (!delivery.value.ok) {
+          replyError = delivery.value.error || "Octo failure reply delivery failed.";
+        }
+      }
     }
   }
   const octoDeliveryExpected = Boolean(
@@ -10028,6 +10414,10 @@ function normalizeFeishuCommandContent(value: unknown): string {
   return text;
 }
 
+function isPriorityChannelControl(value: unknown): boolean {
+  return /^\/(?:stop|cancel|status)(?:\s|$)/i.test(normalizeFeishuCommandContent(value));
+}
+
 async function dispatchFeishuParsedEvent(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
@@ -10037,13 +10427,56 @@ async function dispatchFeishuParsedEvent(input: {
   rawEvent: unknown;
   seenMessages: Map<string, number>;
   feishuTimelines: ChannelDaemonFeishuTimelineRegistry;
+  ingressDeduplicated?: boolean;
 }): Promise<Record<string, unknown> | null> {
   const { config, state, activeRunCancels, group, parsed, rawEvent, seenMessages, feishuTimelines } = input;
   const checkedAt = new Date().toISOString();
   const ingressAt = checkedAt;
   const ingressAtMs = isoTimestampMs(ingressAt) ?? Date.now();
   let content = feishuContentFromParsed(parsed);
-  const refs = selectFeishuBindingRefs(group, parsed);
+  let refs: typeof group.refs = [];
+  const routingRef = group.refs[0] || null;
+  const accountId = routingRef ? channelConnectorRuntimeAccountId(routingRef.binding) : "";
+  if (accountId && routingRef) {
+    const mentionCandidates = channelConnectorFeishuBotMentionCandidates(
+      feishuBotMentionCandidateInput(group, routingRef.binding),
+    );
+    const v3 = selectChannelConnectorV3RuntimeRoute(config.deliveryConfig, group.refs, {
+      accountId,
+      peer: {
+        kind: normalizeString(parsed.chatType).toLowerCase().includes("group") ? "group" : "private",
+        id: normalizeString(parsed.channelId) || normalizeString(parsed.fromUid),
+      },
+      senderId: normalizeString(parsed.fromUid),
+      threadId: normalizeString(parsed.threadId) || null,
+      botMentioned: parsed.kind === "message"
+        && isChannelConnectorFeishuBotMentioned(parsed, mentionCandidates),
+    });
+    if (!v3.result.ok || !v3.ref || v3.result.resolution.accessDecision.allowed !== true) {
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt,
+        adapter: "feishu",
+        eventKind: parsed.kind,
+        eventType: parsed.eventType,
+        eventId: parsed.eventId,
+        accepted: false,
+        skippedReason: v3.result.ok
+          ? v3.result.resolution.accessDecision.reason
+          : v3.result.code,
+        accountId,
+        channelId: parsed.channelId,
+        fromUid: parsed.fromUid,
+        messageId: parsed.messageId,
+        targetId: v3.result.ok ? v3.result.resolution.targetId : null,
+        ...feishuThreadLogFields(parsed),
+      });
+      return null;
+    }
+    const resolvedRef = applyChannelConnectorV3ResolutionToRuntimeRef(config.deliveryConfig, v3) || v3.ref;
+    const connectionRef = group.refs.find((candidate) => candidate.binding.id === resolvedRef.binding.id);
+    if (!connectionRef) return null;
+    refs = [{ ...connectionRef, project: resolvedRef.project, binding: resolvedRef.binding }];
+  }
   if (!refs.length) {
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
@@ -10084,7 +10517,7 @@ async function dispatchFeishuParsedEvent(input: {
   const sessionKey = feishuSessionKey(binding, parsed);
   const messageId = normalizeString(parsed.messageId) || `${parsed.kind}:${parsed.eventId || Date.now()}`;
   const dedupeKey = feishuDedupeKey(group, parsed, binding, messageId);
-  if (dedupeKey && shouldSkipFeishuSeenMessage(config, seenMessages, dedupeKey)) {
+  if (dedupeKey && !input.ingressDeduplicated && shouldSkipFeishuSeenMessage(config, seenMessages, dedupeKey)) {
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
       adapter: "feishu",
@@ -10475,7 +10908,7 @@ async function dispatchFeishuParsedEvent(input: {
     }
     if (!replySent && !replyQueued && command.replyText && command.suppressReply !== true) {
       const result = await sendFeishuTextMessage(transport, {
-        chatId: parsed.channelId,
+        chatId: parsed.channelId || sessionKey,
         replyToMessageId: messageId,
         content: command.replyText,
       }, feishuTokenCachePath(config));
@@ -10624,7 +11057,7 @@ async function dispatchFeishuParsedEvent(input: {
     ...feishuThreadLogFields(parsed),
     agent: effectiveProject.agent,
     model: effectiveProject.model,
-    status: "running",
+    status: "starting",
     sessionResumed: false,
     agentNativeSessionId: null,
     codexThreadId: null,
@@ -10638,7 +11071,7 @@ async function dispatchFeishuParsedEvent(input: {
   activeRunCancels.set(activeRunId, {
     controller: abortController,
     startedAt: runStartedAt,
-    status: "running",
+    status: "starting",
     deliveryStartedAt: null,
     bindingId: binding.id,
     sessionKey,
@@ -10717,7 +11150,7 @@ async function dispatchFeishuParsedEvent(input: {
     messageId,
     threadFields: feishuThreadLogFields(parsed),
   });
-  let currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+  let currentSession = getChannelConnectorRuntimeAgentSession({ config, binding, lookup: effectiveSessionLookup });
   updateActiveRunAgentModel({
     state,
     activeRunCancels,
@@ -11004,6 +11437,7 @@ async function dispatchFeishuParsedEvent(input: {
           previousProgressAtMs = progressAtMs;
           const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
           if (activeRun) {
+            activeRun.status = "running";
             activeRun.updatedAt = event.checkedAt;
             activeRun.progressEventCount = progressEventCount;
             activeRun.latestProgress = latestProgress;
@@ -11063,7 +11497,7 @@ async function dispatchFeishuParsedEvent(input: {
         model: turnProject.model,
         workDir: turnProject.workDir,
       };
-      currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+      currentSession = getChannelConnectorRuntimeAgentSession({ config, binding, lookup: effectiveSessionLookup });
       runtimeDir = agentRuntimeDir(config, turnProject, binding);
       channelSkillContext = buildChannelConnectorSkillContext(turnProject, { binding });
       updateActiveRunAgentModel({
@@ -11151,6 +11585,7 @@ async function dispatchFeishuParsedEvent(input: {
             previousProgressAtMs = progressAtMs;
             const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
             if (activeRun) {
+              activeRun.status = "running";
               activeRun.updatedAt = event.checkedAt;
               activeRun.progressEventCount = progressEventCount;
               activeRun.latestProgress = latestProgress;
@@ -11331,13 +11766,17 @@ async function dispatchFeishuParsedEvent(input: {
     });
   }
   if (!dropStaleSession && (agent.session.agentNativeSessionId || agent.session.codexThreadId || currentSession?.agentNativeSessionId || currentSession?.codexThreadId)) {
-    nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
-      ...effectiveSessionLookup,
-      agentNativeSessionId: agent.session.agentNativeSessionId || currentSession?.agentNativeSessionId || agent.session.codexThreadId || currentSession?.codexThreadId || null,
-      codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
-      messageId,
-      status: agent.status,
-      name: control?.sessionName || currentSession?.name || null,
+    nextSession = upsertChannelConnectorRuntimeAgentSession({
+      config,
+      binding,
+      update: {
+        ...effectiveSessionLookup,
+        agentNativeSessionId: agent.session.agentNativeSessionId || currentSession?.agentNativeSessionId || agent.session.codexThreadId || currentSession?.codexThreadId || null,
+        codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
+        messageId,
+        status: agent.status,
+        name: control?.sessionName || currentSession?.name || null,
+      },
     });
   }
   const agentFinishedAt = new Date().toISOString();
@@ -11433,23 +11872,49 @@ async function dispatchFeishuParsedEvent(input: {
     replyBufferId = preparedReply.bufferId;
     replyOriginalRunes = preparedReply.originalRunes;
     replyPreviewRunes = preparedReply.previewRunes;
-    const sent = await sendFeishuFinalReply({
+    const delivery = await deliverChannelConnectorTextWithOutbox({
       config,
-      transport,
-      binding,
-      project: turnProject,
-      chatId: parsed.channelId,
-      replyToMessageId: messageId,
-      sessionKey,
-      replyText: preparedReply.replyText,
-      status: agent.ok === true ? "ok" : "failed",
+      record: {
+        platform: "feishu",
+        accountId: binding.accountId,
+        bindingId: binding.id,
+        sourceMessageId: messageId,
+        destinationId: parsed.channelId || sessionKey,
+        replyToMessageId: messageId,
+        text: preparedReply.replyText,
+      },
+      send: () => sendFeishuFinalReply({
+        config,
+        transport,
+        binding,
+        project: turnProject,
+        chatId: parsed.channelId || sessionKey,
+        replyToMessageId: messageId,
+        sessionKey,
+        replyText: preparedReply.replyText,
+        status: agent.ok === true ? "ok" : "failed",
+      }),
+      outcome: (sent) => ({
+        ok: sent.result.ok,
+        error: sent.result.error,
+        statusCode: sent.result.statusCode,
+        platformMessageId: sent.result.messageId || sent.result.messageIds?.[0] || null,
+      }),
     });
-    replySent = sent.result.ok === true;
-    replyError = sent.result.error;
-    replyTransportAction = sent.transportAction;
-    replyRequestCount = sent.result.requestCount;
-    replyCardAttempted = sent.cardAttempted;
-    replyCardError = sent.cardError;
+    if (delivery.deduplicated) {
+      replySent = true;
+      replyError = null;
+      replyTransportAction = "outbox-deduplicated";
+      replyRequestCount = 0;
+    } else if (delivery.value) {
+      const sent = delivery.value;
+      replySent = sent.result.ok === true;
+      replyError = sent.result.error;
+      replyTransportAction = sent.transportAction;
+      replyRequestCount = sent.result.requestCount;
+      replyCardAttempted = sent.cardAttempted;
+      replyCardError = sent.cardError;
+    }
   }
   if (agent.ok === true && outboundReply.files.length > 0) {
     const sentFiles = await sendFeishuOutboundFiles({
@@ -11704,17 +12169,20 @@ async function startOctoConnection(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
   activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
-  project: ChannelConnectorRuntimeProject;
-  binding: ChannelConnectorRuntimeBinding;
+  group: ChannelConnectorOctoAccountRouteGroup;
   sockets: OctoWukongSocket[];
   restHeartbeatTimers: NodeJS.Timeout[];
+  handles?: Map<string, ChannelDaemonOctoConnectionHandle>;
   seenMessages: Map<string, number>;
   octoTimelines: ChannelDaemonOctoTimelineRegistry;
 }): Promise<void> {
-  const { config, state, activeRunCancels, project, binding, sockets, restHeartbeatTimers, seenMessages, octoTimelines } = input;
+  const { config, state, activeRunCancels, group, sockets, restHeartbeatTimers, handles, seenMessages, octoTimelines } = input;
+  const { project, binding } = group.primary;
+  const bindingIds = group.refs.map((ref) => ref.binding.id);
   const transport = octoTransportFromMetadata(binding.metadata);
   if (!transport) {
     state.octoConnections[binding.id] = connectionState(binding, {
+      bindingIds,
       state: "closed",
       lastError: "octo_transport_config_missing",
     });
@@ -11724,6 +12192,7 @@ async function startOctoConnection(input: {
   const resolved = await resolveOctoCredentials(config, binding);
   if (!resolved) {
     state.octoConnections[binding.id] = connectionState(binding, {
+      bindingIds,
       state: "closed",
       apiUrl: transport.apiUrl,
       lastError: "octo_register_failed",
@@ -11735,6 +12204,7 @@ async function startOctoConnection(input: {
     binding,
     {
       ...(state.octoConnections[binding.id] || {}),
+      bindingIds,
       ...status,
     },
   );
@@ -11756,7 +12226,11 @@ async function startOctoConnection(input: {
         robotId: resolved.entry.robotId,
         credentialSource: resolved.source,
       });
-      appendLog(config.paths.log, "Octo WebSocket connected", { bindingId: binding.id });
+      appendLog(config.paths.log, "Octo WebSocket connected", {
+        bindingId: binding.id,
+        bindingIds,
+        accountId: binding.accountId,
+      });
       markRuntimeDirty(config, state);
     },
     onDisconnected: () => {
@@ -11785,25 +12259,90 @@ async function startOctoConnection(input: {
         credentialSource: resolved.source,
       });
       markRuntimeDirty(config, state);
-      void dispatchOctoMessage({
-        config,
-        state,
-        activeRunCancels,
-        project,
-        binding,
-        robotId: resolved.entry.robotId,
-        message,
-        seenMessages,
-        octoTimelines,
-      }).catch((error) => {
-        appendLog(config.paths.log, "Octo message dispatch failed", {
-          bindingId: binding.id,
-          error: error instanceof Error ? error.message : String(error),
+      let selected = selectChannelConnectorOctoAccountRoute(group, message);
+      const accountId = channelConnectorRuntimeAccountId(binding);
+      if (accountId) {
+        const messageMetadata = isRecord(message.metadata) ? message.metadata : {};
+        const v3 = selectChannelConnectorV3RuntimeRoute(config.deliveryConfig, group.refs, {
+          accountId,
+          peer: {
+            kind: message.channelType === 1 ? "private" : "group",
+            id: normalizeString(message.channelId) || normalizeString(message.fromUid),
+          },
+          senderId: normalizeString(message.fromUid),
+          threadId: normalizeString(messageMetadata.threadId ?? messageMetadata.thread_id) || null,
+          botMentioned: isOctoMessageDirectedAtBot(
+            message,
+            binding.botId || resolved.entry.robotId,
+            octoOnBehalfOfFromBinding(nativeBindingFromRuntime(project, binding, resolved.entry.robotId)),
+          ),
         });
-      });
+        if (!v3.result.ok || !v3.ref || v3.result.resolution.accessDecision.allowed !== true) {
+          appendLog(config.paths.log, "Octo message rejected by v3 delivery resolver", {
+            accountId,
+            messageId: message.messageId,
+            result: v3.result.ok
+              ? v3.result.resolution.accessDecision.reason
+              : v3.result.code,
+            targetId: v3.result.ok ? v3.result.resolution.targetId : null,
+          });
+          return;
+        }
+        selected = applyChannelConnectorV3ResolutionToRuntimeRef(config.deliveryConfig, v3) || v3.ref;
+      }
+      let ingressDeduplicated = false;
+      const dispatch = async () => {
+        try {
+          await dispatchOctoMessage({
+            config,
+            state,
+            activeRunCancels,
+            project: selected.project,
+            binding: selected.binding,
+            robotId: resolved.entry.robotId,
+            message,
+            seenMessages,
+            octoTimelines,
+            ingressDeduplicated,
+          });
+        } catch (error) {
+          appendLog(config.paths.log, "Octo message dispatch failed", {
+            bindingId: selected.binding.id,
+            connectionBindingId: binding.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
+      };
+      const queueAccountId = accountId || normalizeString(binding.accountId) || binding.id;
+      if (!channelIngressQueue || isPriorityChannelControl(extractOctoContent(message))) {
+        void dispatch().catch(() => {});
+        return;
+      }
+      ingressDeduplicated = true;
+      const queued = channelIngressQueue.enqueue(
+        octoIngressEnvelope(queueAccountId, message),
+        dispatch,
+      );
+      if (!queued.accepted) {
+        appendLog(config.paths.log, "Octo ingress rejected", {
+          accountId: queueAccountId,
+          messageId: message.messageId,
+          reason: queued.reason,
+          dedupeKey: queued.key,
+        });
+      }
     },
   });
   sockets.push(socket);
+  const handle: ChannelDaemonOctoConnectionHandle = {
+    accountId: group.accountId,
+    groupKey: group.key,
+    bindingId: binding.id,
+    socket,
+    restHeartbeatTimer: null,
+  };
+  handles?.set(group.key, handle);
   const restHeartbeatMs = octoRestHeartbeatMs(binding);
   if (restHeartbeatMs > 0) {
     const timer = setInterval(() => {
@@ -11852,6 +12391,7 @@ async function startOctoConnection(input: {
     }, restHeartbeatMs);
     timer.unref();
     restHeartbeatTimers.push(timer);
+    handle.restHeartbeatTimer = timer;
   }
   state.octoConnections[binding.id] = octoStatus({
     ...socket.status(),
@@ -11870,25 +12410,24 @@ async function startOctoConnections(
   activeRunCancels: ChannelDaemonActiveRunCancelRegistry,
   sockets: OctoWukongSocket[],
   restHeartbeatTimers: NodeJS.Timeout[],
+  handles: Map<string, ChannelDaemonOctoConnectionHandle> | undefined,
   seenMessages: Map<string, number>,
   octoTimelines: ChannelDaemonOctoTimelineRegistry,
+  groupsOut?: ChannelConnectorOctoAccountRouteGroup[],
 ): Promise<void> {
-  for (const project of config.projects) {
-    for (const binding of project.platformBindings) {
-      if (binding.platform !== "octo" || binding.enabled === false) continue;
-      await startOctoConnection({
-        config,
-        state,
-        activeRunCancels,
-        project,
-        binding,
-        sockets,
-        restHeartbeatTimers,
-        seenMessages,
-        octoTimelines,
-      });
-    }
-  }
+  const groups = groupChannelConnectorOctoAccountRoutes(config);
+  groupsOut?.push(...groups);
+  await Promise.all(groups.map((group) => startOctoConnection({
+      config,
+      state,
+      activeRunCancels,
+      group,
+      sockets,
+      restHeartbeatTimers,
+      handles,
+      seenMessages,
+      octoTimelines,
+    })));
 }
 
 function feishuEnvelope(
@@ -11911,8 +12450,7 @@ function feishuEnvelope(
 
 function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): ChannelDaemonFeishuGroup[] {
   const groups = new Map<string, ChannelDaemonFeishuGroup>();
-  for (const project of config.projects) {
-    for (const binding of project.platformBindings) {
+  for (const { project, binding } of channelConnectorRuntimeRouteRefs(config)) {
       if (binding.platform !== "feishu" || binding.enabled === false) continue;
       const transport = feishuTransportFromMetadata(binding.metadata, binding.accountId);
       if (!transport) {
@@ -11920,7 +12458,7 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         groups.set(key, {
           key,
           appId: normalizeString(binding.accountId) || binding.id,
-          accountId: binding.accountId,
+          accountId: channelConnectorRuntimeAccountId(binding) || binding.accountId,
           apiUrl: null,
           refs: [],
           client: null,
@@ -11978,6 +12516,8 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           lockPath: null,
           lastLockRetryAt: null,
           recycleCurrentClient: null,
+          abortController: null,
+          retired: false,
         });
         continue;
       }
@@ -11985,7 +12525,7 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
       const group = groups.get(key) || {
         key,
         appId: transport.appId,
-        accountId: binding.accountId || transport.appId,
+        accountId: channelConnectorRuntimeAccountId(binding) || binding.accountId || transport.appId,
         apiUrl: transport.apiUrl,
         refs: [],
         client: null,
@@ -12043,10 +12583,11 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         lockPath: null,
         lastLockRetryAt: null,
         recycleCurrentClient: null,
+        abortController: null,
+        retired: false,
       };
       group.refs.push({ project, binding, transport });
       groups.set(key, group);
-    }
   }
   return [...groups.values()];
 }
@@ -12115,31 +12656,67 @@ function dispatchFeishuParsedEventInBackground(input: {
   seenMessages: Map<string, number>;
   feishuTimelines: ChannelDaemonFeishuTimelineRegistry;
 }): void {
-  void dispatchFeishuParsedEvent(input).catch((error) => {
-    appendLog(input.config.paths.log, "Feishu async event dispatch failed", {
-      groupKey: input.group.key,
-      eventKind: input.parsed.kind,
-      eventType: input.parsed.eventType,
-      eventId: input.parsed.eventId,
-      messageId: input.parsed.messageId,
-      error: shortMessage(error),
-    });
+  let ingressDeduplicated = false;
+  const dispatch = async () => {
+    try {
+      await dispatchFeishuParsedEvent({
+        ...input,
+        ingressDeduplicated,
+      });
+    } catch (error) {
+      appendLog(input.config.paths.log, "Feishu async event dispatch failed", {
+        groupKey: input.group.key,
+        eventKind: input.parsed.kind,
+        eventType: input.parsed.eventType,
+        eventId: input.parsed.eventId,
+        messageId: input.parsed.messageId,
+        error: shortMessage(error),
+      });
+      writeJsonLine(input.config.paths.feishuEvents, {
+        checkedAt: new Date().toISOString(),
+        adapter: "feishu",
+        eventKind: "dispatch.failed",
+        eventType: input.parsed.eventType,
+        eventId: input.parsed.eventId,
+        accepted: false,
+        skippedReason: "feishu_async_dispatch_failed",
+        appId: input.parsed.appId || input.group.appId,
+        channelId: input.parsed.channelId,
+        fromUid: input.parsed.fromUid,
+        messageId: input.parsed.messageId,
+        error: shortMessage(error),
+        ...feishuThreadLogFields(input.parsed),
+      });
+      throw error;
+    }
+  };
+  const routingBinding = input.group.refs[0]?.binding || null;
+  const accountId = routingBinding
+    ? channelConnectorRuntimeAccountId(routingBinding) || input.group.accountId
+    : input.group.accountId;
+  if (!channelIngressQueue || !accountId || isPriorityChannelControl(feishuContentFromParsed(input.parsed))) {
+    void dispatch().catch(() => {});
+    return;
+  }
+  ingressDeduplicated = true;
+  const queued = channelIngressQueue.enqueue(
+    feishuIngressEnvelope(accountId, input.parsed),
+    dispatch,
+  );
+  if (!queued.accepted) {
     writeJsonLine(input.config.paths.feishuEvents, {
       checkedAt: new Date().toISOString(),
       adapter: "feishu",
-      eventKind: "dispatch.failed",
+      eventKind: input.parsed.kind,
       eventType: input.parsed.eventType,
       eventId: input.parsed.eventId,
       accepted: false,
-      skippedReason: "feishu_async_dispatch_failed",
-      appId: input.parsed.appId || input.group.appId,
-      channelId: input.parsed.channelId,
-      fromUid: input.parsed.fromUid,
+      skippedReason: queued.duplicate ? "feishu_event_duplicate" : "feishu_ingress_queue_full",
+      accountId,
       messageId: input.parsed.messageId,
-      error: shortMessage(error),
-      ...feishuThreadLogFields(input.parsed),
+      dedupeKey: queued.key,
     });
-  });
+  }
 }
 
 function sendFeishuCommandTextReplyInBackground(input: {
@@ -12987,6 +13564,7 @@ function startFeishuClientForGroup(input: {
   });
   group.clientLoopActive = true;
   const abortController = new AbortController();
+  group.abortController = abortController;
   clientAbortControllers.push(abortController);
   updateFeishuRuntime(config, state, group);
   void runFeishuGroupClientLoop({
@@ -13006,6 +13584,10 @@ function startFeishuClientForGroup(input: {
       error: group.lastError,
     });
     updateFeishuRuntime(config, state, group);
+  }).finally(() => {
+    if (group.abortController === abortController) group.abortController = null;
+    const controllerIndex = clientAbortControllers.indexOf(abortController);
+    if (controllerIndex >= 0) clientAbortControllers.splice(controllerIndex, 1);
   });
 }
 
@@ -13247,16 +13829,104 @@ function restartRequiredReasonForHotReload(
   return null;
 }
 
+function platformConnectionSignature(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return JSON.stringify(config.deliveryConfig.accounts
+    .filter((account) => account.lifecycle === "enabled")
+    .map((account) => ({
+      id: account.id,
+      platform: account.platform,
+      lifecycle: account.lifecycle,
+      externalAccountId: account.externalAccountId,
+      botId: account.botId,
+      credentials: account.credentials,
+      transport: account.transport,
+      advanced: account.advanced,
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id)));
+}
+
+function platformRouteRefKeysMatch(input: {
+  next: ChannelConnectorsDaemonRuntimeConfig;
+  octoGroups: ChannelConnectorOctoAccountRouteGroup[];
+  feishuGroups: ChannelDaemonFeishuGroup[];
+}): boolean {
+  const nextOcto = groupChannelConnectorOctoAccountRoutes(input.next);
+  const nextOctoByKey = new Map(nextOcto.map((group) => [group.key, group] as const));
+  if (
+    nextOcto.length !== input.octoGroups.length
+    || input.octoGroups.some((group) => !nextOctoByKey.has(group.key))
+  ) return false;
+  const nextFeishu = createFeishuGroups(input.next);
+  const nextFeishuByKey = new Map(nextFeishu.map((group) => [group.key, group] as const));
+  if (
+    nextFeishu.length !== input.feishuGroups.length
+    || input.feishuGroups.some((group) => !nextFeishuByKey.has(group.key))
+  ) return false;
+  return true;
+}
+
+function refreshPlatformRouteRefs(input: {
+  next: ChannelConnectorsDaemonRuntimeConfig;
+  octoGroups: ChannelConnectorOctoAccountRouteGroup[];
+  feishuGroups: ChannelDaemonFeishuGroup[];
+}): boolean {
+  if (!platformRouteRefKeysMatch(input)) return false;
+  const nextOctoByKey = new Map(
+    groupChannelConnectorOctoAccountRoutes(input.next).map((group) => [group.key, group] as const),
+  );
+  const nextFeishuByKey = new Map(
+    createFeishuGroups(input.next).map((group) => [group.key, group] as const),
+  );
+  for (const group of input.octoGroups) {
+    const replacement = nextOctoByKey.get(group.key)!;
+    group.accountId = replacement.accountId;
+    group.botId = replacement.botId;
+    group.primary = replacement.primary;
+    group.refs = replacement.refs;
+  }
+  for (const group of input.feishuGroups) {
+    const replacement = nextFeishuByKey.get(group.key)!;
+    group.accountId = replacement.accountId;
+    group.refs = replacement.refs;
+  }
+  return true;
+}
+
+function refreshUnchangedPlatformRouteRefs(input: {
+  next: ChannelConnectorsDaemonRuntimeConfig;
+  changedAccountIds: Set<string>;
+  octoGroups: ChannelConnectorOctoAccountRouteGroup[];
+  feishuGroups: ChannelDaemonFeishuGroup[];
+}): boolean {
+  const nextOctoByAccount = new Map(
+    groupChannelConnectorOctoAccountRoutes(input.next).map((group) => [group.accountId, group] as const),
+  );
+  const nextFeishuByAccount = new Map(
+    createFeishuGroups(input.next).map((group) => [group.accountId, group] as const),
+  );
+  for (const group of input.octoGroups) {
+    if (input.changedAccountIds.has(group.accountId)) continue;
+    const replacement = nextOctoByAccount.get(group.accountId);
+    if (!replacement || replacement.key !== group.key) return false;
+    group.botId = replacement.botId;
+    group.primary = replacement.primary;
+    group.refs = replacement.refs;
+  }
+  for (const group of input.feishuGroups) {
+    if (input.changedAccountIds.has(group.accountId)) continue;
+    const replacement = nextFeishuByAccount.get(group.accountId);
+    if (!replacement || replacement.key !== group.key) return false;
+    group.refs = replacement.refs;
+  }
+  return true;
+}
+
 function updateReloadedDaemonState(
   state: ChannelDaemonState,
   config: ChannelConnectorsDaemonRuntimeConfig,
 ): void {
   state.management = config.management;
-  state.projects = config.projects.map((project) => ({
-    id: project.id,
-    agent: project.agent,
-    platformBindings: project.platformBindings.length,
-  }));
+  state.projects = daemonRuntimeProjectSummaries(config);
   state.agentSessionDriver = buildAgentSessionDriverState(config);
 }
 
@@ -13265,11 +13935,11 @@ function replaceRuntimeConfigInPlace(
   next: ChannelConnectorsDaemonRuntimeConfig,
 ): void {
   target.version = next.version;
+  target.deliveryConfig = next.deliveryConfig;
   target.management = next.management;
   target.paths = next.paths;
   target.gateway = next.gateway;
   target.agentSessionPolicy = next.agentSessionPolicy;
-  target.projects = next.projects;
 }
 
 function daemonReloadResponse(
@@ -13312,11 +13982,17 @@ async function main(): Promise<void> {
   });
   ensureDir(config.paths.root);
   ensureDir(config.paths.state);
+  channelIngressQueue = createChannelConnectorIngressQueue(ingressQueuePath(config), {
+    queueLimit: Math.max(1, config.agentSessionPolicy?.queueMaxRecords || 100),
+    maxConcurrentPerAccount: Math.max(2, config.agentSessionPolicy?.maxConcurrentTurns || 4),
+  });
   const state = createDaemonState(config);
   flushRuntime(config, state);
   appendLog(config.paths.log, "Tracevane native Channel Connectors daemon started");
   const sockets: OctoWukongSocket[] = [];
   const octoRestHeartbeatTimers: NodeJS.Timeout[] = [];
+  const octoConnectionHandles = new Map<string, ChannelDaemonOctoConnectionHandle>();
+  const octoGroups: ChannelConnectorOctoAccountRouteGroup[] = [];
   const feishuClients: WSClient[] = [];
   const feishuClientAbortControllers: AbortController[] = [];
   const feishuGroups: ChannelDaemonFeishuGroup[] = [];
@@ -13329,6 +14005,8 @@ async function main(): Promise<void> {
   let feishuStartupGeneration = 0;
   let pendingReloadTimer: NodeJS.Timeout | null = null;
   let reloadInFlight: Promise<ChannelConnectorsDaemonReloadResponse> | null = null;
+  let replyOutboxReplayTimer: NodeJS.Timeout | null = null;
+  let replyOutboxReplayInFlight: Promise<void> | null = null;
 
   const stopPlatformConnections = (reason: string): void => {
     feishuStartupGeneration += 1;
@@ -13336,11 +14014,14 @@ async function main(): Promise<void> {
       clearInterval(feishuWatchdog);
       feishuWatchdog = null;
     }
+    for (const group of feishuGroups) group.retired = true;
     for (const controller of feishuClientAbortControllers.splice(0)) controller.abort();
     for (const timer of octoRestHeartbeatTimers.splice(0)) clearInterval(timer);
     for (const socket of sockets.splice(0)) socket.disconnect();
+    octoConnectionHandles.clear();
     for (const client of feishuClients.splice(0)) client.close({ force: true });
     for (const group of feishuGroups.splice(0)) releaseFeishuGroupLock(config, group);
+    octoGroups.splice(0);
     octoTimelines.clear();
     feishuTimelines.clear();
     state.octoConnections = {};
@@ -13378,12 +14059,155 @@ async function main(): Promise<void> {
   };
 
   const startPlatformConnections = (): void => {
-    void startOctoConnections(config, state, activeRunCancels, sockets, octoRestHeartbeatTimers, seenMessages, octoTimelines).catch((error) => {
+    void startOctoConnections(
+      config,
+      state,
+      activeRunCancels,
+      sockets,
+      octoRestHeartbeatTimers,
+      octoConnectionHandles,
+      seenMessages,
+      octoTimelines,
+      octoGroups,
+    ).catch((error) => {
       appendLog(config.paths.log, "Octo connection startup failed", {
         error: error instanceof Error ? error.message : String(error),
       });
     });
     startFeishuConnectionLoop();
+  };
+
+  const stopPlatformAccounts = (accountIds: Set<string>, reason: string): void => {
+    for (let index = octoGroups.length - 1; index >= 0; index -= 1) {
+      const group = octoGroups[index];
+      if (!accountIds.has(group.accountId)) continue;
+      const handle = octoConnectionHandles.get(group.key);
+      if (handle?.restHeartbeatTimer) {
+        clearInterval(handle.restHeartbeatTimer);
+        const timerIndex = octoRestHeartbeatTimers.indexOf(handle.restHeartbeatTimer);
+        if (timerIndex >= 0) octoRestHeartbeatTimers.splice(timerIndex, 1);
+      }
+      if (handle?.socket) {
+        handle.socket.disconnect();
+        const socketIndex = sockets.indexOf(handle.socket);
+        if (socketIndex >= 0) sockets.splice(socketIndex, 1);
+      }
+      delete state.octoConnections[handle?.bindingId || group.primary.binding.id];
+      octoConnectionHandles.delete(group.key);
+      octoGroups.splice(index, 1);
+    }
+    for (let index = feishuGroups.length - 1; index >= 0; index -= 1) {
+      const group = feishuGroups[index];
+      if (!accountIds.has(group.accountId)) continue;
+      group.retired = true;
+      const controller = group.abortController;
+      controller?.abort();
+      if (controller) {
+        const controllerIndex = feishuClientAbortControllers.indexOf(controller);
+        if (controllerIndex >= 0) feishuClientAbortControllers.splice(controllerIndex, 1);
+      }
+      const client = group.client;
+      client?.close({ force: true });
+      if (client) {
+        const clientIndex = feishuClients.indexOf(client);
+        if (clientIndex >= 0) feishuClients.splice(clientIndex, 1);
+      }
+      releaseFeishuGroupLock(config, group);
+      delete state.feishuConnections[group.key];
+      feishuGroups.splice(index, 1);
+    }
+    if (feishuWatchdog && !feishuGroups.some((group) => group.refs.length && !group.retired)) {
+      clearInterval(feishuWatchdog);
+      feishuWatchdog = null;
+    }
+    appendLog(config.paths.log, "Channel account connections stopped for reload", {
+      reason,
+      accountIds: [...accountIds].sort(),
+    });
+    markRuntimeDirty(config, state);
+  };
+
+  const startPlatformAccounts = (accountIds: Set<string>): void => {
+    const nextOctoGroups = groupChannelConnectorOctoAccountRoutes(config)
+      .filter((group) => accountIds.has(group.accountId));
+    octoGroups.push(...nextOctoGroups);
+    void Promise.all(nextOctoGroups.map((group) => startOctoConnection({
+          config,
+          state,
+          activeRunCancels,
+          group,
+          sockets,
+          restHeartbeatTimers: octoRestHeartbeatTimers,
+          handles: octoConnectionHandles,
+          seenMessages,
+          octoTimelines,
+        }))).catch((error) => {
+      appendLog(config.paths.log, "Octo account reconnect failed", {
+        accountIds: [...accountIds].sort(),
+        error: shortMessage(error),
+      });
+    });
+
+    const nextFeishuGroups = createFeishuGroups(config)
+      .filter((group) => accountIds.has(group.accountId));
+    feishuGroups.push(...nextFeishuGroups);
+    void (async () => {
+      for (const group of nextFeishuGroups) {
+        if (!group.refs.length) {
+          state.feishuConnections[group.key] = feishuConnectionState(group);
+          markRuntimeDirty(config, state);
+          continue;
+        }
+        await resolveFeishuGroupBotIdentity({ config, state, group });
+        startFeishuClientForGroup({
+          config,
+          state,
+          activeRunCancels,
+          group,
+          clients: feishuClients,
+          clientAbortControllers: feishuClientAbortControllers,
+          seenMessages,
+          feishuTimelines,
+        });
+      }
+      if (!feishuWatchdog && feishuGroups.some((group) => group.refs.length && !group.retired)) {
+        feishuWatchdog = startFeishuWatchdog({
+          config,
+          state,
+          activeRunCancels,
+          groups: feishuGroups,
+          clients: feishuClients,
+          clientAbortControllers: feishuClientAbortControllers,
+          seenMessages,
+          feishuTimelines,
+        });
+      }
+    })().catch((error) => {
+      appendLog(config.paths.log, "Feishu account reconnect failed", {
+        accountIds: [...accountIds].sort(),
+        error: shortMessage(error),
+      });
+    });
+  };
+
+  const replayReplyOutbox = (): void => {
+    if (replyOutboxReplayInFlight) return;
+    replyOutboxReplayInFlight = (async () => {
+      const summary = await replayDueChannelConnectorReplies({
+        filePath: replyOutboxPath(config),
+        limit: 20,
+        deliver: (record) => deliverPersistedChannelConnectorReply(config, record),
+      });
+      if (summary.attempted > 0) {
+        appendLog(config.paths.log, "Channel reply outbox replay completed", { ...summary });
+      }
+    })().catch((error) => {
+      appendLog(config.paths.log, "Channel reply outbox replay failed", {
+        error: shortMessage(error),
+      });
+    }).finally(() => {
+      replyOutboxReplayInFlight = null;
+    });
   };
 
   const applyReloadNow = (mode: ChannelConnectorsDaemonReloadMode): Promise<ChannelConnectorsDaemonReloadResponse> => {
@@ -13440,7 +14264,29 @@ async function main(): Promise<void> {
         });
       }
 
-      stopPlatformConnections("config-reload");
+      const accountConnectionDiff = config.deliveryConfig && nextConfig.deliveryConfig
+        ? diffChannelConnectorV3AccountConnections(config.deliveryConfig, nextConfig.deliveryConfig)
+        : null;
+      const changedAccountIds = new Set(accountConnectionDiff?.changedAccountIds || []);
+      let routeRefsRefreshed = false;
+      let accountConnectionsReconciled = false;
+      if (accountConnectionDiff) {
+        if (changedAccountIds.size === 0) {
+          routeRefsRefreshed = refreshPlatformRouteRefs({ next: nextConfig, octoGroups, feishuGroups });
+        } else if (refreshUnchangedPlatformRouteRefs({
+          next: nextConfig,
+          changedAccountIds,
+          octoGroups,
+          feishuGroups,
+        })) {
+          stopPlatformAccounts(changedAccountIds, "account-config-reload");
+          accountConnectionsReconciled = true;
+        }
+      } else {
+        routeRefsRefreshed = platformConnectionSignature(config) === platformConnectionSignature(nextConfig)
+          && refreshPlatformRouteRefs({ next: nextConfig, octoGroups, feishuGroups });
+      }
+      if (!routeRefsRefreshed && !accountConnectionsReconciled) stopPlatformConnections("config-reload");
       replaceRuntimeConfigInPlace(config, nextConfig);
       channelAgentSessionDriverPool.configurePolicy({
         idleTimeoutMs: optionalPositiveIntegerEnv("TRACEVANE_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS")
@@ -13455,7 +14301,8 @@ async function main(): Promise<void> {
         dropPendingAgentRunsBecauseQueuesAreDisabled(config);
       }
       updateReloadedDaemonState(state, config);
-      startPlatformConnections();
+      if (accountConnectionsReconciled) startPlatformAccounts(changedAccountIds);
+      else if (!routeRefsRefreshed) startPlatformConnections();
       const appliedAt = new Date().toISOString();
       state.reload = {
         status: "applied",
@@ -13470,8 +14317,13 @@ async function main(): Promise<void> {
       markRuntimeDirty(config, state);
       appendLog(config.paths.log, "Channel daemon hot reload applied", {
         mode,
-        projects: config.projects.length,
-        platformBindings: config.projects.reduce((sum, project) => sum + project.platformBindings.length, 0),
+        routeRefsRefreshed,
+        accountConnectionsReconciled,
+        reconnectedAccountIds: accountConnectionDiff?.reconnectedAccountIds || [],
+        addedAccountIds: accountConnectionDiff?.addedAccountIds || [],
+        removedAccountIds: accountConnectionDiff?.removedAccountIds || [],
+        projects: state.projects.length,
+        platformBindings: channelConnectorRuntimeRouteRefs(config).length,
       });
       return daemonReloadResponse({ state, mode, status: "applied", appliedAt });
     })().finally(() => {
@@ -13498,7 +14350,23 @@ async function main(): Promise<void> {
   ): Promise<ChannelConnectorsDaemonReloadResponse> => {
     const mode = payload.mode === "immediate" ? "immediate" : "when-idle";
     const counts = reloadActiveCounts(state);
+    let canApplyWithoutIdle = false;
     if (mode === "when-idle" && !isReloadIdle(state)) {
+      try {
+        const nextConfig = readConfig(configPath);
+        canApplyWithoutIdle = !restartRequiredReasonForHotReload(config, nextConfig)
+          && (
+            Boolean(config.deliveryConfig && nextConfig.deliveryConfig)
+            || (
+              platformConnectionSignature(config) === platformConnectionSignature(nextConfig)
+              && platformRouteRefKeysMatch({ next: nextConfig, octoGroups, feishuGroups })
+            )
+          );
+      } catch {
+        canApplyWithoutIdle = false;
+      }
+    }
+    if (mode === "when-idle" && !isReloadIdle(state) && !canApplyWithoutIdle) {
       let configUpdatedAt: string | null = null;
       try {
         configUpdatedAt = normalizeString((readConfig(configPath) as { updatedAt?: string }).updatedAt) || null;
@@ -13530,18 +14398,24 @@ async function main(): Promise<void> {
   }
 
   startPlatformConnections();
+  replayReplyOutbox();
+  replyOutboxReplayTimer = setInterval(replayReplyOutbox, 5_000);
+  replyOutboxReplayTimer.unref();
 
   const stop = () => {
     appendLog(config.paths.log, "Tracevane native Channel Connectors daemon stopping");
     if (pendingReloadTimer) clearInterval(pendingReloadTimer);
+    if (replyOutboxReplayTimer) clearInterval(replyOutboxReplayTimer);
     if (feishuWatchdog) clearInterval(feishuWatchdog);
     if (agentSessionReaper) clearInterval(agentSessionReaper);
     for (const entry of activeRunCancels.values()) entry.controller.abort();
+    for (const group of feishuGroups) group.retired = true;
     for (const controller of feishuClientAbortControllers) controller.abort();
     for (const timer of octoRestHeartbeatTimers) clearInterval(timer);
     for (const socket of sockets) socket.disconnect();
     for (const client of feishuClients) client.close({ force: true });
     for (const group of feishuGroups) releaseFeishuGroupLock(config, group);
+    channelIngressQueue = null;
     flushRuntime(config, state);
     const forceExitTimer = setTimeout(() => {
       process.stderr.write("channel-connectors daemon: forced exit after 5s timeout\n");

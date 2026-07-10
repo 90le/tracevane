@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { Activity, LayoutDashboard, MessageSquare, PlugZap, RadioTower } from "lucide-react";
+import { Activity, Bot, LayoutDashboard, MessageSquare, RadioTower } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 
@@ -17,10 +17,10 @@ const PRIMARY_TABS: ReadonlyArray<{
   icon: React.ComponentType<{ className?: string }>;
 }> = [
   { view: "overview", label: "概览", icon: LayoutDashboard },
-  { view: "accounts", label: "平台账号", icon: RadioTower },
-  { view: "routes", label: "绑定路由", icon: PlugZap },
-  { view: "deliveries", label: "会话投递", icon: MessageSquare },
-  { view: "diagnostics", label: "守护诊断", icon: Activity },
+  { view: "workspaces", label: "Agent 工作区", icon: Bot },
+  { view: "accounts", label: "渠道账号", icon: RadioTower },
+  { view: "sessions", label: "会话", icon: MessageSquare },
+  { view: "runtime", label: "运行中心", icon: Activity },
 ];
 
 const VIEW_COMPONENTS: Record<
@@ -30,28 +30,28 @@ const VIEW_COMPONENTS: Record<
   >
 > = {
   overview: React.lazy(() =>
-    import("./views/OverviewView").then((module) => ({
-      default: module.OverviewView,
+    import("./views/V3OverviewView").then((module) => ({
+      default: module.V3OverviewView,
+    })),
+  ),
+  workspaces: React.lazy(() =>
+    import("./views/WorkspacesView").then((module) => ({
+      default: module.WorkspacesView,
     })),
   ),
   accounts: React.lazy(() =>
-    import("./views/AccountsView").then((module) => ({
-      default: module.AccountsView,
+    import("./views/V3AccountsView").then((module) => ({
+      default: module.V3AccountsView,
     })),
   ),
-  routes: React.lazy(() =>
-    import("./views/RoutesView").then((module) => ({
-      default: module.RoutesView,
-    })),
-  ),
-  deliveries: React.lazy(() =>
+  sessions: React.lazy(() =>
     import("./views/SessionsView").then((module) => ({
       default: module.SessionsView,
     })),
   ),
-  diagnostics: React.lazy(() =>
-    import("./views/DiagnosticsView").then((module) => ({
-      default: module.DiagnosticsView,
+  runtime: React.lazy(() =>
+    import("./views/V3RuntimeView").then((module) => ({
+      default: module.V3RuntimeView,
     })),
   ),
 };
@@ -72,6 +72,11 @@ function isChannelConnectorsView(value: string | null): value is ChannelConnecto
   return value != null && (CHANNEL_CONNECTORS_VIEWS as readonly string[]).includes(value);
 }
 
+function canonicalView(value: string | null): ChannelConnectorsView {
+  if (isChannelConnectorsView(value)) return value;
+  return "overview";
+}
+
 /**
  * Channel Connectors page. Owns the Aurora local viewbar over the IM domain.
  * Content views are layered by primary object, not by backend module names.
@@ -80,12 +85,12 @@ export function ChannelConnectorsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const viewParam = searchParams.get("view");
-  const bindingParam = searchParams.get("binding");
+  const accountParam = searchParams.get("account");
+  const targetParam = searchParams.get("target");
 
-  const resolvedView: ChannelConnectorsView = isChannelConnectorsView(viewParam)
-    ? viewParam
-    : "overview";
-  const selectedBinding = bindingParam && bindingParam.length > 0 ? bindingParam : null;
+  const resolvedView = canonicalView(viewParam);
+  const selectedAccount = accountParam && accountParam.length > 0 ? accountParam : null;
+  const selectedTarget = targetParam && targetParam.length > 0 ? targetParam : null;
 
   const goToView = React.useCallback<ChannelConnectorsViewProps["goToView"]>(
     (view, params) => {
@@ -93,8 +98,10 @@ export function ChannelConnectorsPage() {
         (prev) => {
           const next = new URLSearchParams(prev);
           next.set("view", view);
-          if (params?.binding) next.set("binding", params.binding);
-          else next.delete("binding");
+          if (params?.account) next.set("account", params.account);
+          else next.delete("account");
+          if (params?.target) next.set("target", params.target);
+          else next.delete("target");
           return next;
         },
         { replace: false },
@@ -149,7 +156,11 @@ export function ChannelConnectorsPage() {
       </nav>
 
       <React.Suspense fallback={<ChannelConnectorsViewFallback />}>
-        <ActiveView goToView={goToView} selectedBinding={selectedBinding} />
+        <ActiveView
+          goToView={goToView}
+          selectedAccount={selectedAccount}
+          selectedTarget={selectedTarget}
+        />
       </React.Suspense>
     </div>
   );

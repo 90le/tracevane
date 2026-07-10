@@ -1,106 +1,128 @@
-# 消息接入全面重构计划
+# 消息接入 v3 重构说明
 
 ## 目标
 
-把消息接入从“可编辑 binding JSON 的管理页”升级为可安全完成账号接入、路由配置、运行验证和故障恢复的运维工作台。飞书与 Octo 是当前必须完整支持的平台；未知平台仍保留高级 metadata JSON 扩展入口。
+消息接入以用户可理解的三个对象组织，不再把内部 binding 当作产品模型：
 
-## 交付状态
+1. `ChannelAccount`（渠道账号）只保存平台身份、凭据、连接参数和账号安全策略。
+2. `DeliveryTarget`（Agent 工作区）保存 CLI runtime、目录、模型、权限和工作区队列配置，可被多个账号复用。
+3. `DeliveryPolicy`（分发策略）为一个账号指定一个默认工作区，并提供少量来源例外。
 
-- 配置已升级为 `platformAccounts[] + routes[]` v2；旧 v1 首次写入时自动备份，运行时兼容 binding 由服务端物化。
-- 账号凭据只保存在账号对象，复制和编辑路由不会携带账号密钥；列表、日志和公开配置保持脱敏。
-- 保存与 daemon 应用已合并为带 revision 检查的事务入口；可达 daemon 拒绝应用时自动恢复 last-known-good，daemon 原本离线时保留新配置等待启动。
-- 飞书与 Octo 均提供真实默认地址、字段校验、停用草稿、不落盘连接预检、运行状态和账号级诊断；飞书支持官方授权链接的本地二维码展示与手动填写。
-- 账号和路由编辑器提供字段级错误、密钥明文核对、浏览器自动填充防护、未保存关闭保护和键盘可达操作；高级 JSON 仅保留未模板化扩展字段。
-- 概览、账号、路由、会话投递和诊断已重排信息层级，并为窄屏提供独立紧凑列表。
-- 热重载在 Agent run/turn 全局空闲后重建平台连接，不清除持久 Agent session。飞书连接按 `App ID + API URL` 分组并共享 WebSocket、进程锁与 watchdog，因此当前不声称支持单账号无抖动重连。
+运行时以账号为物理连接边界。一个启用账号只建立一个飞书 client 或 Octo socket；规则只在收到消息后选择工作区，不创建额外连接。
 
-## 研究结论
+## 当前实现
 
-- 飞书官方 Node SDK 的 `registerApp` 只返回验证 URL 和过期时间；调用方负责二维码展示、轮询和结果回填。
-- 飞书二维码创建获得 App ID / App Secret 后，仍需验证应用发布、机器人能力、权限、`im.message.receive_v1`、长连接和真实入站消息。
-- OpenClaw 将 channel accounts 与 bindings 分开；交互式账号向导可选择是否继续绑定 Agent，非交互模式不会隐式改写路由。
-- cc-connect 的飞书排障同样把权限、事件订阅、长连接、发布和卡片回调视为独立检查项。
-- Octo 没有可公开验证的外部配置规范；以当前已覆盖的 `/v1/bot/register`、返回 `robot_id/im_token/ws_url` 和本地系统测试作为契约来源。
+### 配置与控制面
 
-## 目标数据模型
+- v3 配置持久化 `accounts + targets + deliveryPolicies`，继续使用单文件原子写入、revision 和 last-known-good 回滚。
+- `config/plan` 在落盘前完成结构校验、语义 diff、账号重连范围、resolver 变更、工作区变更和持久会话影响统计。
+- `config/apply` 只接受未过期且 revision 匹配的 plan；daemon 拒绝应用时恢复旧配置。
+- enabled 飞书账号必须提供 App ID / App Secret，enabled Octo 账号必须提供 Bot Token；平台 API URL 必须是 HTTP(S)。
+- 密钥只允许位于账号 `credentials`，列表与普通配置读取保持脱敏；明文只经账号级 reveal API 返回。
+- 高级 JSON 只承载尚未界面化的平台扩展字段，界面字段不再与 JSON 形成双重来源。
 
-配置 v2 采用两个一等对象：
+### 运行时投影
+
+- 产品只持久化 v3 配置；旧版本配置、迁移器、兼容 API 和历史会话别名均已删除。
+- daemon 的连接、路由选择、状态汇总、会话驱动和回复 replay 直接从 v3 资源构造短生命周期运行时映射；该映射不提供保存或编辑接口。
+
+### 数据面
 
 ```text
-platformAccounts[]
-  id, platform, displayName, enabled
-  externalAccountId, botId
-  credentials, settings
-
-routes[]
-  id, accountRef
-  source { kind, id }
-  agentProfileId, overrides
-  accessPolicy, sessionPolicy
+平台事件
+  -> 每账号一个连接
+  -> IngressEnvelope 标准化
+  -> 持久去重记录 + 账号队列
+  -> DeliveryResolver
+  -> 稳定会话身份
+  -> 工作区级并发协调
+  -> Agent turn
+  -> Reply Outbox
+  -> 原接收账号发送
 ```
 
-运行时继续接收扁平 binding，但由服务端从 v2 物化，避免 daemon 与所有 adapter 同时迁移。凭据只存在于账号对象，不复制到每条路由。
+- 飞书与 Octo 事件统一为 `IngressEnvelope`；去重优先使用账号与 event ID，缺失时回退 message ID + event type。
+- 同一账号内的队列有界，不同账号可独立消费；同一真实工作目录默认只允许一个可写 turn，不同目录可并行。
+- resolver 使用确定性特异性顺序：`peer + thread + sender`、`peer + thread`、精确 peer、peer kind、账号默认目标；同层冲突在保存时拒绝。
+- 当前 turn 持有不可变解析快照；规则和 target 更新只影响后续事件，不取消进行中的 Agent 工作。
+- 最终回复先写入 outbox，再经原账号发送；瞬时错误退避重试，永久错误进入 dead-letter，并在运行中心显示脱敏证据。
 
-## 迁移约束
+### 差量热重载
 
-1. 读取 v1 时按 `platform + accountId + botId` 分组为账号，原 binding ID 保留为 route ID。
-2. 账号字段与路由字段使用显式键集合拆分；未知 metadata 留在账号的 advanced metadata，不能丢失。
-3. 写入 v2 前生成 v1 备份；迁移失败继续读取 v1，不能静默回落为空配置。
-4. 迁移期 API 同时返回 v2 视图与兼容 runtime bindings；daemon 配置格式暂不变化。
-5. 账号删除必须显式确认关联路由数量；路由删除不能删除账号凭据。
+| 变更 | 动作 |
+| --- | --- |
+| 账号凭据、API URL、transport | 仅停止并重建该账号连接 |
+| 默认目标、来源例外、访问或会话策略 | 原子刷新 resolver/runtime refs，不重连平台 |
+| target 模型、权限、目录、治理 | 刷新后续 turn 使用的工作区快照，不重连平台 |
+| 管理端口或 runtime 路径 | 返回 `restart-required`，不伪装成热重载 |
 
-## 分阶段实施
+Octo 账号并行启动，单个慢账号不会阻塞其他账号进入状态树。飞书 group 保留独立锁、abort controller、client 与 watchdog 状态；差量 reload 只退役发生连接级变化的账号。
 
-### A. 防错基线
+## 前端信息架构
 
-- 锁定现有配置读写、密钥脱敏、飞书二维码、Octo register、热重载和路由覆盖测试。
-- 恢复真实默认地址并在前后端统一归一化。
-- 增加平台必填字段和 URL 校验；停用账号允许保存为不完整草稿。
-- 修复 transport 失败仍显示成功、平台切换残留凭据、浏览器自动填充和应用失败关闭编辑器。
+顶层页面为：
 
-### B. 草稿预检与账号向导
+1. **概览**：保存、连接、首条真实入站和异常分别显示。
+2. **Agent 工作区**：管理可复用 target，显示关联账号和执行边界。
+3. **渠道账号**：创建/编辑飞书与 Octo，设置默认工作区和来源例外。
+4. **会话**：查看活动 driver、策略和显式重置动作。
+5. **运行中心**：按账号显示连接、入站队列、去重、待恢复任务、Reply Outbox、dead-letter、热重载和日志。
 
-- 新增不落盘的 account draft validation / smoke API。
-- 飞书提供扫码与手动两条路径，完成后显示发布、权限、长连接和入站检查清单。
-- Octo 使用 API URL + Bot Token 直接 register，回填 robot ID 与 WS URL 后再保存。
-- 账号默认先验证再启用；允许明确保存为停用草稿。
+顶层“绑定路由”已删除。来源例外位于账号编辑器内，普通创建流程无需理解 route 或 binding。
 
-### C. 账号与路由分离
+账号编辑细节：
 
-- 引入 v2 类型、迁移器和兼容物化层。
-- 账号页只管理身份、凭据、连接和平台设置；路由页只引用账号并配置来源与 Agent。
-- 重复账号创建改为“账号已存在，新增路由”。
+- 飞书同时支持官方授权链接的本地二维码和手动填写；二维码生成不调用第三方服务。
+- 密钥字段可显隐、真实回显和自由修改，不使用 `[redacted]` 作为可编辑占位值。
+- 默认 API URL 是受控字段值，不依赖 placeholder，平台切换只重置平台拥有的字段。
+- 保存前必须经过 plan 对话框，展示重连、分发、工作区和已有会话影响。
+- 保存成功、连接成功与收到第一条真实消息是三个独立状态；飞书长连接在线不代表应用发布、事件订阅和机器人权限已经完成。
+- Octo 私网附件 URL 默认关闭；开启时明确显示 SSRF 信任边界和允许域名。
 
-### D. 运行时应用与恢复
+## 安全边界
 
-- 已完成：保存使用 revision 防止多标签页覆盖。
-- 已完成：应用前保留 last-known-good；可达 daemon 应用失败时自动回滚。
-- 已完成：daemon 等待 Agent run/turn 空闲后重建平台连接，持久 Agent session 保留。
-- 已完成：展示账号连接、入站等待、reload 状态和结构化错误。
-- 后续独立阶段：先抽取 Octo binding 生命周期管理器，再把飞书连接改为 group diff 重连；未完成该结构重构前不承诺单账号无抖动重连。
+- 明文凭据不能进入列表、日志、toast、URL、target、policy 或来源规则。
+- 配置、备份、会话、去重和 outbox 状态文件继续使用 `0600`；目录使用 `0700`。
+- 来源规则只能收紧默认访问策略，不能扩大 allowlist 或撤销目标治理限制。
+- target 删除、禁用或账号启用缺少默认目标时由服务端校验阻止。
+- Reply Outbox 运行状态不返回回复正文、目标地址或凭据；dead-letter 只暴露账号、来源消息 ID、次数和错误摘要。
 
-### E. 全页面重新设计
+## 自动化验收
 
-- 概览以账号健康、待处理问题和最近活动为主，不用 binding 数量代替健康。
-- 账号页采用平台、连接、入站、路由、最近验证五列语义；移动端删除纵向 KPI 墙。
-- 路由页突出来源匹配优先级、账号引用和最终 Agent，不重复展示账号凭据。
-- 会话投递把全局策略收成紧凑工具区，优先展示活动、排队和失败 session。
-- 诊断页先给账号级故障与建议动作，原始配置和日志下沉到证据区。
-- 所有表单提供字段级错误、键盘焦点、状态 live region、移动端可达操作和未保存保护。
+核心验证命令：
 
-## 验收门槛
+```bash
+npm run typecheck:api
+npm run typecheck:web
+npm run build:api
+npm run build:web
+node --test tests/system/channel-connectors-v3-service.test.mjs
+node --test tests/system/web-channel-connectors.test.mjs
+node --test tests/system/channel-connectors-routing-v3.test.mjs
+node --test tests/system/channel-connectors-account-connections-v3.test.mjs
+node --test tests/system/channel-connectors-ingress-v3.test.mjs
+node --test tests/system/channel-connectors-target-execution-v3.test.mjs
+node --test tests/system/channel-connectors-reply-outbox-v3.test.mjs
+node --test tests/system/channel-connectors-session-continuity-v3.test.mjs
+```
 
-- 类型检查：`npm run typecheck:api`、`npm run typecheck:web`。
-- 构建：`npm run build:api`、`npm run build:web`。
-- 系统测试：Channel Connectors service、web contract 和新增迁移/校验测试。
-- 运行验证：现有飞书与 Octo 账号保持连接；新增账号可完成预检、保存、热重载和首条消息闭环。
-- 浏览器验证：1440x1000、845x834、390x844；浅色/深色；无横向溢出、遮挡或不可见操作。
-- 安全验证：明文密钥不进入列表、日志、toast、URL 或截图；私网附件访问有明确告警和范围控制。
+浏览器验收覆盖桌面与移动端导航、飞书二维码、密钥显隐、无横向溢出和控制台无错误。
 
-## 暂不接受的捷径
+## 真实平台验收边界
 
-- 不继续用 placeholder 充当默认值。
-- 不用 metadata 键名推断“凭据有效”。
-- 不把 HTTP 200 当作 transport 成功。
-- 不在复制路由时复制新的账号凭据副本。
-- 不把守护进程重启包装成热重载；当前热重载只重建平台连接并保留 Agent session，同时明确其全平台连接抖动边界。
+自动化通过不等同于生产账号验收。发布前仍需使用授权测试账号完成：
+
+- 飞书：应用创建、权限、机器人能力、`im.message.receive_v1`、版本发布、WebSocket、首条真实入站和回复。
+- Octo：register、Wukong socket、首条真实入站、回复、附件与心跳。
+- 多账号：修改 bot 2 凭据时 bot 1/bot 3 不重连，进行中的 turn 不被取消。
+- 同工作区：两个账号并发消息按工作区队列串行，且回复分别从原账号发送。
+
+生产账号的密钥、连接和正在执行的任务不能为了自动化验收被测试代码擅自修改或重启。
+
+### 2026-07-10 实机切换证据
+
+- 真实 daemon 已加载 3 个账号、2 个 Agent 工作区和 3 条账号策略；运行期映射由 v3 配置即时生成。
+- 在 `activeRuns = 0`、`activeTurns = 0`、队列为空时完成受控重启；两个飞书账号与一个 Octo 账号均恢复 `connected`。本轮将清空历史会话状态，不以旧会话连续性作为产品约束。
+- v3 应用后的两个飞书账号分别收到真实事件并完成 Agent turn，持久事件记录均为 `agentOk: true`、`replySent: true`、`replyDeliveryStatus: delivered`。
+- Octo 当前 register/WuKong socket/REST heartbeat 正常；持久事件记录存在真实 `agent.run.finished` 且回复为 `delivered`。本次验收没有为制造新记录而主动向外部 Octo 会话发送消息。
+- 完整服务测试前后，真实 systemd unit 的哈希、mtime 与真实 daemon reload 日志计数保持不变；测试配置的 supervisor 路径按其 `openclawRoot` 隔离，不再可能写入真实用户 unit。

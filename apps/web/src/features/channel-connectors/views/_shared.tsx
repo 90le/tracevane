@@ -62,7 +62,7 @@ export function Row({
       <span className="grid min-w-0 flex-1">
         <strong className="truncate text-base text-ink-strong">{title}</strong>
         {subtitle && (
-          <span className={cn("truncate text-sm text-muted", subtitleClassName)}>
+          <span className={cn("text-sm text-muted", subtitleClassName || "truncate")}>
             {subtitle}
           </span>
         )}

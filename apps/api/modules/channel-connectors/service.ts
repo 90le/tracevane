@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { registerApp } from "@larksuiteoapi/node-sdk";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
@@ -13,8 +13,6 @@ import {
   CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
   CHANNEL_CONNECTOR_PLATFORM_IDS,
   type ChannelConnectorsBindingPolicy,
-  type ChannelConnectorsApplyNativeConfigRequest,
-  type ChannelConnectorsApplyNativeConfigResponse,
   type ChannelConnectorsDaemonAction,
   type ChannelConnectorsDaemonCommand,
   type ChannelConnectorsDaemonCommandResult,
@@ -33,8 +31,15 @@ import {
   type ChannelConnectorsDaemonRuntimeStatus,
   type ChannelConnectorsDaemonTemplate,
   type ChannelConnectorsLogsResponse,
-  type ChannelConnectorsNativeConfig,
-  type ChannelConnectorsNativeConfigResponse,
+  type ChannelConnectorsV3Config,
+  type ChannelConnectorsV3ConfigApplyRequest,
+  type ChannelConnectorsV3ConfigApplyResponse,
+  type ChannelConnectorsV3ConfigPlanRequest,
+  type ChannelConnectorsV3ConfigPlanResponse,
+  type ChannelConnectorsV3ConfigResponse,
+  type ChannelConnectorsV3SemanticDiff,
+  type ChannelConnectorAccount,
+  type ChannelConnectorAccountSecretsResponse,
   type ChannelConnectorCommandActionRequest,
   type ChannelConnectorCommandActionResponse,
   type ChannelConnectorCommandSurface,
@@ -50,7 +55,6 @@ import {
   type ChannelConnectorFeishuAppRegistrationStatus,
   type ChannelConnectorFeishuAppRegistrationTenant,
   type ChannelConnectorInboundAttachment,
-  type ChannelConnectorsSaveNativeConfigRequest,
   type ChannelConnectorsStatusResponse,
   type ChannelConnectorOctoDispatchResponse,
   type ChannelConnectorOctoInboundRequest,
@@ -60,12 +64,15 @@ import {
   type ChannelConnectorAgentId,
   type ChannelConnectorAgentSessionActionRequest,
   type ChannelConnectorAgentSessionDriverStatusResponse,
-  type ChannelConnectorBindingSecretsResponse,
+  type ChannelConnectorAgentProfile,
+  type ChannelConnectorAgentSessionPolicyConfig,
   type ChannelConnectorPermissionMode,
   type ChannelConnectorPlatformBinding,
-  type ChannelConnectorPlatformAccount,
-  type ChannelConnectorRoute,
   type ChannelConnectorPlatformId,
+  type ChannelConnectorDeliveryPolicy,
+  type ChannelConnectorDeliveryTarget,
+  type ChannelConnectorV3RoutingPreviewRequest,
+  type ChannelConnectorV3RoutingPreviewResponse,
 } from "../../../../types/channel-connectors.js";
 import {
   applyOctoPersonaRouting,
@@ -172,11 +179,19 @@ import { getChannelConnectorSessionControl } from "./session-control-store.js";
 import {
   getChannelConnectorAgentSession,
   listChannelConnectorAgentSessionsForConversation,
+  readChannelConnectorAgentSessions,
+  type ChannelConnectorAgentSessionRecord,
 } from "./agent-session-store.js";
 import { getChannelConnectorConversationHistory } from "./conversation-history-store.js";
 import {
   compactChannelConnectorConversation,
 } from "./conversation-compact.js";
+import {
+  assertChannelConnectorsV3Config,
+  validateChannelConnectorsV3Config,
+} from "./config-v3.js";
+import { resolveChannelConnectorDelivery } from "./delivery-resolver.js";
+import { channelConnectorRuntimeRouteRefs } from "./runtime-account-routing.js";
 
 const DEFAULT_FEISHU_STALE_EVENT_MAX_AGE_MS = 2 * 60_000;
 const MIN_FEISHU_STALE_EVENT_MAX_AGE_MS = 10_000;
@@ -218,6 +233,7 @@ export type ChannelConnectorFeishuRegisterAppRunner = typeof registerApp;
 
 export interface ChannelConnectorsServiceOptions {
   homeDir?: string;
+  managementEndpoint?: string;
   commandRunner?: ChannelConnectorsDaemonCommandRunner;
   feishuRegisterApp?: ChannelConnectorFeishuRegisterAppRunner;
   now?: () => Date;
@@ -226,11 +242,18 @@ export interface ChannelConnectorsServiceOptions {
 
 export interface ChannelConnectorsService {
   getStatus(): Promise<ChannelConnectorsStatusResponse>;
-  getNativeConfig(): ChannelConnectorsNativeConfigResponse;
-  getPublicNativeConfig(): ChannelConnectorsNativeConfigResponse;
-  getBindingSecrets(bindingId: string): ChannelConnectorBindingSecretsResponse;
-  saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
-  applyNativeConfig(payload?: ChannelConnectorsApplyNativeConfigRequest): Promise<ChannelConnectorsApplyNativeConfigResponse>;
+  getV3Config(): ChannelConnectorsV3ConfigResponse;
+  planV3Config(payload?: ChannelConnectorsV3ConfigPlanRequest): ChannelConnectorsV3ConfigPlanResponse;
+  saveV3Config(config: ChannelConnectorsV3Config): ChannelConnectorsV3ConfigResponse;
+  applyV3Config(payload?: ChannelConnectorsV3ConfigApplyRequest): Promise<ChannelConnectorsV3ConfigApplyResponse>;
+  upsertV3Account(account: ChannelConnectorAccount): ChannelConnectorsV3ConfigResponse;
+  deleteV3Account(accountId: string): ChannelConnectorsV3ConfigResponse;
+  upsertV3Target(target: ChannelConnectorDeliveryTarget): ChannelConnectorsV3ConfigResponse;
+  deleteV3Target(targetId: string): ChannelConnectorsV3ConfigResponse;
+  upsertV3Policy(policy: ChannelConnectorDeliveryPolicy): ChannelConnectorsV3ConfigResponse;
+  deleteV3Policy(policyId: string): ChannelConnectorsV3ConfigResponse;
+  previewV3Routing(payload?: ChannelConnectorV3RoutingPreviewRequest): ChannelConnectorV3RoutingPreviewResponse;
+  getAccountSecrets(accountId: string): ChannelConnectorAccountSecretsResponse;
   startFeishuAppRegistration(payload?: ChannelConnectorFeishuAppRegistrationStartRequest): Promise<ChannelConnectorFeishuAppRegistrationSessionResponse>;
   getFeishuAppRegistration(sessionId: string): ChannelConnectorFeishuAppRegistrationSessionResponse;
   cancelFeishuAppRegistration(sessionId: string): ChannelConnectorFeishuAppRegistrationSessionResponse;
@@ -262,6 +285,12 @@ interface FeishuAppRegistrationSession {
   updatedAtMs: number;
 }
 
+interface ChannelConnectorsV3PlanEntry {
+  currentRevision: string;
+  candidateHash: string;
+  expiresAtMs: number;
+}
+
 interface ChannelConnectorsPaths {
   workspaceDir: string;
   nativeConfigPath: string;
@@ -274,11 +303,6 @@ interface ChannelConnectorsPaths {
   octoEventLogFile: string;
   feishuEventLogFile: string;
   feishuTokenCacheFile: string;
-}
-
-function normalizeHomeDir(value: string | undefined): string {
-  const trimmed = String(value || "").trim();
-  return trimmed || os.homedir();
 }
 
 function normalizePathLike(value: string): string {
@@ -348,6 +372,14 @@ function writeTextAtomic(filePath: string, content: string): void {
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   fs.writeFileSync(tempPath, content, "utf8");
   fs.renameSync(tempPath, filePath);
+}
+
+function writeSecretTextAtomic(filePath: string, content: string): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tempPath, content, { encoding: "utf8", mode: 0o600 });
+  fs.renameSync(tempPath, filePath);
+  fs.chmodSync(filePath, 0o600);
 }
 
 function normalizeAction(value: unknown): ChannelConnectorsDaemonAction {
@@ -473,7 +505,7 @@ function boundedInteger(value: unknown, fallback: number, min: number, max: numb
   return Math.min(max, Math.max(min, Math.floor(number)));
 }
 
-function normalizeAgentSessionPolicy(value: unknown): ChannelConnectorsNativeConfig["agentSessionPolicy"] {
+function normalizeAgentSessionPolicy(value: unknown): ChannelConnectorAgentSessionPolicyConfig {
   const input = isRecord(value) ? value : {};
   const busyStrategy = normalizeString(input.busyStrategy) === "queue" ? "queue" : "reject";
   return {
@@ -486,26 +518,88 @@ function normalizeAgentSessionPolicy(value: unknown): ChannelConnectorsNativeCon
   };
 }
 
-function validatePlatformBaseUrl(binding: ChannelConnectorPlatformBinding): void {
-  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
-  const raw = binding.platform === "feishu"
-    ? normalizeString(metadata.apiUrl || metadata.api_url || metadata.domain || metadata.baseUrl || metadata.base_url)
-    : binding.platform === "octo"
-      ? normalizeString(metadata.apiUrl || metadata.api_url)
-      : "";
-  if (!raw) return;
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new Error(`Invalid ${binding.platform} API URL for account ${binding.id}: ${raw}`);
+function parsedStoredConfig(paths: ChannelConnectorsPaths): unknown | null {
+  const raw = readTextIfExists(paths.nativeConfigPath);
+  if (!raw) return null;
+  return JSON.parse(raw) as unknown;
+}
+
+function normalizeV3Config(
+  input: unknown,
+  now: Date,
+): ChannelConnectorsV3Config {
+  if (!isRecord(input) || input.version !== 3) {
+    throw new Error("Channel Connectors v3 config must be a version 3 object.");
   }
-  if (!(["http:", "https:"] as string[]).includes(parsed.protocol)) {
-    throw new Error(`${binding.platform} API URL for account ${binding.id} must use http or https.`);
+  if (!Array.isArray(input.accounts) || !input.accounts.every(isRecord)) {
+    throw new Error("Channel Connectors v3 accounts must be an array of objects.");
   }
-  if (parsed.username || parsed.password || parsed.hash) {
-    throw new Error(`${binding.platform} API URL for account ${binding.id} must not include credentials or a fragment.`);
+  if (!Array.isArray(input.targets) || !input.targets.every(isRecord)) {
+    throw new Error("Channel Connectors v3 targets must be an array of objects.");
   }
+  if (!Array.isArray(input.deliveryPolicies) || !input.deliveryPolicies.every(isRecord)) {
+    throw new Error("Channel Connectors v3 deliveryPolicies must be an array of objects.");
+  }
+  const candidate = structuredClone(input) as unknown as ChannelConnectorsV3Config;
+  candidate.version = 3;
+  candidate.updatedAt = normalizeString(candidate.updatedAt, now.toISOString());
+  candidate.agentSessionPolicy = normalizeAgentSessionPolicy(candidate.agentSessionPolicy);
+  assertChannelConnectorsV3Config(candidate);
+  return candidate;
+}
+
+function runtimeAdapterCatalog(
+  source: ChannelConnectorsV3Config,
+  config: TracevaneServerConfig,
+  paths: ChannelConnectorsPaths,
+  now: Date,
+): ChannelConnectorRuntimeAdapterCatalog {
+  const runtime = buildRuntimeConfig(source, paths);
+  const profiles = runtime.projects.map((project) => ({
+    id: project.id,
+    name: project.name,
+    agent: project.agent,
+    model: project.model,
+    reasoningEffort: project.reasoningEffort ?? null,
+    workDir: project.workDir,
+    permissionMode: project.permissionMode,
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayKeyRef: project.gatewayKeyRef,
+    appProfileRef: project.appProfileRef,
+  }));
+  const fallback: ChannelConnectorAgentProfile = {
+    id: "default-codex",
+    name: "Default Codex",
+    agent: "codex",
+    model: null,
+    reasoningEffort: null,
+    workDir: config.projectRoot || process.cwd(),
+    permissionMode: "suggest",
+    gatewayEndpoint: gatewayEndpoint(),
+    gatewayKeyRef: "tracevane-gateway-client-key",
+    appProfileRef: "default",
+  };
+  const agentProfiles = profiles.length ? profiles : [fallback];
+  const platformBindings = runtime.projects.flatMap((project) => project.platformBindings.map((binding) => ({
+    id: binding.id,
+    platform: binding.platform,
+    accountId: binding.accountId,
+    botId: binding.botId,
+    displayName: binding.displayName,
+    agentProfileId: project.id,
+    enabled: binding.enabled,
+    allowlist: [...binding.allowlist],
+    adminUsers: [...binding.adminUsers],
+    disabledCommands: [...binding.disabledCommands],
+    metadata: binding.metadata,
+  })));
+  return {
+    updatedAt: source.updatedAt,
+    defaultAgentProfileId: agentProfiles[0].id,
+    agentSessionPolicy: source.agentSessionPolicy,
+    agentProfiles,
+    platformBindings,
+  };
 }
 
 function normalizePlatformBindingMetadata(
@@ -525,29 +619,6 @@ function normalizePlatformBindingMetadata(
   }
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
-
-function validateEnabledPlatformBinding(binding: ChannelConnectorPlatformBinding): void {
-  validatePlatformBaseUrl(binding);
-  if (!binding.enabled) return;
-  if (binding.platform === "feishu" && !feishuTransportFromBinding(binding)) {
-    throw new Error(`Enabled Feishu account ${binding.id} requires App ID and App Secret.`);
-  }
-  if (binding.platform === "octo" && !octoTransportFromBinding(binding)) {
-    throw new Error(`Enabled Octo account ${binding.id} requires API URL and Bot Token.`);
-  }
-}
-
-const ROUTE_METADATA_KEYS = new Set([
-  "peerKind",
-  "peerId",
-  "sessionMode",
-  "busyGuard",
-  "attachmentStaging",
-  "routeAgent",
-  "routeModel",
-  "routeWorkDir",
-  "routePermissionMode",
-]);
 
 function isSensitiveMetadataKey(key: string): boolean {
   const normalized = key.trim().toLowerCase().replace(/[-_\s]/g, "");
@@ -570,462 +641,133 @@ function isSensitiveMetadataKey(key: string): boolean {
     || normalized.endsWith("token");
 }
 
-function routeFromBinding(
-  binding: ChannelConnectorPlatformBinding,
-  accountRef: string,
-): ChannelConnectorRoute {
-  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
-  const routeAgent = normalizeString(metadata.routeAgent);
-  const permissionMode = normalizeString(metadata.routePermissionMode);
-  return {
-    id: binding.id,
-    accountRef,
-    displayName: binding.displayName,
-    enabled: binding.enabled,
-    source: {
-      kind: normalizeString(metadata.peerKind) || "private",
-      id: normalizeString(metadata.peerId) || "*",
-    },
-    agentProfileId: binding.agentProfileId,
-    overrides: {
-      agent: isRuntimeAgentId(routeAgent) ? routeAgent : null,
-      model: normalizeString(metadata.routeModel) || null,
-      workDir: normalizeString(metadata.routeWorkDir) || null,
-      permissionMode: isPermissionMode(permissionMode) ? permissionMode : null,
-    },
-    accessPolicy: {
-      allowlist: [...binding.allowlist],
-      adminUsers: [...binding.adminUsers],
-      disabledCommands: [...binding.disabledCommands],
-    },
-    sessionPolicy: {
-      mode: normalizeString(metadata.sessionMode) || "persistent",
-      busyGuard: metadata.busyGuard !== false,
-      attachmentStaging: metadata.attachmentStaging !== false,
-    },
-  };
-}
-
-function splitBindingsIntoAccountsAndRoutes(
-  bindings: ChannelConnectorPlatformBinding[],
-  seedAccounts: ChannelConnectorPlatformAccount[] = [],
-): {
-  platformAccounts: ChannelConnectorPlatformAccount[];
-  routes: ChannelConnectorRoute[];
-} {
-  const groups = new Map<string, ChannelConnectorPlatformBinding[]>();
-  for (const binding of bindings) {
-    const key = [binding.platform, binding.accountId, binding.botId || ""].join("::");
-    const group = groups.get(key);
-    if (group) group.push(binding);
-    else groups.set(key, [binding]);
-  }
-  const platformAccounts: ChannelConnectorPlatformAccount[] = [];
-  const routes: ChannelConnectorRoute[] = [];
-  for (const group of groups.values()) {
-    const representative = group[0];
-    const seed = seedAccounts.find(
-      (account) =>
-        account.platform === representative.platform
-        && account.externalAccountId === representative.accountId
-        && account.botId === representative.botId,
-    );
-    const credentials: Record<string, unknown> = { ...(seed?.credentials ?? {}) };
-    const settings: Record<string, unknown> = { ...(seed?.settings ?? {}) };
-    for (const binding of group) {
-      for (const [key, value] of Object.entries(binding.metadata ?? {})) {
-        if (ROUTE_METADATA_KEYS.has(key)) continue;
-        const target = isSensitiveMetadataKey(key) ? credentials : settings;
-        target[key] = value;
-      }
-    }
-    const account: ChannelConnectorPlatformAccount = {
-      id: seed?.id || representative.id,
-      platform: representative.platform,
-      displayName: representative.displayName,
-      enabled: group.some((binding) => binding.enabled),
-      externalAccountId: representative.accountId,
-      botId: representative.botId,
-      credentials,
-      settings,
-    };
-    platformAccounts.push(account);
-    routes.push(...group.map((binding) => routeFromBinding(binding, account.id)));
-  }
-  return { platformAccounts, routes };
-}
-
-function materializePlatformBindings(
-  platformAccounts: ChannelConnectorPlatformAccount[],
-  routes: ChannelConnectorRoute[],
-): ChannelConnectorPlatformBinding[] {
-  const accounts = new Map(platformAccounts.map((account) => [account.id, account]));
-  return routes.flatMap((route) => {
-    const account = accounts.get(route.accountRef);
-    if (!account) return [];
-    const metadata: Record<string, unknown> = {
-      ...account.settings,
-      ...account.credentials,
-      peerKind: route.source.kind,
-      peerId: route.source.id,
-      sessionMode: route.sessionPolicy.mode,
-      busyGuard: route.sessionPolicy.busyGuard,
-      attachmentStaging: route.sessionPolicy.attachmentStaging,
-    };
-    if (route.overrides.agent) metadata.routeAgent = route.overrides.agent;
-    if (route.overrides.model) metadata.routeModel = route.overrides.model;
-    if (route.overrides.workDir) metadata.routeWorkDir = route.overrides.workDir;
-    if (route.overrides.permissionMode) {
-      metadata.routePermissionMode = route.overrides.permissionMode;
-    }
-    return [{
-      id: route.id,
-      platform: account.platform,
-      accountId: account.externalAccountId,
-      botId: account.botId,
-      displayName: route.displayName || account.displayName,
-      agentProfileId: route.agentProfileId,
-      enabled: account.enabled && route.enabled,
-      allowlist: [...route.accessPolicy.allowlist],
-      adminUsers: [...route.accessPolicy.adminUsers],
-      disabledCommands: [...route.accessPolicy.disabledCommands],
-      metadata,
-    }];
-  });
-}
-
-function normalizeV2Accounts(value: unknown): ChannelConnectorPlatformAccount[] {
-  if (!Array.isArray(value)) return [];
-  const ids = new Set<string>();
-  const accounts: ChannelConnectorPlatformAccount[] = [];
-  for (const raw of value) {
-    if (!isRecord(raw)) continue;
-    const id = normalizeString(raw.id);
-    const platform = normalizeString(raw.platform);
-    if (!id || ids.has(id) || !isPlatformId(platform)) continue;
-    ids.add(id);
-    accounts.push({
-      id,
-      platform,
-      displayName: normalizeString(raw.displayName) || id,
-      enabled: raw.enabled !== false,
-      externalAccountId: normalizeString(raw.externalAccountId) || id,
-      botId: normalizeString(raw.botId) || null,
-      credentials: isRecord(raw.credentials) ? { ...raw.credentials } : {},
-      settings: normalizePlatformBindingMetadata(
-        platform,
-        isRecord(raw.settings) ? raw.settings : {},
-      ) ?? {},
-    });
-  }
-  return accounts;
-}
-
-function normalizeV2Routes(
-  value: unknown,
-  accounts: ChannelConnectorPlatformAccount[],
-  defaultAgentProfileId: string,
-  validProfileIds: Set<string>,
-): ChannelConnectorRoute[] {
-  if (!Array.isArray(value)) return [];
-  const accountIds = new Set(accounts.map((account) => account.id));
-  const routeIds = new Set<string>();
-  const routes: ChannelConnectorRoute[] = [];
-  for (const raw of value) {
-    if (!isRecord(raw)) continue;
-    const id = normalizeString(raw.id);
-    const accountRef = normalizeString(raw.accountRef);
-    if (!id || routeIds.has(id) || !accountIds.has(accountRef)) continue;
-    routeIds.add(id);
-    const source = isRecord(raw.source) ? raw.source : {};
-    const overrides = isRecord(raw.overrides) ? raw.overrides : {};
-    const accessPolicy = isRecord(raw.accessPolicy) ? raw.accessPolicy : {};
-    const sessionPolicy = isRecord(raw.sessionPolicy) ? raw.sessionPolicy : {};
-    const agent = normalizeString(overrides.agent);
-    const permissionMode = normalizeString(overrides.permissionMode);
-    const requestedProfileId = normalizeString(raw.agentProfileId);
-    routes.push({
-      id,
-      accountRef,
-      displayName: normalizeString(raw.displayName) || id,
-      enabled: raw.enabled !== false,
-      source: {
-        kind: normalizeString(source.kind) || "private",
-        id: normalizeString(source.id) || "*",
-      },
-      agentProfileId: validProfileIds.has(requestedProfileId)
-        ? requestedProfileId
-        : defaultAgentProfileId,
-      overrides: {
-        agent: isRuntimeAgentId(agent) ? agent : null,
-        model: normalizeString(overrides.model) || null,
-        workDir: normalizeString(overrides.workDir) || null,
-        permissionMode: isPermissionMode(permissionMode) ? permissionMode : null,
-      },
-      accessPolicy: {
-        allowlist: stringList(accessPolicy.allowlist),
-        adminUsers: stringList(accessPolicy.adminUsers),
-        disabledCommands: stringList(accessPolicy.disabledCommands),
-      },
-      sessionPolicy: {
-        mode: normalizeString(sessionPolicy.mode) || "persistent",
-        busyGuard: sessionPolicy.busyGuard !== false,
-        attachmentStaging: sessionPolicy.attachmentStaging !== false,
-      },
-    });
-  }
-  return routes;
-}
-
-function defaultNativeConfig(
+function readRuntimeAdapterCatalog(
   config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
   now: Date,
-): ChannelConnectorsNativeConfig {
+): ChannelConnectorRuntimeAdapterCatalog {
+  const raw = readTextIfExists(paths.nativeConfigPath);
+  if (!raw) return runtimeAdapterCatalog(defaultV3Config(config, now), config, paths, now);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new Error("Channel Connectors configuration must be valid version 3 JSON.");
+  }
+  if (isRecord(parsed) && parsed.version === 3) {
+    return runtimeAdapterCatalog(normalizeV3Config(parsed, now), config, paths, now);
+  }
+  throw new Error("Channel Connectors only supports version 3 configuration.");
+}
+
+interface ChannelConnectorsV3Snapshot {
+  config: ChannelConnectorsV3Config;
+}
+
+/**
+ * Ephemeral execution view generated from the persisted v3 config for adapter
+ * and command-surface code. This shape is never written to disk or exposed as
+ * a configuration API.
+ */
+interface ChannelConnectorRuntimeAdapterCatalog {
+  updatedAt: string;
+  defaultAgentProfileId: string;
+  agentSessionPolicy: ChannelConnectorAgentSessionPolicyConfig;
+  agentProfiles: ChannelConnectorAgentProfile[];
+  platformBindings: ChannelConnectorPlatformBinding[];
+}
+
+function defaultV3Config(config: TracevaneServerConfig, now: Date): ChannelConnectorsV3Config {
   return {
-    version: 2,
+    version: 3,
     updatedAt: now.toISOString(),
-    defaultAgentProfileId: "default-codex",
-    agentSessionPolicy: DEFAULT_AGENT_SESSION_POLICY,
-    agentProfiles: [
-      {
-        id: "default-codex",
-        name: "Default Codex",
+    agentSessionPolicy: { ...DEFAULT_AGENT_SESSION_POLICY },
+    accounts: [],
+    targets: [{
+      id: "default-codex",
+      name: "Default Codex",
+      enabled: true,
+      runtime: {
         agent: "codex",
-        model: null,
-        workDir: config.projectRoot || process.cwd(),
-        permissionMode: "suggest",
+        appProfileRef: "default",
         gatewayEndpoint: gatewayEndpoint(),
         gatewayKeyRef: "tracevane-gateway-client-key",
-        appProfileRef: "default",
       },
-    ],
-    platformAccounts: [],
-    routes: [],
-    platformBindings: [],
+      workspace: { workDir: config.projectRoot || process.cwd() },
+      execution: {
+        model: null,
+        reasoningEffort: null,
+        permissionMode: "suggest",
+        workspaceConcurrency: 1,
+        queueLimit: 20,
+      },
+      governance: { disabledCommands: [] },
+    }],
+    deliveryPolicies: [],
   };
 }
 
-function normalizeNativeConfig(
-  input: unknown,
+function readV3Snapshot(
   config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
   now: Date,
-  strict = false,
-): ChannelConnectorsNativeConfig {
-  const fallback = defaultNativeConfig(config, paths, now);
-  if (!isRecord(input)) {
-    if (strict) throw new Error("Channel Connectors config must be an object.");
-    return fallback;
+): ChannelConnectorsV3Snapshot {
+  const parsed = parsedStoredConfig(paths);
+  if (parsed === null) return { config: defaultV3Config(config, now) };
+  if (!isRecord(parsed) || parsed.version !== 3) {
+    throw new Error("Channel Connectors only supports version 3 configuration.");
   }
-
-  const rawProfiles = Array.isArray(input.agentProfiles) ? input.agentProfiles : [];
-  if (strict && rawProfiles.length === 0) throw new Error("At least one agent profile is required.");
-
-  const profileIds = new Set<string>();
-  const agentProfiles: ChannelConnectorsNativeConfig["agentProfiles"] = [];
-  for (let index = 0; index < rawProfiles.length; index += 1) {
-    const raw = rawProfiles[index];
-    if (!isRecord(raw)) continue;
-    const id = slugify(normalizeString(raw.id, normalizeString(raw.name)), `profile-${index + 1}`);
-    if (profileIds.has(id)) {
-      if (strict) throw new Error(`Duplicate agent profile id: ${id}`);
-      continue;
-    }
-    const agent = raw.agent;
-    if (strict && !isRuntimeAgentId(agent)) throw new Error(`Unsupported agent id for profile ${id}.`);
-    const permissionMode = raw.permissionMode;
-    if (strict && !isPermissionMode(permissionMode)) throw new Error(`Unsupported permission mode for profile ${id}.`);
-    const workDir = normalizeString(raw.workDir, fallback.agentProfiles[0].workDir);
-    if (strict && !workDir) throw new Error(`workDir is required for profile ${id}.`);
-    profileIds.add(id);
-    agentProfiles.push({
-      id,
-      name: normalizeString(raw.name, id),
-      agent: isRuntimeAgentId(agent) ? agent : "codex",
-      model: normalizeString(raw.model) || null,
-      workDir,
-      permissionMode: isPermissionMode(permissionMode) ? permissionMode : "suggest",
-      gatewayEndpoint: normalizeString(raw.gatewayEndpoint, gatewayEndpoint()),
-      gatewayKeyRef: "tracevane-gateway-client-key",
-      appProfileRef: normalizeString(raw.appProfileRef, "default"),
-    });
-  }
-
-  if (agentProfiles.length === 0) agentProfiles.push(...fallback.agentProfiles);
-  const validProfileIds = new Set(agentProfiles.map((profile) => profile.id));
-  const defaultAgentProfileId = validProfileIds.has(normalizeString(input.defaultAgentProfileId))
-    ? normalizeString(input.defaultAgentProfileId)
-    : agentProfiles[0].id;
-
-  const hasCompatibilityBindings = Array.isArray(input.platformBindings);
-  const rawBindings = hasCompatibilityBindings ? input.platformBindings as unknown[] : [];
-  const bindingIds = new Set<string>();
-  const wechatAccountAgents = new Map<string, string>();
-  const platformBindings: ChannelConnectorsNativeConfig["platformBindings"] = [];
-  for (let index = 0; index < rawBindings.length; index += 1) {
-    const raw = rawBindings[index];
-    if (!isRecord(raw)) continue;
-    const id = slugify(normalizeString(raw.id, normalizeString(raw.displayName)), `binding-${index + 1}`);
-    if (bindingIds.has(id)) {
-      if (strict) throw new Error(`Duplicate platform binding id: ${id}`);
-      continue;
-    }
-    const platform = raw.platform;
-    if (strict && !isPlatformId(platform)) throw new Error(`Unsupported platform id for binding ${id}.`);
-    const agentProfileId = normalizeString(raw.agentProfileId, defaultAgentProfileId);
-    if (strict && !validProfileIds.has(agentProfileId)) {
-      throw new Error(`Binding ${id} references unknown agent profile: ${agentProfileId}`);
-    }
-    const effectiveProfileId = validProfileIds.has(agentProfileId) ? agentProfileId : defaultAgentProfileId;
-    const accountId = normalizeString(raw.accountId);
-    if (strict && !accountId) throw new Error(`accountId is required for binding ${id}.`);
-    const platformId = isPlatformId(platform) ? platform : "octo";
-    if (platformId === "wechat") {
-      const existingAgent = wechatAccountAgents.get(accountId);
-      if (existingAgent && existingAgent !== effectiveProfileId) {
-        throw new Error(`Personal WeChat account ${accountId} can bind only one agent profile.`);
-      }
-      if (accountId) wechatAccountAgents.set(accountId, effectiveProfileId);
-    }
-
-    bindingIds.add(id);
-    const normalizedBinding: ChannelConnectorPlatformBinding = {
-      id,
-      platform: platformId,
-      accountId,
-      botId: normalizeString(raw.botId) || null,
-      displayName: normalizeString(raw.displayName, id),
-      agentProfileId: effectiveProfileId,
-      enabled: raw.enabled !== false,
-      allowlist: stringList(raw.allowlist),
-      adminUsers: stringList(raw.adminUsers),
-      disabledCommands: stringList(raw.disabledCommands ?? raw.disabled_commands),
-      metadata: normalizePlatformBindingMetadata(platformId, raw.metadata),
-    };
-    platformBindings.push(normalizedBinding);
-  }
-
-  const model = hasCompatibilityBindings
-    ? splitBindingsIntoAccountsAndRoutes(
-      platformBindings,
-      normalizeV2Accounts(input.platformAccounts),
-    )
-    : (() => {
-      const platformAccounts = normalizeV2Accounts(input.platformAccounts);
-      const routes = normalizeV2Routes(
-        input.routes,
-        platformAccounts,
-        defaultAgentProfileId,
-        validProfileIds,
-      );
-      platformBindings.push(...materializePlatformBindings(platformAccounts, routes));
-      return { platformAccounts, routes };
-    })();
-  if (hasCompatibilityBindings) {
-    platformBindings.splice(
-      0,
-      platformBindings.length,
-      ...materializePlatformBindings(model.platformAccounts, model.routes),
-    );
-  }
-  if (strict) {
-    for (const binding of platformBindings) validateEnabledPlatformBinding(binding);
-  }
-
-  return {
-    version: 2,
-    updatedAt: normalizeString(input.updatedAt, now.toISOString()),
-    defaultAgentProfileId,
-    agentSessionPolicy: normalizeAgentSessionPolicy(input.agentSessionPolicy),
-    agentProfiles,
-    platformAccounts: model.platformAccounts,
-    routes: model.routes,
-    platformBindings,
-  };
+  return { config: normalizeV3Config(parsed, now) };
 }
 
-function readNativeConfig(
+function writeV3Config(
   config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
+  value: ChannelConnectorsV3Config,
   now: Date,
-): ChannelConnectorsNativeConfig {
-  const raw = readTextIfExists(paths.nativeConfigPath);
-  if (!raw) return defaultNativeConfig(config, paths, now);
-  try {
-    return normalizeNativeConfig(JSON.parse(raw), config, paths, now, false);
-  } catch {
-    return defaultNativeConfig(config, paths, now);
-  }
-}
-
-function writeNativeConfig(
-  config: TracevaneServerConfig,
-  paths: ChannelConnectorsPaths,
-  value: ChannelConnectorsNativeConfig,
-  now: Date,
-): ChannelConnectorsNativeConfig {
-  const normalized = normalizeNativeConfig(
-    {
-      ...value,
-      updatedAt: now.toISOString(),
-    },
-    config,
-    paths,
-    now,
-    true,
-  );
+): ChannelConnectorsV3Config {
+  const normalized = normalizeV3Config({
+    ...value,
+    updatedAt: now.toISOString(),
+  }, now);
   const previousRaw = readTextIfExists(paths.nativeConfigPath);
-  if (previousRaw && !fs.existsSync(`${paths.nativeConfigPath}.v1.bak`)) {
-    let previousVersion: unknown = null;
-    try {
-      previousVersion = (JSON.parse(previousRaw) as { version?: unknown }).version;
-    } catch {
-      previousVersion = null;
-    }
-    if (previousVersion !== 2) {
-      writeTextAtomic(`${paths.nativeConfigPath}.v1.bak`, previousRaw);
-    }
+  if (previousRaw) {
+    writeSecretTextAtomic(`${paths.nativeConfigPath}.last-known-good`, previousRaw);
   }
-  const { platformBindings: _compatibilityBindings, ...persisted } = normalized;
-  writeTextAtomic(paths.nativeConfigPath, `${JSON.stringify(persisted, null, 2)}\n`);
+  writeSecretTextAtomic(paths.nativeConfigPath, `${JSON.stringify(normalized, null, 2)}\n`);
   return normalized;
 }
 
 function applyChannelConnectorBindingMetadataPatch(
   config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
-  nativeConfig: ChannelConnectorsNativeConfig,
+  adapterCatalog: ChannelConnectorRuntimeAdapterCatalog,
   bindingId: string,
   patch: Record<string, unknown> | null | undefined,
   now: Date,
-): ChannelConnectorsNativeConfig {
-  if (!patch || !Object.keys(patch).length) return nativeConfig;
-  let changed = false;
-  const platformBindings = nativeConfig.platformBindings.map((binding) => {
-    if (binding.id !== bindingId) return binding;
-    changed = true;
-    return {
-      ...binding,
-      metadata: {
-        ...(isRecord(binding.metadata) ? binding.metadata : {}),
-        ...patch,
-      },
-    };
-  });
-  if (!changed) return nativeConfig;
-  return writeNativeConfig(config, paths, {
-    ...nativeConfig,
-    platformBindings,
-  }, now);
+): ChannelConnectorRuntimeAdapterCatalog {
+  if (!patch || !Object.keys(patch).length) return adapterCatalog;
+  const binding = adapterCatalog.platformBindings.find((candidate) => candidate.id === bindingId);
+  const metadata = isRecord(binding?.metadata) ? binding.metadata : {};
+  const accountId = normalizeString(metadata.channelAccountId);
+  if (!accountId) return adapterCatalog;
+  const snapshot = readV3Snapshot(config, paths, now).config;
+  const account = snapshot.accounts.find((candidate) => candidate.id === accountId);
+  if (!account) return adapterCatalog;
+  account.advanced = { ...account.advanced, ...patch };
+  const saved = writeV3Config(config, paths, snapshot, now);
+  return runtimeAdapterCatalog(saved, config, paths, now);
 }
 
 function daemonEntryPath(config: TracevaneServerConfig): string {
   return path.join(config.projectRoot, "dist", "apps", "api", "modules", "channel-connectors", "daemon.js");
 }
 
-function managementEndpoint(): string {
-  return `http://127.0.0.1:${MANAGEMENT_PORT}`;
+function managementEndpoint(override?: string): string {
+  const configured = normalizeString(
+    override || process.env.TRACEVANE_CHANNEL_CONNECTORS_MANAGEMENT_ENDPOINT,
+  ).replace(/\/+$/, "");
+  return configured || `http://127.0.0.1:${MANAGEMENT_PORT}`;
 }
 
 function runtimeStatusError(checkedAt: string, error: unknown): ChannelConnectorsDaemonRuntimeStatus {
@@ -1050,6 +792,14 @@ function runtimeStatusError(checkedAt: string, error: unknown): ChannelConnector
       records: [],
       recentEvents: [],
     },
+    replyOutbox: {
+      pending: 0,
+      delivered: 0,
+      deadLetter: 0,
+      oldestPendingAt: null,
+      recentDeadLetters: [],
+    },
+    ingressQueue: null,
     reload: null,
     error: error instanceof Error ? error.message : normalizeString(error, "Channel daemon runtime status unavailable"),
   };
@@ -1065,7 +815,11 @@ function normalizeDaemonOctoConnection(
     : null;
   return {
     bindingId: normalizeString(value.bindingId),
+    bindingIds: stringList(value.bindingIds).length
+      ? stringList(value.bindingIds)
+      : [normalizeString(value.bindingId)].filter(Boolean),
     accountId: normalizeString(value.accountId),
+    externalAccountId: normalizeString(value.externalAccountId || value.accountId),
     botId: nullableString(value.botId),
     robotId: nullableString(value.robotId),
     connected: value.connected === true,
@@ -1089,6 +843,8 @@ function normalizeDaemonFeishuConnection(value: unknown): ChannelConnectorsDaemo
   if (!isRecord(value)) return null;
   return {
     key: normalizeString(value.key),
+    accountId: normalizeString(value.accountId),
+    externalAccountId: normalizeString(value.externalAccountId || value.appId),
     bindingIds: stringList(value.bindingIds),
     connected: value.connected === true,
     state: normalizeString(value.state, "unknown"),
@@ -1277,6 +1033,49 @@ function normalizeDaemonPendingAgentRunStatus(
   };
 }
 
+function normalizeDaemonReplyOutboxStatus(
+  value: unknown,
+): ChannelConnectorsDaemonRuntimeStatus["replyOutbox"] {
+  if (!isRecord(value)) {
+    return {
+      pending: 0,
+      delivered: 0,
+      deadLetter: 0,
+      oldestPendingAt: null,
+      recentDeadLetters: [],
+    };
+  }
+  const recentDeadLetters = Array.isArray(value.recentDeadLetters)
+    ? value.recentDeadLetters.flatMap((candidate) => {
+      if (!isRecord(candidate)) return [];
+      const id = normalizeString(candidate.id);
+      const platform: "feishu" | "octo" | null = candidate.platform === "feishu" || candidate.platform === "octo"
+        ? candidate.platform
+        : null;
+      const accountId = normalizeString(candidate.accountId);
+      const sourceMessageId = normalizeString(candidate.sourceMessageId);
+      const updatedAt = normalizeString(candidate.updatedAt);
+      if (!id || !platform || !accountId || !sourceMessageId || !updatedAt) return [];
+      return [{
+        id,
+        platform,
+        accountId,
+        sourceMessageId,
+        attempts: nullableNumber(candidate.attempts) ?? 0,
+        updatedAt,
+        lastError: nullableString(candidate.lastError),
+      }];
+    })
+    : [];
+  return {
+    pending: nullableNumber(value.pending) ?? 0,
+    delivered: nullableNumber(value.delivered) ?? 0,
+    deadLetter: nullableNumber(value.deadLetter) ?? recentDeadLetters.length,
+    oldestPendingAt: nullableString(value.oldestPendingAt),
+    recentDeadLetters,
+  };
+}
+
 function normalizeDaemonReloadMode(value: unknown): ChannelConnectorsDaemonReloadMode | null {
   return value === "immediate" || value === "when-idle" ? value : null;
 }
@@ -1342,11 +1141,12 @@ function normalizeDaemonReloadResponse(value: unknown): ChannelConnectorsDaemonR
 async function requestDaemonRuntimeStatus(
   checkedAt: string,
   fetchImpl: typeof fetch = fetch,
+  endpoint = managementEndpoint(),
 ): Promise<ChannelConnectorsDaemonRuntimeStatus> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1500);
   try {
-    const response = await fetchImpl(`${managementEndpoint()}/status`, { signal: controller.signal });
+    const response = await fetchImpl(`${endpoint}/status`, { signal: controller.signal });
     const text = await response.text();
     let body: unknown = null;
     try {
@@ -1373,6 +1173,14 @@ async function requestDaemonRuntimeStatus(
         .filter((record): record is ChannelConnectorsDaemonRuntimeStatus["octoConnectionDetails"][number] => Boolean(record))
       : [];
     const pendingAgentRuns = normalizeDaemonPendingAgentRunStatus(body.pendingAgentRuns);
+    const replyOutbox = normalizeDaemonReplyOutboxStatus(body.replyOutbox);
+    const ingressQueue = isRecord(body.ingressQueue) ? {
+      activeAccounts: nullableNumber(body.ingressQueue.activeAccounts) ?? 0,
+      queued: nullableNumber(body.ingressQueue.queued) ?? 0,
+      completed: nullableNumber(body.ingressQueue.completed) ?? 0,
+      failed: nullableNumber(body.ingressQueue.failed) ?? 0,
+      duplicates: nullableNumber(body.ingressQueue.duplicates) ?? 0,
+    } : null;
     return {
       ok: true,
       checkedAt,
@@ -1389,6 +1197,8 @@ async function requestDaemonRuntimeStatus(
       agentRuns: arrayCount(body.agentRuns),
       autoCompacts,
       pendingAgentRuns,
+      replyOutbox,
+      ingressQueue,
       reload: normalizeDaemonReloadState(body.reload),
       error: null,
     };
@@ -1402,11 +1212,12 @@ async function requestDaemonRuntimeStatus(
 async function requestDaemonReload(
   payload: { mode: ChannelConnectorsDaemonReloadMode },
   fetchImpl: typeof fetch = fetch,
+  endpoint = managementEndpoint(),
 ): Promise<ChannelConnectorsDaemonReloadResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetchImpl(`${managementEndpoint()}/reload`, {
+    const response = await fetchImpl(`${endpoint}/reload`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -1444,9 +1255,11 @@ async function requestDaemonReload(
 
 async function requestDaemonAgentSessions(
   payload?: ChannelConnectorAgentSessionActionRequest | null,
+  fetchImpl: typeof fetch = fetch,
+  endpoint = managementEndpoint(),
 ): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
   const method = payload ? "POST" : "GET";
-  const response = await fetch(`${managementEndpoint()}/agent-sessions`, {
+  const response = await fetchImpl(`${endpoint}/agent-sessions`, {
     method,
     headers: payload ? { "content-type": "application/json" } : {},
     body: payload ? JSON.stringify(payload) : undefined,
@@ -1470,90 +1283,13 @@ async function requestDaemonAgentSessions(
   return body as ChannelConnectorAgentSessionDriverStatusResponse;
 }
 
-
-function bindingRouteMetadataString(
-  binding: ChannelConnectorsNativeConfig["platformBindings"][number],
-  key: string,
-): string {
-  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
-  const value = metadata[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-
-function effectiveRouteProject(
-  profile: ChannelConnectorsNativeConfig["agentProfiles"][number],
-  binding: ChannelConnectorsNativeConfig["platformBindings"][number],
-): ChannelConnectorsDaemonRuntimeConfig["projects"][number] {
-  const routeAgent = bindingRouteMetadataString(binding, "routeAgent");
-  const routeModel = bindingRouteMetadataString(binding, "routeModel");
-  const routeWorkDir = bindingRouteMetadataString(binding, "routeWorkDir");
-  const routePermissionMode = bindingRouteMetadataString(binding, "routePermissionMode");
-  const hasOverride = Boolean(routeAgent || routeModel || routeWorkDir || routePermissionMode);
-  const agent = isRuntimeAgentId(routeAgent) ? routeAgent : profile.agent;
-  const permissionMode = isPermissionMode(routePermissionMode) ? routePermissionMode : profile.permissionMode;
-  const model = routeModel || profile.model;
-  const workDir = routeWorkDir || profile.workDir;
-  return {
-    id: hasOverride ? `${profile.id}--${binding.id}` : profile.id,
-    name: hasOverride ? `${profile.name} / ${binding.displayName || binding.id}` : profile.name,
-    workDir,
-    agent,
-    model,
-    permissionMode,
-    gatewayEndpoint: profile.gatewayEndpoint,
-    gatewayKeyRef: profile.gatewayKeyRef,
-    appProfileRef: profile.appProfileRef,
-    platformBindings: [
-      {
-        id: binding.id,
-        platform: binding.platform,
-        accountId: binding.accountId,
-        botId: binding.botId,
-        displayName: binding.displayName,
-        agent,
-        enabled: binding.enabled,
-        allowlist: binding.allowlist,
-        adminUsers: binding.adminUsers,
-        disabledCommands: binding.disabledCommands,
-        metadata: binding.metadata,
-      },
-    ],
-  };
-}
-
 function buildRuntimeConfig(
-  nativeConfig: ChannelConnectorsNativeConfig,
+  deliveryConfig: ChannelConnectorsV3Config,
   paths: ChannelConnectorsPaths,
 ): ChannelConnectorsDaemonRuntimeConfig {
-  const projects: ChannelConnectorsDaemonRuntimeConfig["projects"] = [];
-  for (const profile of nativeConfig.agentProfiles) {
-    const bindings = nativeConfig.platformBindings.filter((binding) => binding.agentProfileId === profile.id);
-    const defaultBindings = bindings.filter((binding) => {
-      const routeAgent = bindingRouteMetadataString(binding, "routeAgent");
-      const routeModel = bindingRouteMetadataString(binding, "routeModel");
-      const routeWorkDir = bindingRouteMetadataString(binding, "routeWorkDir");
-      const routePermissionMode = bindingRouteMetadataString(binding, "routePermissionMode");
-      return !(routeAgent || routeModel || routeWorkDir || routePermissionMode);
-    });
-    projects.push({
-      id: profile.id,
-      name: profile.name,
-      workDir: profile.workDir,
-      agent: profile.agent,
-      model: profile.model,
-      permissionMode: profile.permissionMode,
-      gatewayEndpoint: profile.gatewayEndpoint,
-      gatewayKeyRef: profile.gatewayKeyRef,
-      appProfileRef: profile.appProfileRef,
-      platformBindings: defaultBindings.map((binding) => effectiveRouteProject(profile, binding).platformBindings[0]),
-    });
-    for (const binding of bindings) {
-      if (!defaultBindings.includes(binding)) projects.push(effectiveRouteProject(profile, binding));
-    }
-  }
-  return {
+  const runtime: ChannelConnectorsDaemonRuntimeConfig = {
     version: 1,
+    deliveryConfig,
     management: {
       host: "127.0.0.1",
       port: MANAGEMENT_PORT,
@@ -1570,9 +1306,14 @@ function buildRuntimeConfig(
       endpoint: gatewayEndpoint(),
       clientKeyRef: "tracevane-gateway-client-key",
     },
-    agentSessionPolicy: nativeConfig.agentSessionPolicy,
-    projects,
+    agentSessionPolicy: deliveryConfig.agentSessionPolicy,
+    projects: [],
   };
+  runtime.projects = channelConnectorRuntimeRouteRefs(runtime).map(({ project, binding }) => ({
+    ...project,
+    platformBindings: [binding],
+  }));
+  return runtime;
 }
 
 function redactSensitiveMetadata(value: unknown): unknown {
@@ -1616,18 +1357,27 @@ function restoreRedactedSensitiveMetadata(existing: unknown, incoming: unknown):
   return output;
 }
 
-function restoreNativeConfigRedactedSecrets(
-  existing: ChannelConnectorsNativeConfig,
-  incoming: ChannelConnectorsNativeConfig,
-): ChannelConnectorsNativeConfig {
-  const existingById = new Map(existing.platformBindings.map((binding) => [binding.id, binding] as const));
-  const existingAccountsById = new Map(
-    existing.platformAccounts.map((account) => [account.id, account] as const),
-  );
+function redactV3Config(config: ChannelConnectorsV3Config): ChannelConnectorsV3Config {
+  return {
+    ...config,
+    accounts: config.accounts.map((account) => ({
+      ...account,
+      credentials: redactSensitiveMetadata(account.credentials) as Record<string, unknown>,
+      transport: redactSensitiveMetadata(account.transport) as Record<string, unknown>,
+      advanced: redactSensitiveMetadata(account.advanced) as Record<string, unknown>,
+    })),
+  };
+}
+
+function restoreV3RedactedSecrets(
+  existing: ChannelConnectorsV3Config,
+  incoming: ChannelConnectorsV3Config,
+): ChannelConnectorsV3Config {
+  const existingAccounts = new Map(existing.accounts.map((account) => [account.id, account] as const));
   return {
     ...incoming,
-    platformAccounts: incoming.platformAccounts.map((account) => {
-      const previous = existingAccountsById.get(account.id);
+    accounts: incoming.accounts.map((account) => {
+      const previous = existingAccounts.get(account.id);
       if (!previous) return account;
       return {
         ...account,
@@ -1635,35 +1385,142 @@ function restoreNativeConfigRedactedSecrets(
           previous.credentials,
           account.credentials,
         ) as Record<string, unknown>,
-        settings: restoreRedactedSensitiveMetadata(
-          previous.settings,
-          account.settings,
+        transport: restoreRedactedSensitiveMetadata(
+          previous.transport,
+          account.transport,
         ) as Record<string, unknown>,
-      };
-    }),
-    platformBindings: incoming.platformBindings.map((binding) => {
-      const previous = existingById.get(binding.id);
-      if (!previous?.metadata || !binding.metadata) return binding;
-      return {
-        ...binding,
-        metadata: restoreRedactedSensitiveMetadata(previous.metadata, binding.metadata) as Record<string, unknown>,
+        advanced: restoreRedactedSensitiveMetadata(
+          previous.advanced,
+          account.advanced,
+        ) as Record<string, unknown>,
       };
     }),
   };
 }
 
-function redactNativeConfig(nativeConfig: ChannelConnectorsNativeConfig): ChannelConnectorsNativeConfig {
+function v3ConfigRevision(config: ChannelConnectorsV3Config): string {
+  return normalizeString(config.updatedAt, "unversioned");
+}
+
+function v3CandidateHash(config: ChannelConnectorsV3Config): string {
+  return createHash("sha256").update(JSON.stringify(config)).digest("hex");
+}
+
+function changedIds<T extends { id: string }>(
+  current: T[],
+  candidate: T[],
+  select: (value: T) => unknown = (value) => value,
+): string[] {
+  const before = new Map(current.map((value) => [value.id, JSON.stringify(select(value))] as const));
+  return candidate
+    .filter((value) => before.has(value.id) && before.get(value.id) !== JSON.stringify(select(value)))
+    .map((value) => value.id)
+    .sort();
+}
+
+function addedIds<T extends { id: string }>(current: T[], candidate: T[]): string[] {
+  const before = new Set(current.map((value) => value.id));
+  return candidate.filter((value) => !before.has(value.id)).map((value) => value.id).sort();
+}
+
+function removedIds<T extends { id: string }>(current: T[], candidate: T[]): string[] {
+  const after = new Set(candidate.map((value) => value.id));
+  return current.filter((value) => !after.has(value.id)).map((value) => value.id).sort();
+}
+
+function countAffectedV3Sessions(input: {
+  current: ChannelConnectorsV3Config;
+  candidate: ChannelConnectorsV3Config;
+  sessions: ChannelConnectorAgentSessionRecord[];
+  accountIds: string[];
+  targetIds: string[];
+}): number {
+  const accountIds = new Set(input.accountIds);
+  const targetIds = new Set(input.targetIds);
+  const configs = [input.current, input.candidate];
+  return input.sessions.filter((session) => (
+    (session.accountId ? accountIds.has(session.accountId) : false)
+    || (session.targetId ? targetIds.has(session.targetId) : false)
+  )).length;
+}
+
+function buildV3SemanticDiff(
+  current: ChannelConnectorsV3Config,
+  candidate: ChannelConnectorsV3Config,
+  sessions: ChannelConnectorAgentSessionRecord[] = [],
+): ChannelConnectorsV3SemanticDiff {
+  const accountsAdded = addedIds(current.accounts, candidate.accounts);
+  const accountsRemoved = removedIds(current.accounts, candidate.accounts);
+  const accountsReconnected = changedIds(current.accounts, candidate.accounts, (account) => ({
+    platform: account.platform,
+    lifecycle: account.lifecycle,
+    externalAccountId: account.externalAccountId,
+    botId: account.botId,
+    credentials: account.credentials,
+    transport: account.transport,
+  }));
+  const policyAccountsChanged = changedIds(
+    current.deliveryPolicies,
+    candidate.deliveryPolicies,
+  ).map((policyId) => (
+    candidate.deliveryPolicies.find((policy) => policy.id === policyId)
+      || current.deliveryPolicies.find((policy) => policy.id === policyId)
+  )?.accountRef).filter((value): value is string => Boolean(value));
+  const policyAccountsAdded = addedIds(current.deliveryPolicies, candidate.deliveryPolicies)
+    .map((policyId) => candidate.deliveryPolicies.find((policy) => policy.id === policyId)?.accountRef)
+    .filter((value): value is string => Boolean(value));
+  const policyAccountsRemoved = removedIds(current.deliveryPolicies, candidate.deliveryPolicies)
+    .map((policyId) => current.deliveryPolicies.find((policy) => policy.id === policyId)?.accountRef)
+    .filter((value): value is string => Boolean(value));
+  const accountPolicyFieldsChanged = changedIds(current.accounts, candidate.accounts, (account) => ({
+    lifecycle: account.lifecycle,
+    security: account.security,
+    advanced: account.advanced,
+  }));
+  const resolverAccountsChanged = stringList([
+    ...policyAccountsChanged,
+    ...policyAccountsAdded,
+    ...policyAccountsRemoved,
+    ...accountPolicyFieldsChanged,
+  ]).sort();
+  const targetsAdded = addedIds(current.targets, candidate.targets);
+  const targetsRemoved = removedIds(current.targets, candidate.targets);
+  const targetsChanged = changedIds(current.targets, candidate.targets);
+  const sessionTargetIds = stringList([
+    ...targetsRemoved,
+    ...changedIds(current.targets, candidate.targets, (target) => ({
+      enabled: target.enabled,
+      runtime: target.runtime,
+      workspace: target.workspace,
+      execution: target.execution,
+      governance: target.governance,
+    })),
+  ]).sort();
+  const existingSessionsAffected = countAffectedV3Sessions({
+    current,
+    candidate,
+    sessions,
+    accountIds: stringList([...accountsRemoved, ...resolverAccountsChanged]),
+    targetIds: sessionTargetIds,
+  });
   return {
-    ...nativeConfig,
-    platformAccounts: nativeConfig.platformAccounts.map((account) => ({
-      ...account,
-      credentials: redactSensitiveMetadata(account.credentials) as Record<string, unknown>,
-      settings: redactSensitiveMetadata(account.settings) as Record<string, unknown>,
-    })),
-    platformBindings: nativeConfig.platformBindings.map((binding) => ({
-      ...binding,
-      metadata: redactSensitiveMetadata(binding.metadata) as Record<string, unknown> | undefined,
-    })),
+    accountsAdded,
+    accountsRemoved,
+    accountsReconnected,
+    resolverAccountsChanged,
+    targetsAdded,
+    targetsRemoved,
+    targetsChanged,
+    existingSessionsAffected,
+    requiresDaemonReload: [
+      accountsAdded,
+      accountsRemoved,
+      accountsReconnected,
+      resolverAccountsChanged,
+      targetsAdded,
+      targetsRemoved,
+      targetsChanged,
+    ].some((values) => values.length > 0),
   };
 }
 
@@ -1682,6 +1539,7 @@ function extractBindingSecrets(
 function redactRuntimeConfig(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): ChannelConnectorsDaemonRuntimeConfig {
   return {
     ...runtimeConfig,
+    deliveryConfig: redactV3Config(runtimeConfig.deliveryConfig),
     projects: runtimeConfig.projects.map((project) => ({
       ...project,
       platformBindings: project.platformBindings.map((binding) => ({
@@ -1701,9 +1559,16 @@ function redactConfigResponse(response: ChannelConnectorsDaemonConfigResponse): 
   };
 }
 
-function buildConfigResponse(config: TracevaneServerConfig, paths: ChannelConnectorsPaths, now: Date): ChannelConnectorsDaemonConfigResponse {
-  const nativeConfig = readNativeConfig(config, paths, now);
-  const runtimeConfig = buildRuntimeConfig(nativeConfig, paths);
+function buildConfigResponse(
+  config: TracevaneServerConfig,
+  paths: ChannelConnectorsPaths,
+  now: Date,
+  managementEndpointOverride?: string,
+): ChannelConnectorsDaemonConfigResponse {
+  const v3Snapshot = readV3Snapshot(config, paths, now);
+  const validationIssues = validateChannelConnectorsV3Config(v3Snapshot.config);
+  if (validationIssues.length > 0) throw new Error("Channel Connectors v3 config is invalid.");
+  const runtimeConfig = buildRuntimeConfig(v3Snapshot.config, paths);
   const preview = `${JSON.stringify(runtimeConfig, null, 2)}\n`;
   return {
     ok: true,
@@ -1712,7 +1577,7 @@ function buildConfigResponse(config: TracevaneServerConfig, paths: ChannelConnec
     nativeConfigPath: paths.nativeConfigPath,
     configPath: paths.configPath,
     gatewayEndpoint: gatewayEndpoint(),
-    managementEndpoint: managementEndpoint(),
+    managementEndpoint: managementEndpoint(managementEndpointOverride),
     config: runtimeConfig,
     preview,
     missing: [],
@@ -1772,7 +1637,7 @@ export function createChannelConnectorsDaemonPlan(
   options: ChannelConnectorsServiceOptions = {},
 ): ChannelConnectorsDaemonPlan {
   const paths = resolveChannelConnectorsPaths(config, options.homeDir);
-  const homeDir = normalizeHomeDir(options.homeDir);
+  const homeDir = defaultTracevaneHomeDir(config, options.homeDir);
   const serviceName = CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME;
   const nodePath = process.execPath;
   const daemonEntry = daemonEntryPath(config);
@@ -1888,7 +1753,7 @@ export function createChannelConnectorsDaemonPlan(
     stateDir: paths.stateDir,
     logFile: paths.logFile,
     runtimeFile: paths.runtimeFile,
-    managementEndpoint: managementEndpoint(),
+    managementEndpoint: managementEndpoint(options.managementEndpoint),
     selectedTemplate,
     templates,
     notes,
@@ -2739,9 +2604,9 @@ function normalizeFeishuWebhookCommandText(value: string): string {
 }
 
 function resolveOctoBindingById(
-  nativeConfig: ChannelConnectorsNativeConfig,
+  nativeConfig: ChannelConnectorRuntimeAdapterCatalog,
   bindingId: string | null | undefined,
-): { binding: ChannelConnectorsNativeConfig["platformBindings"][number]; agentProfile: ChannelConnectorsNativeConfig["agentProfiles"][number] } | null {
+): { binding: ChannelConnectorRuntimeAdapterCatalog["platformBindings"][number]; agentProfile: ChannelConnectorRuntimeAdapterCatalog["agentProfiles"][number] } | null {
   const octoBindings = nativeConfig.platformBindings.filter((binding) => binding.platform === "octo" && binding.enabled);
   const binding = bindingId
     ? octoBindings.find((candidate) => candidate.id === bindingId)
@@ -2754,12 +2619,12 @@ function resolveOctoBindingById(
 }
 
 function resolveRuntimeBindingById(
-  nativeConfig: ChannelConnectorsNativeConfig,
+  nativeConfig: ChannelConnectorRuntimeAdapterCatalog,
   runtimeConfig: ChannelConnectorsDaemonRuntimeConfig,
   bindingId: string | null | undefined,
 ): {
-  binding: ChannelConnectorsNativeConfig["platformBindings"][number];
-  agentProfile: ChannelConnectorsNativeConfig["agentProfiles"][number];
+  binding: ChannelConnectorRuntimeAdapterCatalog["platformBindings"][number];
+  agentProfile: ChannelConnectorRuntimeAdapterCatalog["agentProfiles"][number];
   project: ChannelConnectorsDaemonRuntimeConfig["projects"][number];
   runtimeBinding: ChannelConnectorsDaemonRuntimeConfig["projects"][number]["platformBindings"][number];
 } | null {
@@ -2778,7 +2643,7 @@ function resolveRuntimeBindingById(
 }
 
 function bindingMetadataString(
-  binding: ChannelConnectorsNativeConfig["platformBindings"][number],
+  binding: ChannelConnectorRuntimeAdapterCatalog["platformBindings"][number],
   keys: string[],
 ): string {
   const metadata = isRecord(binding.metadata) ? binding.metadata : {};
@@ -2790,14 +2655,14 @@ function bindingMetadataString(
 }
 
 function resolveRuntimeBindingForPlatform(
-  nativeConfig: ChannelConnectorsNativeConfig,
+  nativeConfig: ChannelConnectorRuntimeAdapterCatalog,
   runtimeConfig: ChannelConnectorsDaemonRuntimeConfig,
   platform: ChannelConnectorPlatformId,
   bindingId: string | null | undefined,
   accountId: string | null | undefined,
 ): {
-  binding: ChannelConnectorsNativeConfig["platformBindings"][number];
-  agentProfile: ChannelConnectorsNativeConfig["agentProfiles"][number];
+  binding: ChannelConnectorRuntimeAdapterCatalog["platformBindings"][number];
+  agentProfile: ChannelConnectorRuntimeAdapterCatalog["agentProfiles"][number];
   project: ChannelConnectorsDaemonRuntimeConfig["projects"][number];
   runtimeBinding: ChannelConnectorsDaemonRuntimeConfig["projects"][number]["platformBindings"][number];
 } | null {
@@ -2822,7 +2687,7 @@ function resolveRuntimeBindingForPlatform(
 }
 
 function verifyFeishuWebhookToken(
-  binding: ChannelConnectorsNativeConfig["platformBindings"][number] | null,
+  binding: ChannelConnectorRuntimeAdapterCatalog["platformBindings"][number] | null,
   token: string | null | undefined,
 ): ChannelConnectorFeishuWebhookResponse["verification"] {
   if (!binding) return { configured: false, checked: false, ok: null };
@@ -2973,34 +2838,6 @@ function bindingPolicy(): ChannelConnectorsBindingPolicy {
   };
 }
 
-function buildNativeConfigResponse(
-  config: TracevaneServerConfig,
-  paths: ChannelConnectorsPaths,
-  now: Date,
-): ChannelConnectorsNativeConfigResponse {
-  return {
-    ok: true,
-    checkedAt: now.toISOString(),
-    configPath: paths.nativeConfigPath,
-    config: readNativeConfig(config, paths, now),
-    supportedAgents: [...CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS],
-    supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
-    permissionModes: [...PERMISSION_MODES],
-  };
-}
-
-function buildPublicNativeConfigResponse(
-  config: TracevaneServerConfig,
-  paths: ChannelConnectorsPaths,
-  now: Date,
-): ChannelConnectorsNativeConfigResponse {
-  const response = buildNativeConfigResponse(config, paths, now);
-  return {
-    ...response,
-    config: redactNativeConfig(response.config),
-  };
-}
-
 export function createChannelConnectorsService(
   config: TracevaneServerConfig,
   options: ChannelConnectorsServiceOptions = {},
@@ -3011,72 +2848,129 @@ export function createChannelConnectorsService(
     options.commandRunner ? options.commandRunner(command) : runDefaultCommand(command);
   const registerFeishuApp = options.feishuRegisterApp ?? registerApp;
   const feishuAppRegistrationSessions = new Map<string, FeishuAppRegistrationSession>();
+  const v3ConfigPlans = new Map<string, ChannelConnectorsV3PlanEntry>();
 
   function currentConfigFull(): ChannelConnectorsDaemonConfigResponse {
-    return buildConfigResponse(config, paths(), now());
+    return buildConfigResponse(config, paths(), now(), options.managementEndpoint);
   }
 
   function currentConfig(): ChannelConnectorsDaemonConfigResponse {
     return redactConfigResponse(currentConfigFull());
   }
 
-  function currentNativeConfig(): ChannelConnectorsNativeConfigResponse {
-    return buildNativeConfigResponse(config, paths(), now());
-  }
-
-  function currentPublicNativeConfig(): ChannelConnectorsNativeConfigResponse {
-    return buildPublicNativeConfigResponse(config, paths(), now());
-  }
-
-  function getBindingSecrets(bindingId: string): ChannelConnectorBindingSecretsResponse {
-    const id = normalizeString(bindingId);
-    if (!id) throw new Error("Channel Connectors binding id is required.");
-    const nativeConfig = readNativeConfig(config, paths(), now());
-    const binding = nativeConfig.platformBindings.find((item) => item.id === id);
-    if (!binding) throw new Error(`Channel Connectors binding not found: ${id}`);
-    return {
-      ok: true,
-      checkedAt: now().toISOString(),
-      bindingId: id,
-      secrets: extractBindingSecrets(binding),
-    };
-  }
-
-  function saveNativeConfig(payload: ChannelConnectorsSaveNativeConfigRequest = {}): ChannelConnectorsNativeConfigResponse {
-    if (!payload.config) throw new Error("Channel Connectors config payload is required.");
+  function currentV3Config(): ChannelConnectorsV3ConfigResponse {
     const resolvedPaths = paths();
-    const existing = readNativeConfig(config, resolvedPaths, now());
-    const payloadConfig = restoreNativeConfigRedactedSecrets(existing, payload.config);
-    const saved = writeNativeConfig(config, resolvedPaths, payloadConfig, now());
+    const snapshot = readV3Snapshot(config, resolvedPaths, now());
+    const validationIssues = validateChannelConnectorsV3Config(snapshot.config);
     return {
       ok: true,
       checkedAt: now().toISOString(),
       configPath: resolvedPaths.nativeConfigPath,
-      config: saved,
-      supportedAgents: [...CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS],
-      supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
-      permissionModes: [...PERMISSION_MODES],
+      revision: v3ConfigRevision(snapshot.config),
+      config: redactV3Config(snapshot.config),
+      validationIssues,
+      canApply: validationIssues.length === 0,
     };
   }
 
-  async function applyNativeConfig(
-    payload: ChannelConnectorsApplyNativeConfigRequest = {},
-  ): Promise<ChannelConnectorsApplyNativeConfigResponse> {
-    if (!payload.config) throw new Error("Channel Connectors config payload is required.");
+  function cleanupV3ConfigPlans(): void {
+    const nowMs = now().getTime();
+    for (const [planId, plan] of v3ConfigPlans) {
+      if (plan.expiresAtMs <= nowMs) v3ConfigPlans.delete(planId);
+    }
+  }
+
+  function prepareV3Candidate(
+    incoming: ChannelConnectorsV3Config,
+    existing: ChannelConnectorsV3Config,
+  ): ChannelConnectorsV3Config {
+    if (!incoming || incoming.version !== 3) {
+      throw new Error("Channel Connectors v3 config payload is required.");
+    }
+    const candidate = restoreV3RedactedSecrets(existing, structuredClone(incoming));
+    candidate.version = 3;
+    candidate.updatedAt = normalizeString(candidate.updatedAt, existing.updatedAt);
+    candidate.agentSessionPolicy = normalizeAgentSessionPolicy(candidate.agentSessionPolicy);
+    return candidate;
+  }
+
+  function planV3Config(
+    payload: ChannelConnectorsV3ConfigPlanRequest = {},
+  ): ChannelConnectorsV3ConfigPlanResponse {
+    if (!payload.config) throw new Error("Channel Connectors v3 config payload is required.");
+    cleanupV3ConfigPlans();
     const resolvedPaths = paths();
-    const previous = readNativeConfig(config, resolvedPaths, now());
-    const expectedUpdatedAt = normalizeString(payload.expectedUpdatedAt);
-    if (expectedUpdatedAt && previous.updatedAt !== expectedUpdatedAt) {
+    const current = readV3Snapshot(config, resolvedPaths, now()).config;
+    const currentRevision = v3ConfigRevision(current);
+    const expectedRevision = normalizeString(payload.expectedRevision);
+    if (expectedRevision && expectedRevision !== currentRevision) {
       throw new Error(
-        `Channel Connectors config changed since this editor was opened. Expected ${expectedUpdatedAt}, current ${previous.updatedAt}.`,
+        `Channel Connectors v3 config changed since this editor was opened. Expected ${expectedRevision}, current ${currentRevision}.`,
       );
     }
-    const fetchImpl = options.fetchImpl ?? fetch;
-    const runtimeBefore = await requestDaemonRuntimeStatus(
-      now().toISOString(),
-      fetchImpl,
+    const candidate = prepareV3Candidate(payload.config, current);
+    const validationIssues = validateChannelConnectorsV3Config(candidate);
+    const sessionState = readChannelConnectorAgentSessions(
+      path.join(resolvedPaths.stateDir, "channel-sessions.json"),
     );
-    const saved = saveNativeConfig({ config: payload.config });
+    const diff = buildV3SemanticDiff(current, candidate, Object.values(sessionState.sessions));
+    const expiresAtMs = now().getTime() + 10 * 60_000;
+    const planId = validationIssues.length === 0 ? randomUUID() : null;
+    if (planId) {
+      v3ConfigPlans.set(planId, {
+        currentRevision,
+        candidateHash: v3CandidateHash(candidate),
+        expiresAtMs,
+      });
+    }
+    return {
+      ok: validationIssues.length === 0,
+      checkedAt: now().toISOString(),
+      planId,
+      currentRevision,
+      expiresAt: planId ? new Date(expiresAtMs).toISOString() : null,
+      config: redactV3Config(candidate),
+      validationIssues,
+      diff,
+    };
+  }
+
+  function saveV3Config(value: ChannelConnectorsV3Config): ChannelConnectorsV3ConfigResponse {
+    const resolvedPaths = paths();
+    const current = readV3Snapshot(config, resolvedPaths, now()).config;
+    const candidate = prepareV3Candidate(value, current);
+    writeV3Config(config, resolvedPaths, candidate, now());
+    return currentV3Config();
+  }
+
+  async function applyV3Config(
+    payload: ChannelConnectorsV3ConfigApplyRequest = {},
+  ): Promise<ChannelConnectorsV3ConfigApplyResponse> {
+    if (!payload.config || !normalizeString(payload.planId)) {
+      throw new Error("A valid Channel Connectors v3 planId and config are required.");
+    }
+    cleanupV3ConfigPlans();
+    const planId = normalizeString(payload.planId);
+    const plan = v3ConfigPlans.get(planId);
+    if (!plan || plan.expiresAtMs <= now().getTime()) {
+      throw new Error("Channel Connectors v3 config plan is missing or expired. Run plan again.");
+    }
+    const resolvedPaths = paths();
+    const current = readV3Snapshot(config, resolvedPaths, now()).config;
+    if (v3ConfigRevision(current) !== plan.currentRevision) {
+      v3ConfigPlans.delete(planId);
+      throw new Error("Channel Connectors v3 config changed after planning. Run plan again.");
+    }
+    const candidate = prepareV3Candidate(payload.config, current);
+    assertChannelConnectorsV3Config(candidate);
+    if (v3CandidateHash(candidate) !== plan.candidateHash) {
+      throw new Error("Channel Connectors v3 config differs from the planned candidate. Run plan again.");
+    }
+    v3ConfigPlans.delete(planId);
+    const previousRaw = readTextIfExists(resolvedPaths.nativeConfigPath);
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const runtimeBefore = await requestDaemonRuntimeStatus(now().toISOString(), fetchImpl);
+    const saved = writeV3Config(config, resolvedPaths, candidate, now());
     const applyResult = await manageDaemonService({
       action: "reload",
       apply: true,
@@ -3089,7 +2983,7 @@ export function createChannelConnectorsService(
       mode: payload.reloadMode || "when-idle",
       activeRuns: 0,
       activeTurns: 0,
-      configUpdatedAt: saved.config.updatedAt,
+      configUpdatedAt: saved.updatedAt,
       appliedAt: null,
       restartRequiredReason: null,
       error: "Channel daemon reload returned no status.",
@@ -3099,13 +2993,9 @@ export function createChannelConnectorsService(
       || reload.status === "restart-required";
     let rolledBack = false;
     let rollbackReload: ChannelConnectorsDaemonReloadResponse | null = null;
-    let currentConfig = saved.config;
-    if (
-      !accepted
-      && runtimeBefore.reachable
-      && payload.rollbackOnFailure !== false
-    ) {
-      currentConfig = writeNativeConfig(config, resolvedPaths, previous, now());
+    if (!accepted && runtimeBefore.reachable && payload.rollbackOnFailure !== false) {
+      if (previousRaw === null) fs.rmSync(resolvedPaths.nativeConfigPath, { force: true });
+      else writeSecretTextAtomic(resolvedPaths.nativeConfigPath, previousRaw);
       const rollbackResult = await manageDaemonService({
         action: "reload",
         apply: true,
@@ -3114,17 +3004,126 @@ export function createChannelConnectorsService(
       rollbackReload = rollbackResult.reload;
       rolledBack = true;
     }
+    const effective = readV3Snapshot(config, resolvedPaths, now()).config;
     return {
       ok: accepted,
       checkedAt: now().toISOString(),
       accepted,
       persisted: !rolledBack,
-      daemonReachableBefore: runtimeBefore.reachable,
       rolledBack,
-      config: redactNativeConfig(currentConfig),
+      config: redactV3Config(effective),
+      revision: v3ConfigRevision(effective),
       reload,
       rollbackReload,
       error: accepted ? null : reload.error || "Channel daemon reload failed.",
+    };
+  }
+
+  function mutateV3Config(
+    mutate: (candidate: ChannelConnectorsV3Config) => void,
+  ): ChannelConnectorsV3ConfigResponse {
+    const resolvedPaths = paths();
+    const current = readV3Snapshot(config, resolvedPaths, now()).config;
+    const candidate = structuredClone(current);
+    mutate(candidate);
+    writeV3Config(config, resolvedPaths, candidate, now());
+    return currentV3Config();
+  }
+
+  function upsertV3Account(account: ChannelConnectorAccount): ChannelConnectorsV3ConfigResponse {
+    return mutateV3Config((candidate) => {
+      const index = candidate.accounts.findIndex((item) => item.id === account.id);
+      if (index >= 0) {
+        const previous = candidate.accounts[index];
+        candidate.accounts[index] = {
+          ...account,
+          credentials: restoreRedactedSensitiveMetadata(
+            previous.credentials,
+            account.credentials,
+          ) as Record<string, unknown>,
+          transport: restoreRedactedSensitiveMetadata(
+            previous.transport,
+            account.transport,
+          ) as Record<string, unknown>,
+          advanced: restoreRedactedSensitiveMetadata(
+            previous.advanced,
+            account.advanced,
+          ) as Record<string, unknown>,
+        };
+      }
+      else candidate.accounts.push(account);
+    });
+  }
+
+  function deleteV3Account(accountId: string): ChannelConnectorsV3ConfigResponse {
+    const id = normalizeString(accountId);
+    return mutateV3Config((candidate) => {
+      candidate.accounts = candidate.accounts.filter((account) => account.id !== id);
+      candidate.deliveryPolicies = candidate.deliveryPolicies.filter((policy) => policy.accountRef !== id);
+    });
+  }
+
+  function upsertV3Target(target: ChannelConnectorDeliveryTarget): ChannelConnectorsV3ConfigResponse {
+    return mutateV3Config((candidate) => {
+      const index = candidate.targets.findIndex((item) => item.id === target.id);
+      if (index >= 0) candidate.targets[index] = target;
+      else candidate.targets.push(target);
+    });
+  }
+
+  function deleteV3Target(targetId: string): ChannelConnectorsV3ConfigResponse {
+    const id = normalizeString(targetId);
+    return mutateV3Config((candidate) => {
+      candidate.targets = candidate.targets.filter((target) => target.id !== id);
+    });
+  }
+
+  function upsertV3Policy(policy: ChannelConnectorDeliveryPolicy): ChannelConnectorsV3ConfigResponse {
+    return mutateV3Config((candidate) => {
+      const index = candidate.deliveryPolicies.findIndex((item) => item.id === policy.id);
+      if (index >= 0) candidate.deliveryPolicies[index] = policy;
+      else candidate.deliveryPolicies.push(policy);
+    });
+  }
+
+  function deleteV3Policy(policyId: string): ChannelConnectorsV3ConfigResponse {
+    const id = normalizeString(policyId);
+    return mutateV3Config((candidate) => {
+      candidate.deliveryPolicies = candidate.deliveryPolicies.filter((policy) => policy.id !== id);
+    });
+  }
+
+  function previewV3Routing(
+    payload: ChannelConnectorV3RoutingPreviewRequest = {},
+  ): ChannelConnectorV3RoutingPreviewResponse {
+    if (!payload.context) throw new Error("Channel Connectors routing preview context is required.");
+    const snapshot = readV3Snapshot(config, paths(), now()).config;
+    const candidate = payload.config
+      ? prepareV3Candidate(payload.config, snapshot)
+      : snapshot;
+    assertChannelConnectorsV3Config(candidate);
+    return {
+      ok: true,
+      checkedAt: now().toISOString(),
+      result: resolveChannelConnectorDelivery(candidate, payload.context),
+    };
+  }
+
+  function getAccountSecrets(accountId: string): ChannelConnectorAccountSecretsResponse {
+    const id = normalizeString(accountId);
+    if (!id) throw new Error("Channel Connectors account id is required.");
+    const account = readV3Snapshot(config, paths(), now()).config.accounts.find((item) => item.id === id);
+    if (!account) throw new Error(`Channel Connectors account not found: ${id}`);
+    const secrets: Record<string, string> = {};
+    for (const [key, value] of Object.entries(account.credentials)) {
+      const secret = normalizeString(value);
+      if (secret) secrets[key] = secret;
+    }
+    return {
+      ok: true,
+      checkedAt: now().toISOString(),
+      accountId: id,
+      secrets,
     };
   }
 
@@ -3291,8 +3290,8 @@ export function createChannelConnectorsService(
     const request = normalizeCommandSurfaceRequest(payload);
     const resolvedPaths = paths();
     const checkedAt = now().toISOString();
-    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
-    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
+    const nativeConfig = readRuntimeAdapterCatalog(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(readV3Snapshot(config, resolvedPaths, now()).config, resolvedPaths);
     const resolved = resolveRuntimeBindingById(nativeConfig, runtimeConfig, request.bindingId);
     if (!resolved) {
       return {
@@ -3370,8 +3369,8 @@ export function createChannelConnectorsService(
     });
     const checkedAt = now().toISOString();
     const resolvedPaths = paths();
-    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
-    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
+    const nativeConfig = readRuntimeAdapterCatalog(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(readV3Snapshot(config, resolvedPaths, now()).config, resolvedPaths);
     const resolved = resolveRuntimeBindingById(nativeConfig, runtimeConfig, bindingId);
 
     if (!command) {
@@ -3521,7 +3520,7 @@ export function createChannelConnectorsService(
       );
     const effectiveRuntimeConfig = effectiveNativeConfig === nativeConfig
       ? runtimeConfig
-      : buildRuntimeConfig(effectiveNativeConfig, resolvedPaths);
+      : buildRuntimeConfig(readV3Snapshot(config, resolvedPaths, now()).config, resolvedPaths);
     const effectiveResolved = effectiveNativeConfig === nativeConfig
       ? resolved
       : resolveRuntimeBindingById(effectiveNativeConfig, effectiveRuntimeConfig, bindingId) || resolved;
@@ -3595,8 +3594,8 @@ export function createChannelConnectorsService(
     const parsed = parseChannelConnectorFeishuWebhook(payload);
     const checkedAt = now().toISOString();
     const resolvedPaths = paths();
-    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
-    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
+    const nativeConfig = readRuntimeAdapterCatalog(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(readV3Snapshot(config, resolvedPaths, now()).config, resolvedPaths);
     const resolved = resolveRuntimeBindingForPlatform(
       nativeConfig,
       runtimeConfig,
@@ -3916,8 +3915,8 @@ export function createChannelConnectorsService(
   async function runFeishuTransportSmoke(payload?: ChannelConnectorFeishuTransportSmokeRequest): Promise<ChannelConnectorFeishuTransportSmokeResponse> {
     const request = normalizeFeishuTransportSmokeRequest(payload);
     const resolvedPaths = paths();
-    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
-    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
+    const nativeConfig = readRuntimeAdapterCatalog(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(readV3Snapshot(config, resolvedPaths, now()).config, resolvedPaths);
     const resolved = resolveRuntimeBindingForPlatform(nativeConfig, runtimeConfig, "feishu", request.bindingId, null);
     const binding = request.binding ?? resolved?.binding ?? null;
     const checkedAt = now().toISOString();
@@ -4026,8 +4025,8 @@ export function createChannelConnectorsService(
     const request = validateOctoInboundRequest(payload);
     const resolvedPaths = paths();
     const checkedAt = now().toISOString();
-    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
-    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
+    const nativeConfig = readRuntimeAdapterCatalog(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(readV3Snapshot(config, resolvedPaths, now()).config, resolvedPaths);
     const resolved = resolveOctoBinding(request, nativeConfig.platformBindings, nativeConfig.agentProfiles);
     const runtimeResolved = resolved ? resolveRuntimeBindingById(nativeConfig, runtimeConfig, resolved.binding.id) : null;
     const skippedReason = shouldSkipOctoMessage(request, resolved);
@@ -4189,7 +4188,7 @@ export function createChannelConnectorsService(
 
   async function runOctoTransportSmoke(payload?: ChannelConnectorOctoTransportSmokeRequest): Promise<ChannelConnectorOctoTransportSmokeResponse> {
     const request = normalizeOctoTransportSmokeRequest(payload);
-    const nativeConfig = readNativeConfig(config, paths(), now());
+    const nativeConfig = readRuntimeAdapterCatalog(config, paths(), now());
     const resolved = resolveOctoBindingById(nativeConfig, request.bindingId);
     const binding = request.binding ?? resolved?.binding ?? null;
     const checkedAt = now().toISOString();
@@ -4523,7 +4522,7 @@ export function createChannelConnectorsService(
       fs.mkdirSync(plan.stateDir, { recursive: true });
       fs.mkdirSync(path.dirname(plan.logFile), { recursive: true });
       if (!isConfigCurrent(configPreview)) {
-        writeTextAtomic(configPreview.configPath, configPreview.preview);
+        writeSecretTextAtomic(configPreview.configPath, configPreview.preview);
         configWritten = true;
       }
     }
@@ -4546,6 +4545,7 @@ export function createChannelConnectorsService(
       ? await requestDaemonReload(
         { mode: payload.reloadMode || "when-idle" },
         options.fetchImpl ?? fetch,
+        managementEndpoint(options.managementEndpoint),
       )
       : null;
 
@@ -4561,13 +4561,21 @@ export function createChannelConnectorsService(
   }
 
   async function getAgentSessions(): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
-    return requestDaemonAgentSessions(null);
+    return requestDaemonAgentSessions(
+      null,
+      options.fetchImpl ?? fetch,
+      managementEndpoint(options.managementEndpoint),
+    );
   }
 
   async function manageAgentSessions(
     payload: ChannelConnectorAgentSessionActionRequest = {},
   ): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
-    return requestDaemonAgentSessions(payload);
+    return requestDaemonAgentSessions(
+      payload,
+      options.fetchImpl ?? fetch,
+      managementEndpoint(options.managementEndpoint),
+    );
   }
 
   async function getStatus(): Promise<ChannelConnectorsStatusResponse> {
@@ -4576,6 +4584,7 @@ export function createChannelConnectorsService(
     const runtime = await requestDaemonRuntimeStatus(
       checkedAt,
       options.fetchImpl ?? fetch,
+      managementEndpoint(options.managementEndpoint),
     );
     return {
       ok: true,
@@ -4628,11 +4637,18 @@ export function createChannelConnectorsService(
 
   return {
     getStatus,
-    getNativeConfig: currentNativeConfig,
-    getPublicNativeConfig: currentPublicNativeConfig,
-    getBindingSecrets,
-    saveNativeConfig,
-    applyNativeConfig,
+    getV3Config: currentV3Config,
+    planV3Config,
+    saveV3Config,
+    applyV3Config,
+    upsertV3Account,
+    deleteV3Account,
+    upsertV3Target,
+    deleteV3Target,
+    upsertV3Policy,
+    deleteV3Policy,
+    previewV3Routing,
+    getAccountSecrets,
     startFeishuAppRegistration,
     getFeishuAppRegistration,
     cancelFeishuAppRegistration,

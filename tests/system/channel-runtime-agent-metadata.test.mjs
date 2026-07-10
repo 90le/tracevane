@@ -10,11 +10,11 @@ function read(filePath) {
 }
 
 const channelConnectorTypes = read("types/channel-connectors.ts");
-const imBindingEditor = read(
-  "apps/web/src/features/channel-connectors/views/BindingEditor.tsx",
+const imWorkspaces = read(
+  "apps/web/src/features/channel-connectors/views/WorkspacesView.tsx",
 );
 
-test("runnable CLI agent metadata is centralized for IM binding surfaces", () => {
+test("runnable CLI agent metadata is centralized for IM workspace surfaces", () => {
   assert.match(
     channelConnectorTypes,
     /export const CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA = \{/,
@@ -26,11 +26,11 @@ test("runnable CLI agent metadata is centralized for IM binding surfaces", () =>
   );
   assert.match(channelConnectorTypes, /runnerContract: "opencode-run-session"/);
   assert.match(
-    imBindingEditor,
+    imWorkspaces,
     /CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA\[agent\]\.label/,
   );
   assert.doesNotMatch(
-    imBindingEditor,
+    imWorkspaces,
     /<option key=\{agent\} value=\{agent\}>\s*\{agent\}\s*<\/option>/,
   );
 });

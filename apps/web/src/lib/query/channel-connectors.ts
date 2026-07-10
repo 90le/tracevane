@@ -7,29 +7,30 @@ import {
 } from "@tanstack/react-query";
 
 import {
-  applyChannelConnectorsConfig,
+  applyChannelConnectorsV3Config,
   cancelFeishuAppRegistration,
-  getChannelConnectorBindingSecrets,
+  getChannelConnectorAccountSecrets,
   getChannelConnectorsAgentSessions,
-  getChannelConnectorsConfig,
   getChannelConnectorsDaemonConfig,
   getChannelConnectorsDaemonLogs,
   getChannelConnectorsDaemonService,
   getChannelConnectorsStatus,
+  getChannelConnectorsV3Config,
   getFeishuAppRegistration,
   manageChannelConnectorsAgentSessions,
   manageChannelConnectorsDaemonService,
+  planChannelConnectorsV3Config,
+  previewChannelConnectorV3Routing,
   runChannelConnectorsCommandAction,
   runFeishuTransportSmoke,
   runOctoTransportSmoke,
-  saveChannelConnectorsConfig,
   startFeishuAppRegistration,
 } from "../api/channel-connectors";
 import type { ApiError } from "../api/errors";
 import type {
   ChannelConnectorAgentSessionActionRequest,
   ChannelConnectorAgentSessionDriverStatusResponse,
-  ChannelConnectorBindingSecretsResponse,
+  ChannelConnectorAccountSecretsResponse,
   ChannelConnectorCommandActionRequest,
   ChannelConnectorCommandActionResponse,
   ChannelConnectorFeishuAppRegistrationSessionResponse,
@@ -39,13 +40,16 @@ import type {
   ChannelConnectorOctoTransportSmokeRequest,
   ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorsDaemonConfigResponse,
-  ChannelConnectorsApplyNativeConfigRequest,
-  ChannelConnectorsApplyNativeConfigResponse,
   ChannelConnectorsDaemonRequest,
   ChannelConnectorsDaemonResponse,
   ChannelConnectorsLogsResponse,
-  ChannelConnectorsNativeConfigResponse,
-  ChannelConnectorsSaveNativeConfigRequest,
+  ChannelConnectorsV3ConfigResponse,
+  ChannelConnectorsV3ConfigPlanRequest,
+  ChannelConnectorsV3ConfigPlanResponse,
+  ChannelConnectorsV3ConfigApplyRequest,
+  ChannelConnectorsV3ConfigApplyResponse,
+  ChannelConnectorV3RoutingPreviewRequest,
+  ChannelConnectorV3RoutingPreviewResponse,
   ChannelConnectorsStatusResponse,
 } from "../../features/channel-connectors/types";
 
@@ -60,9 +64,9 @@ import type {
 export const channelConnectorsKeys = {
   all: ["channel-connectors"] as const,
   status: () => ["channel-connectors", "status"] as const,
-  config: () => ["channel-connectors", "config"] as const,
-  bindingSecrets: (bindingId: string) =>
-    ["channel-connectors", "binding-secrets", bindingId] as const,
+  v3Config: () => ["channel-connectors", "config-v3"] as const,
+  accountSecrets: (accountId: string) =>
+    ["channel-connectors", "account-secrets", accountId] as const,
   feishuRegistration: (sessionId: string) =>
     ["channel-connectors", "feishu-registration", sessionId] as const,
   daemonConfig: () => ["channel-connectors", "daemon-config"] as const,
@@ -95,25 +99,25 @@ export function useChannelConnectorsStatusQuery(
   });
 }
 
-export function useChannelConnectorsConfigQuery(
-  options?: QueryOpts<ChannelConnectorsNativeConfigResponse>,
+export function useChannelConnectorsV3ConfigQuery(
+  options?: QueryOpts<ChannelConnectorsV3ConfigResponse>,
 ) {
-  return useQuery<ChannelConnectorsNativeConfigResponse, ApiError>({
-    queryKey: channelConnectorsKeys.config(),
-    queryFn: ({ signal }) => getChannelConnectorsConfig(signal),
+  return useQuery<ChannelConnectorsV3ConfigResponse, ApiError>({
+    queryKey: channelConnectorsKeys.v3Config(),
+    queryFn: ({ signal }) => getChannelConnectorsV3Config(signal),
     ...options,
   });
 }
 
-export function useChannelConnectorBindingSecretsQuery(
-  bindingId: string | null | undefined,
-  options?: QueryOpts<ChannelConnectorBindingSecretsResponse>,
+export function useChannelConnectorAccountSecretsQuery(
+  accountId: string | null | undefined,
+  options?: QueryOpts<ChannelConnectorAccountSecretsResponse>,
 ) {
-  return useQuery<ChannelConnectorBindingSecretsResponse, ApiError>({
-    queryKey: channelConnectorsKeys.bindingSecrets(bindingId ?? ""),
-    queryFn: ({ signal }) => getChannelConnectorBindingSecrets(bindingId ?? "", signal),
+  return useQuery<ChannelConnectorAccountSecretsResponse, ApiError>({
+    queryKey: channelConnectorsKeys.accountSecrets(accountId ?? ""),
+    queryFn: ({ signal }) => getChannelConnectorAccountSecrets(accountId ?? "", signal),
     ...options,
-    enabled: Boolean(bindingId) && (options?.enabled ?? true),
+    enabled: Boolean(accountId) && (options?.enabled ?? true),
   });
 }
 
@@ -173,55 +177,59 @@ export function useChannelConnectorsAgentSessionsQuery(
 // Mutations
 // ---------------------------------------------------------------------------
 
-/**
- * Save the native config (bindings + agent profiles). Invalidates config plus
- * the status/daemon slices a binding change can affect.
- */
-export function useSaveChannelConnectorsConfigMutation(
+export function usePlanChannelConnectorsV3ConfigMutation(
   options?: MutationOpts<
-    ChannelConnectorsNativeConfigResponse,
-    ChannelConnectorsSaveNativeConfigRequest
+    ChannelConnectorsV3ConfigPlanResponse,
+    ChannelConnectorsV3ConfigPlanRequest
   >,
 ) {
-  const queryClient = useQueryClient();
   return useMutation<
-    ChannelConnectorsNativeConfigResponse,
+    ChannelConnectorsV3ConfigPlanResponse,
     ApiError,
-    ChannelConnectorsSaveNativeConfigRequest
+    ChannelConnectorsV3ConfigPlanRequest
   >({
-    mutationFn: (payload) => saveChannelConnectorsConfig(payload),
+    mutationFn: (payload) => planChannelConnectorsV3Config(payload),
     ...options,
-    onSuccess: (...args) => {
-      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.config() });
-      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.status() });
-      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonConfig() });
-      options?.onSuccess?.(...args);
-    },
   });
 }
 
-/** Save native config and apply it to the daemon with server-side rollback. */
-export function useApplyChannelConnectorsConfigMutation(
+export function useApplyChannelConnectorsV3ConfigMutation(
   options?: MutationOpts<
-    ChannelConnectorsApplyNativeConfigResponse,
-    ChannelConnectorsApplyNativeConfigRequest
+    ChannelConnectorsV3ConfigApplyResponse,
+    ChannelConnectorsV3ConfigApplyRequest
   >,
 ) {
   const queryClient = useQueryClient();
   return useMutation<
-    ChannelConnectorsApplyNativeConfigResponse,
+    ChannelConnectorsV3ConfigApplyResponse,
     ApiError,
-    ChannelConnectorsApplyNativeConfigRequest
+    ChannelConnectorsV3ConfigApplyRequest
   >({
-    mutationFn: (payload) => applyChannelConnectorsConfig(payload),
+    mutationFn: (payload) => applyChannelConnectorsV3Config(payload),
     ...options,
     onSuccess: (...args) => {
-      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.config() });
+      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.v3Config() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.status() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonConfig() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonService() });
       options?.onSuccess?.(...args);
     },
+  });
+}
+
+export function usePreviewChannelConnectorV3RoutingMutation(
+  options?: MutationOpts<
+    ChannelConnectorV3RoutingPreviewResponse,
+    ChannelConnectorV3RoutingPreviewRequest
+  >,
+) {
+  return useMutation<
+    ChannelConnectorV3RoutingPreviewResponse,
+    ApiError,
+    ChannelConnectorV3RoutingPreviewRequest
+  >({
+    mutationFn: (payload) => previewChannelConnectorV3Routing(payload),
+    ...options,
   });
 }
 

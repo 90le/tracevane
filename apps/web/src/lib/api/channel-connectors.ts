@@ -1,7 +1,7 @@
 import { apiRequest } from "./client";
 import type {
   ChannelConnectorAgentSessionActionRequest,
-  ChannelConnectorBindingSecretsResponse,
+  ChannelConnectorAccountSecretsResponse,
   ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorCommandActionRequest,
   ChannelConnectorCommandActionResponse,
@@ -14,13 +14,16 @@ import type {
   ChannelConnectorOctoTransportSmokeRequest,
   ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorsDaemonConfigResponse,
-  ChannelConnectorsApplyNativeConfigRequest,
-  ChannelConnectorsApplyNativeConfigResponse,
   ChannelConnectorsDaemonRequest,
   ChannelConnectorsDaemonResponse,
   ChannelConnectorsLogsResponse,
-  ChannelConnectorsNativeConfigResponse,
-  ChannelConnectorsSaveNativeConfigRequest,
+  ChannelConnectorsV3ConfigResponse,
+  ChannelConnectorsV3ConfigPlanRequest,
+  ChannelConnectorsV3ConfigPlanResponse,
+  ChannelConnectorsV3ConfigApplyRequest,
+  ChannelConnectorsV3ConfigApplyResponse,
+  ChannelConnectorV3RoutingPreviewRequest,
+  ChannelConnectorV3RoutingPreviewResponse,
   ChannelConnectorsStatusResponse,
 } from "../../features/channel-connectors/types";
 
@@ -53,23 +56,43 @@ export function getChannelConnectorsStatus(
 }
 
 // ---------------------------------------------------------------------------
-// Native config (bindings + agent profiles)
+// v3 resources (accounts + Agent workspaces + delivery policies)
 // ---------------------------------------------------------------------------
 
-/** GET /api/channel-connectors/config */
-export function getChannelConnectorsConfig(
+/** GET /api/channel-connectors/config/v3 */
+export function getChannelConnectorsV3Config(
   signal?: AbortSignal,
-): Promise<ChannelConnectorsNativeConfigResponse> {
-  return apiRequest<ChannelConnectorsNativeConfigResponse>(`${BASE}/config`, { signal });
+): Promise<ChannelConnectorsV3ConfigResponse> {
+  return apiRequest<ChannelConnectorsV3ConfigResponse>(`${BASE}/config/v3`, { signal });
 }
 
-/** GET /api/channel-connectors/config/bindings/:bindingId/secrets */
-export function getChannelConnectorBindingSecrets(
-  bindingId: string,
+/** POST /api/channel-connectors/config/v3/plan */
+export function planChannelConnectorsV3Config(
+  payload: ChannelConnectorsV3ConfigPlanRequest,
+): Promise<ChannelConnectorsV3ConfigPlanResponse> {
+  return apiRequest<ChannelConnectorsV3ConfigPlanResponse>(`${BASE}/config/v3/plan`, {
+    method: "POST",
+    body: jsonBody(payload),
+  });
+}
+
+/** PUT /api/channel-connectors/config/v3/apply */
+export function applyChannelConnectorsV3Config(
+  payload: ChannelConnectorsV3ConfigApplyRequest,
+): Promise<ChannelConnectorsV3ConfigApplyResponse> {
+  return apiRequest<ChannelConnectorsV3ConfigApplyResponse>(`${BASE}/config/v3/apply`, {
+    method: "PUT",
+    body: jsonBody(payload),
+  });
+}
+
+/** GET /api/channel-connectors/config/v3/accounts/:accountId/secrets */
+export function getChannelConnectorAccountSecrets(
+  accountId: string,
   signal?: AbortSignal,
-): Promise<ChannelConnectorBindingSecretsResponse> {
-  return apiRequest<ChannelConnectorBindingSecretsResponse>(
-    `${BASE}/config/bindings/${encodeURIComponent(bindingId)}/secrets`,
+): Promise<ChannelConnectorAccountSecretsResponse> {
+  return apiRequest<ChannelConnectorAccountSecretsResponse>(
+    `${BASE}/config/v3/accounts/${encodeURIComponent(accountId)}/secrets`,
     {
       signal,
       headers: { "X-Tracevane-Secret-Reveal": "account-editor" },
@@ -77,23 +100,13 @@ export function getChannelConnectorBindingSecrets(
   );
 }
 
-/** PUT /api/channel-connectors/config — replace the native config document. */
-export function saveChannelConnectorsConfig(
-  payload: ChannelConnectorsSaveNativeConfigRequest,
-): Promise<ChannelConnectorsNativeConfigResponse> {
-  return apiRequest<ChannelConnectorsNativeConfigResponse>(`${BASE}/config`, {
-    method: "PUT",
-    body: jsonBody(payload),
-  });
-}
-
-/** PUT /api/channel-connectors/config/apply — save, reload, and roll back failed live changes. */
-export function applyChannelConnectorsConfig(
-  payload: ChannelConnectorsApplyNativeConfigRequest,
-): Promise<ChannelConnectorsApplyNativeConfigResponse> {
-  return apiRequest<ChannelConnectorsApplyNativeConfigResponse>(
-    `${BASE}/config/apply`,
-    { method: "PUT", body: jsonBody(payload) },
+/** POST /api/channel-connectors/config/v3/routing-preview */
+export function previewChannelConnectorV3Routing(
+  payload: ChannelConnectorV3RoutingPreviewRequest,
+): Promise<ChannelConnectorV3RoutingPreviewResponse> {
+  return apiRequest<ChannelConnectorV3RoutingPreviewResponse>(
+    `${BASE}/config/v3/routing-preview`,
+    { method: "POST", body: jsonBody(payload) },
   );
 }
 

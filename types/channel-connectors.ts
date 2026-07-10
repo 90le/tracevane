@@ -934,6 +934,8 @@ export interface ChannelConnectorAgentSessionPolicyConfig {
 
 export interface ChannelConnectorsDaemonRuntimeConfig {
   version: 1;
+  /** The v3 control-plane snapshot used by the deterministic data-plane resolver. */
+  deliveryConfig: ChannelConnectorsV3Config;
   management: {
     host: string;
     port: number;
@@ -951,6 +953,7 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
     clientKeyRef: "tracevane-gateway-client-key";
   };
   agentSessionPolicy: ChannelConnectorAgentSessionPolicyConfig;
+  /** Runtime-only projection of v3 targets and account routes. It is never persisted as product config. */
   projects: Array<{
     id: string;
     name: string;
@@ -1005,95 +1008,274 @@ export interface ChannelConnectorPlatformBinding {
   metadata?: Record<string, unknown>;
 }
 
-export interface ChannelConnectorPlatformAccount {
+export type ChannelConnectorAccountLifecycle = "draft" | "enabled" | "disabled";
+export type ChannelConnectorDeliveryPeerKind = "private" | "group" | "channel";
+export type ChannelConnectorDeliverySessionMode = "persistent" | "one-shot";
+
+export interface ChannelConnectorAccountSecurityPolicy {
+  allowPrivateAttachmentUrls: boolean;
+  allowedAttachmentHosts: string[];
+}
+
+/** Platform identity and transport state. Agent execution fields must not live here. */
+export interface ChannelConnectorAccount {
   id: string;
   platform: ChannelConnectorPlatformId;
   displayName: string;
-  enabled: boolean;
-  externalAccountId: string;
+  lifecycle: ChannelConnectorAccountLifecycle;
+  externalAccountId: string | null;
   botId: string | null;
   credentials: Record<string, unknown>;
-  settings: Record<string, unknown>;
+  transport: Record<string, unknown>;
+  security: ChannelConnectorAccountSecurityPolicy;
+  advanced: Record<string, unknown>;
 }
 
-export interface ChannelConnectorRoute {
+/** A reusable Agent runtime plus one explicit workspace and execution policy. */
+export interface ChannelConnectorDeliveryTarget {
   id: string;
-  accountRef: string;
-  displayName: string;
+  name: string;
   enabled: boolean;
-  source: {
-    kind: string;
-    id: string;
+  runtime: {
+    agent: ChannelConnectorRuntimeAgentId;
+    appProfileRef: string;
+    gatewayEndpoint: string;
+    gatewayKeyRef: "tracevane-gateway-client-key";
   };
-  agentProfileId: string;
-  overrides: {
-    agent: ChannelConnectorAgentId | null;
+  workspace: {
+    workDir: string;
+  };
+  execution: {
     model: string | null;
-    workDir: string | null;
-    permissionMode: ChannelConnectorPermissionMode | null;
+    reasoningEffort: ChannelConnectorReasoningEffort | null;
+    permissionMode: ChannelConnectorPermissionMode;
+    workspaceConcurrency: number;
+    queueLimit: number;
   };
-  accessPolicy: {
-    allowlist: string[];
-    adminUsers: string[];
+  governance: {
     disabledCommands: string[];
   };
-  sessionPolicy: {
-    mode: string;
-    busyGuard: boolean;
-    attachmentStaging: boolean;
+}
+
+export interface ChannelConnectorDeliverySessionPolicy {
+  mode: ChannelConnectorDeliverySessionMode;
+  busyGuard: boolean;
+  attachmentStaging: boolean;
+}
+
+export interface ChannelConnectorDeliveryAccessPolicy {
+  allowlist: string[];
+  adminUsers: string[];
+  disabledCommands: string[];
+  mentionRequired: boolean;
+}
+
+/** Rule overrides may only narrow access and add denied commands. */
+export interface ChannelConnectorRestrictiveAccessPolicy {
+  allowlist?: string[];
+  disabledCommands?: string[];
+  mentionRequired?: true;
+}
+
+export interface ChannelConnectorSourceRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  match: {
+    peer: {
+      kind: ChannelConnectorDeliveryPeerKind;
+      id?: string;
+    };
+    threadId?: string;
+    senderId?: string;
+    mentionRequired?: true;
   };
+  targetRef: string;
+  sessionPolicy?: Partial<ChannelConnectorDeliverySessionPolicy>;
+  accessPolicy?: ChannelConnectorRestrictiveAccessPolicy;
 }
 
-export interface ChannelConnectorsNativeConfig {
-  version: 2;
+export interface ChannelConnectorDeliveryPolicy {
+  id: string;
+  accountRef: string;
+  defaultTargetRef: string;
+  defaultSessionPolicy: ChannelConnectorDeliverySessionPolicy;
+  defaultAccessPolicy: ChannelConnectorDeliveryAccessPolicy;
+  rules: ChannelConnectorSourceRule[];
+}
+
+export interface ChannelConnectorsV3Config {
+  version: 3;
   updatedAt: string;
-  defaultAgentProfileId: string;
   agentSessionPolicy: ChannelConnectorAgentSessionPolicyConfig;
-  agentProfiles: ChannelConnectorAgentProfile[];
-  platformAccounts: ChannelConnectorPlatformAccount[];
-  routes: ChannelConnectorRoute[];
-  /** Runtime compatibility view materialized from platformAccounts + routes. */
-  platformBindings: ChannelConnectorPlatformBinding[];
+  accounts: ChannelConnectorAccount[];
+  targets: ChannelConnectorDeliveryTarget[];
+  deliveryPolicies: ChannelConnectorDeliveryPolicy[];
 }
 
-export interface ChannelConnectorsNativeConfigResponse {
+export interface ChannelConnectorIngressRoutingContext {
+  accountId: string;
+  peer: {
+    kind: ChannelConnectorDeliveryPeerKind;
+    id: string;
+  };
+  senderId: string;
+  threadId: string | null;
+  botMentioned: boolean;
+}
+
+export interface ChannelConnectorIngressEnvelope {
+  eventId: string;
+  eventType: string;
+  messageId: string | null;
+  accountId: string;
+  platform: "feishu" | "octo";
+  peer: {
+    kind: ChannelConnectorDeliveryPeerKind;
+    id: string;
+  };
+  senderId: string;
+  threadId: string | null;
+  mentions: string[];
+  content: {
+    text: string;
+  };
+  attachments: ChannelConnectorInboundAttachment[];
+  receivedAt: string;
+  rawRef: string | null;
+}
+
+export interface ChannelConnectorDeliveryAccessDecision {
+  allowed: boolean;
+  reason: "allowed" | "sender_not_allowed" | "mention_required";
+  admin: boolean;
+  allowlist: string[];
+  disabledCommands: string[];
+  mentionRequired: boolean;
+}
+
+export interface ChannelConnectorDeliveryResolution {
+  accountId: string;
+  policyId: string;
+  matchedBy: "default" | "rule";
+  ruleId: string | null;
+  targetId: string;
+  targetRevision: string;
+  sessionPolicy: ChannelConnectorDeliverySessionPolicy;
+  accessDecision: ChannelConnectorDeliveryAccessDecision;
+  explanation: string;
+}
+
+export type ChannelConnectorDeliveryResolutionErrorCode =
+  | "account_not_found"
+  | "account_disabled"
+  | "policy_not_found"
+  | "target_not_found"
+  | "target_disabled";
+
+export type ChannelConnectorDeliveryResolutionResult =
+  | {
+      ok: true;
+      resolution: ChannelConnectorDeliveryResolution;
+    }
+  | {
+      ok: false;
+      code: ChannelConnectorDeliveryResolutionErrorCode;
+      message: string;
+    };
+
+export type ChannelConnectorV3ValidationIssueCode =
+  | "duplicate_id"
+  | "duplicate_account_identity"
+  | "duplicate_rule_match"
+  | "enabled_account_missing_identity"
+  | "enabled_account_missing_policy"
+  | "invalid_value"
+  | "invalid_reference"
+  | "invalid_rule_match"
+  | "invalid_target"
+  | "non_restrictive_access_override"
+  | "secret_outside_account";
+
+export interface ChannelConnectorV3ValidationIssue {
+  code: ChannelConnectorV3ValidationIssueCode;
+  path: string;
+  message: string;
+}
+
+export interface ChannelConnectorsV3ConfigResponse {
   ok: true;
   checkedAt: string;
   configPath: string;
-  config: ChannelConnectorsNativeConfig;
-  supportedAgents: ChannelConnectorAgentId[];
-  supportedPlatforms: ChannelConnectorPlatformId[];
-  permissionModes: ChannelConnectorPermissionMode[];
+  revision: string;
+  config: ChannelConnectorsV3Config;
+  validationIssues: ChannelConnectorV3ValidationIssue[];
+  canApply: boolean;
 }
 
-export interface ChannelConnectorsSaveNativeConfigRequest {
-  config?: ChannelConnectorsNativeConfig;
+export interface ChannelConnectorsV3SemanticDiff {
+  accountsAdded: string[];
+  accountsRemoved: string[];
+  accountsReconnected: string[];
+  resolverAccountsChanged: string[];
+  targetsAdded: string[];
+  targetsRemoved: string[];
+  targetsChanged: string[];
+  existingSessionsAffected: number;
+  requiresDaemonReload: boolean;
 }
 
-export interface ChannelConnectorsApplyNativeConfigRequest
-  extends ChannelConnectorsSaveNativeConfigRequest {
-  expectedUpdatedAt?: string | null;
+export interface ChannelConnectorsV3ConfigPlanRequest {
+  config?: ChannelConnectorsV3Config;
+  expectedRevision?: string | null;
+}
+
+export interface ChannelConnectorsV3ConfigPlanResponse {
+  ok: boolean;
+  checkedAt: string;
+  planId: string | null;
+  currentRevision: string;
+  expiresAt: string | null;
+  config: ChannelConnectorsV3Config;
+  validationIssues: ChannelConnectorV3ValidationIssue[];
+  diff: ChannelConnectorsV3SemanticDiff;
+}
+
+export interface ChannelConnectorsV3ConfigApplyRequest {
+  planId?: string | null;
+  config?: ChannelConnectorsV3Config;
   reloadMode?: ChannelConnectorsDaemonReloadMode;
   rollbackOnFailure?: boolean;
 }
 
-export interface ChannelConnectorsApplyNativeConfigResponse {
+export interface ChannelConnectorsV3ConfigApplyResponse {
   ok: boolean;
   checkedAt: string;
   accepted: boolean;
   persisted: boolean;
-  daemonReachableBefore: boolean;
   rolledBack: boolean;
-  config: ChannelConnectorsNativeConfig;
+  config: ChannelConnectorsV3Config;
+  revision: string;
   reload: ChannelConnectorsDaemonReloadResponse;
   rollbackReload: ChannelConnectorsDaemonReloadResponse | null;
   error: string | null;
 }
 
-export interface ChannelConnectorBindingSecretsResponse {
+export interface ChannelConnectorV3RoutingPreviewRequest {
+  context?: ChannelConnectorIngressRoutingContext;
+  config?: ChannelConnectorsV3Config;
+}
+
+export interface ChannelConnectorV3RoutingPreviewResponse {
   ok: true;
   checkedAt: string;
-  bindingId: string;
+  result: ChannelConnectorDeliveryResolutionResult;
+}
+
+export interface ChannelConnectorAccountSecretsResponse {
+  ok: true;
+  checkedAt: string;
+  accountId: string;
   secrets: Record<string, string>;
 }
 
@@ -1354,6 +1536,8 @@ export interface ChannelConnectorsDaemonRuntimeAutoCompactRecord {
 
 export interface ChannelConnectorsDaemonRuntimeFeishuConnectionStatus {
   key: string;
+  accountId: string;
+  externalAccountId: string;
   bindingIds: string[];
   connected: boolean;
   state: string;
@@ -1382,7 +1566,9 @@ export interface ChannelConnectorsDaemonRuntimeFeishuConnectionStatus {
 
 export interface ChannelConnectorsDaemonRuntimeOctoConnectionStatus {
   bindingId: string;
+  bindingIds: string[];
   accountId: string;
+  externalAccountId: string;
   botId: string | null;
   robotId: string | null;
   connected: boolean;
@@ -1436,6 +1622,24 @@ export interface ChannelConnectorsDaemonRuntimePendingAgentRunStatus {
   recentEvents: ChannelConnectorsDaemonRuntimePendingAgentRunEvent[];
 }
 
+export interface ChannelConnectorsDaemonRuntimeReplyOutboxDeadLetter {
+  id: string;
+  platform: "feishu" | "octo";
+  accountId: string;
+  sourceMessageId: string;
+  attempts: number;
+  updatedAt: string;
+  lastError: string | null;
+}
+
+export interface ChannelConnectorsDaemonRuntimeReplyOutboxStatus {
+  pending: number;
+  delivered: number;
+  deadLetter: number;
+  oldestPendingAt: string | null;
+  recentDeadLetters: ChannelConnectorsDaemonRuntimeReplyOutboxDeadLetter[];
+}
+
 export interface ChannelConnectorsDaemonRuntimeStatus {
   ok: boolean;
   checkedAt: string;
@@ -1452,6 +1656,14 @@ export interface ChannelConnectorsDaemonRuntimeStatus {
   agentRuns: number | null;
   autoCompacts: ChannelConnectorsDaemonRuntimeAutoCompactRecord[];
   pendingAgentRuns: ChannelConnectorsDaemonRuntimePendingAgentRunStatus;
+  replyOutbox: ChannelConnectorsDaemonRuntimeReplyOutboxStatus;
+  ingressQueue: {
+    activeAccounts: number;
+    queued: number;
+    completed: number;
+    failed: number;
+    duplicates: number;
+  } | null;
   reload: ChannelConnectorsDaemonReloadState | null;
   error: string | null;
 }

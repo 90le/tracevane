@@ -284,6 +284,19 @@
       min-width: 0;
       max-width: 100%;
     }
+    .tv-table td[data-label] {
+      display: grid;
+      grid-template-columns: minmax(84px, 0.34fr) minmax(0, 1fr);
+      align-items: start;
+      gap: 10px;
+    }
+    .tv-table td[data-label]::before {
+      content: attr(data-label);
+      padding-top: 2px;
+      color: var(--subtle);
+      font-size: 12px;
+      font-weight: 600;
+    }
     .tv-table td:empty { display: none; }
     .tv-table td > .justify-end { justify-content: flex-start; }
   }

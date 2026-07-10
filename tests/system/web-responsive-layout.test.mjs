@@ -85,7 +85,7 @@ test("overview surfaces use metric rails and route tables instead of card walls"
     "apps/web/src/features/model-gateway/views/OverviewView.tsx",
   );
   const channelOverview = read(
-    "apps/web/src/features/channel-connectors/views/OverviewView.tsx",
+    "apps/web/src/features/channel-connectors/views/V3OverviewView.tsx",
   );
   const cliShared = read("apps/web/src/features/cli-agents/views/_shared.tsx");
   const cliRuns = read("apps/web/src/features/cli-agents/views/RunsView.tsx");
@@ -102,7 +102,7 @@ test("overview surfaces use metric rails and route tables instead of card walls"
   );
   assert.match(
     channelOverview,
-    /<dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4">/,
+    /<div className="mt-4 grid grid-cols-2 overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-5">/,
   );
   assert.doesNotMatch(
     channelOverview,

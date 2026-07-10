@@ -17,10 +17,11 @@ import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 import { toast } from "@/design/ui/sonner";
 
 import {
-  useApplyChannelConnectorsConfigMutation,
+  useApplyChannelConnectorsV3ConfigMutation,
   useChannelConnectorsAgentSessionsQuery,
-  useChannelConnectorsConfigQuery,
+  useChannelConnectorsV3ConfigQuery,
   useManageChannelConnectorsAgentSessionsMutation,
+  usePlanChannelConnectorsV3ConfigMutation,
 } from "@/lib/query/channel-connectors";
 import type {
   ChannelConnectorAgentSessionDriverBindingStatus,
@@ -281,9 +282,10 @@ function formatIdle(idleMs: number): string {
 
 export function SessionsView(_props: ChannelConnectorsViewProps) {
   const sessionsQuery = useChannelConnectorsAgentSessionsQuery();
-  const configQuery = useChannelConnectorsConfigQuery();
+  const configQuery = useChannelConnectorsV3ConfigQuery();
   const manageMutation = useManageChannelConnectorsAgentSessionsMutation();
-  const applyConfigMutation = useApplyChannelConnectorsConfigMutation();
+  const planConfigMutation = usePlanChannelConnectorsV3ConfigMutation();
+  const applyConfigMutation = useApplyChannelConnectorsV3ConfigMutation();
 
   const [confirm, setConfirm] = React.useState<
     | null
@@ -331,7 +333,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       : runtimeMatchesDraft
         ? { variant: "ok" as const, label: "运行中已同步" }
         : { variant: "warn" as const, label: "已保存，需重启" };
-  const pending = manageMutation.isPending || applyConfigMutation.isPending;
+  const pending = manageMutation.isPending || planConfigMutation.isPending || applyConfigMutation.isPending;
 
   if (sessionsQuery.isLoading || configQuery.isLoading) {
     return (
@@ -366,42 +368,63 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   const savePolicy = () => {
     if (!config) return;
     setPolicyNotice({ tone: "warn", text: "正在保存策略并按空闲状态应用到消息守护……" });
-    applyConfigMutation.mutate(
+    const candidate = {
+      ...config,
+      updatedAt: new Date().toISOString(),
+      agentSessionPolicy: policyDraft,
+    };
+    planConfigMutation.mutate(
       {
-        expectedUpdatedAt: config.updatedAt,
-        reloadMode: "when-idle",
-        rollbackOnFailure: true,
-        config: {
-          ...config,
-          updatedAt: new Date().toISOString(),
-          agentSessionPolicy: policyDraft,
-        },
+        expectedRevision: configQuery.data?.revision,
+        config: candidate,
       },
       {
-        onSuccess: (result) => {
-          const savedPolicy = result.config.agentSessionPolicy ?? policyDraft;
-          setPolicyDraft(savedPolicy);
-          void configQuery.refetch();
-          const reload = result.reload;
-          if (reload.status === "applied") {
-            setPolicyNotice({ tone: "ok", text: "策略已保存并热重载，新的并发与队列限制已生效。" });
-            toast.success("策略已保存并应用");
-          } else if (reload.status === "pending") {
-            setPolicyNotice({ tone: "warn", text: `策略已保存；当前有 ${reload.activeRuns + reload.activeTurns} 个任务/turn，结束后自动热重载。` });
-            toast.info("策略等待任务结束后应用");
-          } else if (reload.status === "restart-required") {
-            setPolicyNotice({ tone: "warn", text: `策略已保存，需要重启消息守护：${reload.restartRequiredReason || "运行时边界变化"}` });
-            toast.warning("策略已保存，需要重启消息守护");
-          } else if (result.rolledBack) {
-            setPolicyNotice({ tone: "bad", text: `策略应用失败，已自动恢复上一版本：${reload.error || "daemon reload failed"}` });
-            toast.error("策略应用失败，已自动回滚");
-          } else {
-            setPolicyNotice({ tone: "warn", text: `策略已保存；消息守护离线，启动后生效：${reload.error || "daemon unavailable"}` });
-            toast.warning("策略已保存，等待消息守护启动");
+        onSuccess: (plan) => {
+          if (!plan.ok || !plan.planId) {
+            const message = plan.validationIssues.map((issue) => issue.message).join("；") || "配置未通过校验";
+            setPolicyNotice({ tone: "bad", text: message });
+            toast.error("会话策略校验失败", { description: message });
+            return;
           }
-          if (!result.rolledBack) setPolicyEditing(false);
-          void sessionsQuery.refetch();
-          window.setTimeout(() => void sessionsQuery.refetch(), 1200);
+          applyConfigMutation.mutate(
+            {
+              planId: plan.planId,
+              config: candidate,
+              reloadMode: "when-idle",
+              rollbackOnFailure: true,
+            },
+            {
+              onSuccess: (result) => {
+                const savedPolicy = result.config.agentSessionPolicy ?? policyDraft;
+                setPolicyDraft(savedPolicy);
+                void configQuery.refetch();
+                const reload = result.reload;
+                if (reload.status === "applied") {
+                  setPolicyNotice({ tone: "ok", text: "策略已保存并热重载，新的并发与队列限制已生效。" });
+                  toast.success("策略已保存并应用");
+                } else if (reload.status === "pending") {
+                  setPolicyNotice({ tone: "warn", text: `策略已保存；当前有 ${reload.activeRuns + reload.activeTurns} 个任务/turn，结束后自动热重载。` });
+                  toast.info("策略等待任务结束后应用");
+                } else if (reload.status === "restart-required") {
+                  setPolicyNotice({ tone: "warn", text: `策略已保存，需要重启消息守护：${reload.restartRequiredReason || "运行时边界变化"}` });
+                  toast.warning("策略已保存，需要重启消息守护");
+                } else if (result.rolledBack) {
+                  setPolicyNotice({ tone: "bad", text: `策略应用失败，已自动恢复上一版本：${reload.error || "daemon reload failed"}` });
+                  toast.error("策略应用失败，已自动回滚");
+                } else {
+                  setPolicyNotice({ tone: "warn", text: `策略已保存；消息守护离线，启动后生效：${reload.error || "daemon unavailable"}` });
+                  toast.warning("策略已保存，等待消息守护启动");
+                }
+                if (!result.rolledBack) setPolicyEditing(false);
+                void sessionsQuery.refetch();
+                window.setTimeout(() => void sessionsQuery.refetch(), 1200);
+              },
+              onError: (error) => {
+                setPolicyNotice({ tone: "bad", text: `保存并发策略失败：${error.message}` });
+                toast.error("保存并发策略失败", { description: error.message });
+              },
+            },
+          );
         },
         onError: (error) => {
           setPolicyNotice({ tone: "bad", text: `保存并发策略失败：${error.message}` });

@@ -13,7 +13,7 @@ const channelTypes = read('types/channels.ts');
 const navigation = read('apps/web/src/app/navigation.ts');
 const modelGatewayPage = read('apps/web/src/features/model-gateway/ModelGatewayPage.tsx');
 const imChannelsPage = read('apps/web/src/features/channel-connectors/ChannelConnectorsPage.tsx');
-const imChannelsAccounts = read('apps/web/src/features/channel-connectors/views/AccountsView.tsx');
+const imChannelsAccounts = read('apps/web/src/features/channel-connectors/views/V3AccountsView.tsx');
 
 test('channel field descriptors expose metadata for select inputs and helper copy', () => {
   assert.match(channelTypes, /export type ChannelFieldInputType = 'text' \| 'textarea' \| 'number' \| 'boolean' \| 'stringList' \| 'select';/);
@@ -27,14 +27,14 @@ test('channel field descriptors expose metadata for select inputs and helper cop
 });
 
 test('connector surfaces keep gateway and IM channel routes separate', () => {
-  assert.match(navigation, /path:\s*["']\/model-gateway["'][\s\S]*?group:\s*["']连接["']/);
-  assert.match(navigation, /path:\s*["']\/im-channels["'][\s\S]*?group:\s*["']连接["']/);
+  assert.match(navigation, /path:\s*["']\/model-gateway["'][\s\S]*?group:\s*["']接入["']/);
+  assert.match(navigation, /path:\s*["']\/im-channels["'][\s\S]*?group:\s*["']接入["']/);
   assert.match(modelGatewayPage, /Provider|Gateway|OpenAI/i);
   assert.match(imChannelsPage, /IM|Channel|渠道|平台账号/i);
 });
 
 test('connector implementation does not expose raw credential fields in list views', () => {
   assert.doesNotMatch(modelGatewayPage, /credentialValues|sk-[A-Za-z0-9]/);
-  assert.match(imChannelsAccounts, /已脱敏保存|凭据|credentialState/);
+  assert.match(imChannelsAccounts, /渠道账号|密钥|credentials/);
   assert.doesNotMatch(imChannelsAccounts, /credentialValues|tokenSecret|sk-[A-Za-z0-9]/);
 });

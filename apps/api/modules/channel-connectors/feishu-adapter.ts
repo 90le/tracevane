@@ -128,8 +128,8 @@ export function buildFeishuConversationScopeId(
   const chatType = normalizeString(input.chatType).toLowerCase();
   const isGroup = chatType === "group" || chatType === "topic_group" || chatType.includes("group");
   if (isGroup) {
-    const legacyThreadScope = options.threadIsolation === false ? "group" : "group_topic";
-    const groupSessionScope = options.groupSessionScope || legacyThreadScope;
+    const defaultThreadScope = options.threadIsolation === false ? "group" : "group_topic";
+    const groupSessionScope = options.groupSessionScope || defaultThreadScope;
     const rootId = normalizeString(input.rootId);
     const threadId = normalizeString(input.threadId);
     const parentId = normalizeString(input.parentId);

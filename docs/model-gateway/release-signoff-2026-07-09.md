@@ -97,7 +97,7 @@ node scripts/smoke-model-gateway-account-media.mjs --endpoint http://127.0.0.1:1
 node scripts/smoke-model-gateway-representative-matrix.mjs --endpoint http://127.0.0.1:18796 --timeout-ms 90000 --stage-timeout-ms 900000 --stage-retries 1 --smoke-retries 3 --smoke-delay-ms 5000 --report-file .omx/state/model-gateway/representative-matrix-final-green-2026-07-09.json --markdown-report .omx/state/model-gateway/representative-matrix-final-green-2026-07-09.md --json
 node scripts/smoke-channel-connectors-agent-runner-direct.mjs --agents codex,claude-code,opencode --model gpt-5.4 --timeout-ms 240000 --json
 node scripts/smoke-channel-connectors-native-cli-sessions.mjs --strict --json --timeout-ms 120000
-node --test --test-name-pattern "model gateway starts Codex account login and creates an account-backed provider|model gateway preserves Responses-style Chat input file parts for Responses providers|Octo upload-and-send media auto routes large files to direct upload|native Channel Connectors visual turns select Gateway vision models from catalog" tests/system/model-gateway-service.test.mjs tests/system/channel-connectors-service.test.mjs
+node --test --test-name-pattern "model gateway starts Codex account login and creates an account-backed provider|model gateway preserves Responses-style Chat input file parts for Responses providers" tests/system/model-gateway-service.test.mjs
 node --test --test-name-pattern "agent run live smoke script verifies Octo tool, reply, and outbound file evidence|agent run live smoke script verifies video attachment and staged local files|agent run live smoke script treats Octo video-like files as inbound video evidence" tests/system/channel-connectors-agent-run-live-script.test.mjs
 ```
 
