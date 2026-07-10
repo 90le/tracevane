@@ -967,6 +967,9 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.equal(poll.body.provider.accountProvider.accounts[0].plan, "plus");
       assert.deepEqual(poll.body.provider.models.models.map((model) => model.id), [
         "gpt-5.5",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
         "gpt-5.4",
         "gpt-5.4-mini",
         "gpt-5.3-codex",
@@ -2424,6 +2427,65 @@ test("model gateway repairs stale raw Codex account catalog budgets on startup",
   assert.deepEqual(rawCodex.failover, { enabled: true, priority: 20, maxRetries: 1 });
   assert.equal(rawCodex.health.circuitState, "closed");
   assert.ok(raw.providers.find((item) => item.id === "legacy-raw-provider"));
+});
+
+test("model gateway preserves Codex catalog edits and GPT-5.6 models across reload", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const provider = {
+    id: "codex-catalog-edits",
+    name: "Codex Catalog Edits",
+    enabled: true,
+    category: "official",
+    sourceType: "account-backed",
+    appScopes: ["codex"],
+    baseUrl: "https://chatgpt.com/backend-api/codex",
+    apiFormat: "openai_responses",
+    authStrategy: "oauth_proxy",
+    models: {
+      defaultModel: "gpt-5.6-sol",
+      models: [
+        { id: "gpt-5.5", aliases: [], contextWindow: 272000, maxOutputTokens: 128000 },
+        { id: "gpt-5.6-sol", aliases: [], contextWindow: 1000000, maxOutputTokens: 128000 },
+        { id: "gpt-5.6-terra", aliases: ["terra-custom"], contextWindow: 1000000, maxOutputTokens: 128000 },
+        { id: "gpt-5.6-luna", aliases: [], contextWindow: 1000000, maxOutputTokens: 128000 },
+        { id: "provider-custom-model", aliases: ["custom"], contextWindow: 64000, maxOutputTokens: 8192 },
+      ],
+      aliases: {},
+    },
+    accountProvider: {
+      kind: "codex",
+      routing: { strategy: "round-robin", sessionAffinity: true, maxConcurrentPerAccount: null },
+      accounts: [],
+    },
+  };
+
+  const firstService = createModelGatewayService(config);
+  firstService.upsertProvider(undefined, { provider, setActiveScopes: ["codex"] });
+
+  const secondService = createModelGatewayService(config);
+  const reloaded = secondService.listProviders().providers.find((item) => item.id === provider.id);
+  assert.ok(reloaded);
+  const models = new Map(reloaded.models.models.map((model) => [model.id, model]));
+  for (const id of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+    assert.equal(models.get(id)?.contextWindow, 1000000);
+    assert.equal(models.get(id)?.maxOutputTokens, 128000);
+  }
+  assert.deepEqual(models.get("gpt-5.5")?.aliases, []);
+  assert.deepEqual(models.get("gpt-5.6-sol")?.aliases, []);
+  assert.deepEqual(models.get("gpt-5.6-terra")?.aliases, ["terra-custom"]);
+  assert.deepEqual(models.get("gpt-5.6-luna")?.aliases, []);
+  assert.equal(models.get("provider-custom-model")?.contextWindow, 64000);
+  assert.deepEqual(models.get("provider-custom-model")?.aliases, ["custom"]);
+
+  const raw = JSON.parse(fs.readFileSync(paths.registry, "utf8"));
+  const persisted = raw.providers.find((item) => item.id === provider.id);
+  assert.deepEqual(persisted.models.models.find((model) => model.id === "gpt-5.5")?.aliases, []);
+  assert.ok(persisted.models.models.some((model) => model.id === "gpt-5.6-sol"));
+  assert.ok(persisted.models.models.some((model) => model.id === "gpt-5.6-terra"));
+  assert.ok(persisted.models.models.some((model) => model.id === "gpt-5.6-luna"));
+  assert.ok(persisted.models.models.some((model) => model.id === "provider-custom-model"));
 });
 
 test("model gateway treats Codex context length responses as request-scoped failures", async () => {

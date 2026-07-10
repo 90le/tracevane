@@ -2700,6 +2700,42 @@ function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
       },
     },
     {
+      id: "gpt-5.6-sol",
+      label: "GPT-5.6 Sol",
+      contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
+      features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+      pricing: {
+        currency: "USD",
+        inputPer1M: 5,
+        outputPer1M: 30,
+      },
+    },
+    {
+      id: "gpt-5.6-terra",
+      label: "GPT-5.6 Terra",
+      contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
+      features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+      pricing: {
+        currency: "USD",
+        inputPer1M: 2.5,
+        outputPer1M: 15,
+      },
+    },
+    {
+      id: "gpt-5.6-luna",
+      label: "GPT-5.6 Luna",
+      contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
+      features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+      pricing: {
+        currency: "USD",
+        inputPer1M: 1,
+        outputPer1M: 6,
+      },
+    },
+    {
       id: "gpt-5.4",
       aliases: ["gpt5.4"],
       contextWindow: 1_000_000,
@@ -2961,10 +2997,11 @@ function mergeModelCatalogWithDefaults(
       });
       continue;
     }
-    const aliases = [
-      ...(defaultModel.aliases || []),
-      ...(existing.aliases || []),
-    ].filter((alias, index, list) => alias && list.indexOf(alias) === index);
+    // Once a model exists in the persisted catalog, its aliases are user data.
+    // Do not re-add a built-in alias after the user explicitly cleared it.
+    const aliases = [...(existing.aliases || [])].filter(
+      (alias, index, list) => alias && list.indexOf(alias) === index,
+    );
     modelsByKey.set(key, {
       ...defaultModel,
       ...existing,
@@ -2994,15 +3031,22 @@ function mergeManagedModelCatalogWithDefaults(
   defaults: ModelGatewayProviderModelCatalog,
 ): ModelGatewayProviderModelCatalog {
   const defaultKeys = new Set((defaults.models || []).map((model) => normalizeModelLookupKey(model.id)).filter(Boolean));
+  const catalogModels = catalog?.models || [];
+  const catalogKeys = new Set(catalogModels.map((model) => normalizeModelLookupKey(model.id)).filter(Boolean));
+  const knownKeys = new Set([...defaultKeys, ...catalogKeys]);
   const source = catalog
     ? {
       ...catalog,
-      defaultModel: defaultKeys.has(normalizeModelLookupKey(catalog.defaultModel || ""))
+      // Keep a user-selected custom model as the default when it is in the
+      // editable catalog; only repair a missing/invalid default.
+      defaultModel: knownKeys.has(normalizeModelLookupKey(catalog.defaultModel || ""))
         ? catalog.defaultModel
         : defaults.defaultModel,
-      models: (catalog.models || []).filter((model) => defaultKeys.has(normalizeModelLookupKey(model.id))),
+      // This catalog is editable. Built-in entries are repaired below, while
+      // provider-specific model ids must survive a read/restart unchanged.
+      models: catalogModels,
       aliases: Object.fromEntries(
-        Object.entries(catalog.aliases || {}).filter(([, modelId]) => defaultKeys.has(normalizeModelLookupKey(modelId))),
+        Object.entries(catalog.aliases || {}).filter(([, modelId]) => knownKeys.has(normalizeModelLookupKey(modelId))),
       ),
     }
     : undefined;
@@ -3017,7 +3061,8 @@ function mergeManagedModelCatalogWithDefaults(
       if (!defaultModel) return model;
       return {
         ...model,
-        aliases: [...(defaultModel.aliases || [])],
+        // Preserve explicit per-model alias edits, including an empty list.
+        aliases: [...(model.aliases || [])],
         contextWindow: positiveIntegerOrNull(defaultModel.contextWindow) ?? positiveIntegerOrNull(model.contextWindow),
         maxOutputTokens: positiveIntegerOrNull(defaultModel.maxOutputTokens) ?? positiveIntegerOrNull(model.maxOutputTokens),
         pricing: defaultModel.pricing || model.pricing,
