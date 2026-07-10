@@ -24,6 +24,8 @@ export type {
   // Config / bindings
   ChannelConnectorAgentProfile,
   ChannelConnectorPlatformBinding,
+  ChannelConnectorPlatformAccount,
+  ChannelConnectorRoute,
   ChannelConnectorAgentSessionPolicyConfig,
   ChannelConnectorsNativeConfig,
   ChannelConnectorsBindingPolicy,
@@ -52,6 +54,7 @@ export type {
   ChannelConnectorCommandSurfaceAction,
   // Request payloads
   ChannelConnectorsSaveNativeConfigRequest,
+  ChannelConnectorsApplyNativeConfigRequest,
   ChannelConnectorsDaemonRequest,
   ChannelConnectorAgentSessionActionRequest,
   ChannelConnectorCommandSurfaceRequest,
@@ -64,6 +67,7 @@ export type {
   ChannelConnectorBindingSecretsResponse,
   ChannelConnectorFeishuAppRegistrationSessionResponse,
   ChannelConnectorsNativeConfigResponse,
+  ChannelConnectorsApplyNativeConfigResponse,
   ChannelConnectorsDaemonConfigResponse,
   ChannelConnectorsDaemonResponse,
   ChannelConnectorsLogsResponse,
@@ -80,4 +84,7 @@ export {
   CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
   CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA,
   CHANNEL_CONNECTOR_PLATFORM_IDS,
+  CHANNEL_CONNECTOR_DEFAULT_FEISHU_API_URL,
+  CHANNEL_CONNECTOR_DEFAULT_LARK_API_URL,
+  CHANNEL_CONNECTOR_DEFAULT_OCTO_API_URL,
 } from "../../../../../types/channel-connectors";

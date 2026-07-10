@@ -34,53 +34,20 @@ import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 
 import {
+  useApplyChannelConnectorsConfigMutation,
   useChannelConnectorsConfigQuery,
-  useManageChannelConnectorsDaemonServiceMutation,
+  useChannelConnectorsStatusQuery,
   useRunFeishuTransportSmokeMutation,
   useRunOctoTransportSmokeMutation,
-  useSaveChannelConnectorsConfigMutation,
 } from "@/lib/query/channel-connectors";
 import type { ChannelConnectorPlatformBinding } from "../types";
 import type { ChannelConnectorsViewProps } from "./types";
 import { AccountEditor } from "./BindingEditor";
-
-interface AccountGroup {
-  key: string;
-  representative: ChannelConnectorPlatformBinding;
-  bindings: ChannelConnectorPlatformBinding[];
-}
-
-function accountKey(binding: ChannelConnectorPlatformBinding): string {
-  return [binding.platform, binding.accountId || "", binding.botId || ""].join(
-    "::",
-  );
-}
-
-function groupAccounts(
-  bindings: ChannelConnectorPlatformBinding[],
-): AccountGroup[] {
-  const byKey = new Map<string, AccountGroup>();
-  for (const binding of bindings) {
-    const key = accountKey(binding);
-    const existing = byKey.get(key);
-    if (existing) {
-      existing.bindings.push(binding);
-    } else {
-      byKey.set(key, { key, representative: binding, bindings: [binding] });
-    }
-  }
-  return Array.from(byKey.values()).sort((a, b) => {
-    const aName =
-      a.representative.displayName ||
-      a.representative.accountId ||
-      a.representative.id;
-    const bName =
-      b.representative.displayName ||
-      b.representative.accountId ||
-      b.representative.id;
-    return aName.localeCompare(bName);
-  });
-}
+import {
+  channelConnectorAccountKey as accountKey,
+  groupChannelConnectorAccounts as groupAccounts,
+  runtimeAccountState,
+} from "./account-runtime";
 
 function smokeLabel(binding: ChannelConnectorPlatformBinding): string {
   if (binding.platform === "feishu") return "tenant-token";
@@ -92,17 +59,32 @@ function credentialState(binding: ChannelConnectorPlatformBinding): {
   label: string;
   variant: "ok" | "warn" | "mute";
 } {
-  const metadataKeys = Object.keys(binding.metadata ?? {});
-  if (metadataKeys.some((key) => /secret|token|key/i.test(key)))
-    return { label: "已脱敏保存", variant: "ok" };
-  if (metadataKeys.length > 0) return { label: "metadata", variant: "warn" };
-  return { label: "未填写", variant: "mute" };
+  const metadata = binding.metadata ?? {};
+  const hasValue = (key: string) =>
+    typeof metadata[key] === "string" && String(metadata[key]).trim().length > 0;
+  if (binding.platform === "feishu") {
+    if (!(hasValue("appId") || binding.accountId) || !hasValue("appSecret")) {
+      return { label: "缺少飞书凭据", variant: "warn" };
+    }
+    return { label: "凭据已保存", variant: "ok" };
+  }
+  if (binding.platform === "octo") {
+    if (!hasValue("apiUrl") || !hasValue("botToken")) {
+      return { label: "缺少 Octo 连接", variant: "warn" };
+    }
+    return { label: "连接配置已保存", variant: "ok" };
+  }
+  return Object.keys(metadata).length > 0
+    ? { label: "metadata", variant: "warn" }
+    : { label: "未填写", variant: "mute" };
 }
 
 export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
   const configQuery = useChannelConnectorsConfigQuery();
-  const saveMutation = useSaveChannelConnectorsConfigMutation();
-  const applyMutation = useManageChannelConnectorsDaemonServiceMutation();
+  const statusQuery = useChannelConnectorsStatusQuery({
+    refetchInterval: 10_000,
+  });
+  const applyMutation = useApplyChannelConnectorsConfigMutation();
   const feishuSmoke = useRunFeishuTransportSmokeMutation();
   const octoSmoke = useRunOctoTransportSmokeMutation();
 
@@ -170,12 +152,16 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
       feishuSmoke.mutate(
         { bindingId: binding.id, action: "tenant-token" },
         {
-          onSuccess: (result) =>
-            toast.success("飞书账号测试完成", {
-              description:
-                result.transport.error ||
-                `HTTP ${result.transport.statusCode ?? "ok"}`,
-            }),
+          onSuccess: (result) => {
+            const description =
+              result.transport.error ||
+              `HTTP ${result.transport.statusCode ?? "ok"}`;
+            if (result.transport.ok) {
+              toast.success("飞书凭据验证通过", { description });
+            } else {
+              toast.error("飞书账号测试失败", { description });
+            }
+          },
           onError: (error) =>
             toast.error("飞书账号测试失败", { description: error.message }),
         },
@@ -186,12 +172,16 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
       octoSmoke.mutate(
         { bindingId: binding.id, action: "register" },
         {
-          onSuccess: (result) =>
-            toast.success("Octo 账号测试完成", {
-              description:
-                result.transport.error ||
-                `HTTP ${result.transport.statusCode ?? "ok"}`,
-            }),
+          onSuccess: (result) => {
+            const description =
+              result.transport.error ||
+              `HTTP ${result.transport.statusCode ?? "ok"}`;
+            if (result.transport.ok) {
+              toast.success("Octo 注册验证通过", { description });
+            } else {
+              toast.error("Octo 账号测试失败", { description });
+            }
+          },
           onError: (error) =>
             toast.error("Octo 账号测试失败", { description: error.message }),
         },
@@ -203,8 +193,11 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
 
   const deleteAccount = () => {
     if (!config || !deleteTarget) return;
-    saveMutation.mutate(
+    applyMutation.mutate(
       {
+        expectedUpdatedAt: config.updatedAt,
+        reloadMode: "when-idle",
+        rollbackOnFailure: true,
         config: {
           ...config,
           updatedAt: new Date().toISOString(),
@@ -214,33 +207,30 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
         },
       },
       {
-        onSuccess: () => {
-          applyMutation.mutate(
-            { action: "reload", apply: true, reloadMode: "when-idle" },
-            {
-              onSuccess: (result) => {
-                const reload = result.reload;
-                if (reload?.status === "applied") {
-                  toast.success("已删除平台账号并应用", { description: deleteTarget.id });
-                } else if (reload?.status === "pending") {
-                  toast.info("已删除平台账号，等待任务结束后应用", {
-                    description: `当前运行中 ${reload.activeRuns + reload.activeTurns} 个任务/turn。`,
-                  });
-                } else {
-                  toast.error("已删除平台账号，但尚未应用到 IM 守护", {
-                    description: reload?.error || reload?.restartRequiredReason || deleteTarget.id,
-                  });
-                }
-                setDeleteTarget(null);
-                void configQuery.refetch();
-              },
-              onError: (error) => {
-                toast.error("已删除平台账号，但应用失败", { description: error.message });
-                setDeleteTarget(null);
-                void configQuery.refetch();
-              },
-            },
-          );
+        onSuccess: (result) => {
+          const reload = result.reload;
+          if (reload.status === "applied") {
+            toast.success("已删除平台账号并应用", { description: deleteTarget.id });
+          } else if (reload.status === "pending") {
+            toast.info("已删除平台账号，等待任务结束后应用", {
+              description: `当前运行中 ${reload.activeRuns + reload.activeTurns} 个任务/turn。`,
+            });
+          } else if (reload.status === "restart-required") {
+            toast.warning("账号已删除，需要重启消息守护", {
+              description: reload.restartRequiredReason || deleteTarget.id,
+            });
+          } else if (result.rolledBack) {
+            toast.error("删除应用失败，已自动回滚", {
+              description: reload.error || deleteTarget.id,
+            });
+          } else {
+            toast.warning("账号已删除，等待消息守护启动", {
+              description: reload.error || deleteTarget.id,
+            });
+          }
+          setDeleteTarget(null);
+          void configQuery.refetch();
+          void statusQuery.refetch();
         },
         onError: (error) =>
           toast.error("删除失败", { description: error.message }),
@@ -258,7 +248,7 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
       group.representative.platform === "octo",
   ).length;
   const missingCredentialCount = accountGroups.filter(
-    (group) => credentialState(group.representative).variant === "mute",
+    (group) => credentialState(group.representative).variant !== "ok",
   ).length;
 
   return (
@@ -283,7 +273,7 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <div className="rounded-sm border border-line bg-panel-2 p-3">
           <div className="text-xs text-subtle">账号身份</div>
           <div className="text-xl font-semibold text-ink-strong">
@@ -326,7 +316,89 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
           }
         />
       ) : (
-        <Table>
+        <>
+          <div className="overflow-hidden rounded-md border border-line bg-panel shadow-sm sm:hidden">
+            {filtered.map((group) => {
+              const binding = group.representative;
+              const cred = credentialState(binding);
+              const runtimeState = runtimeAccountState(
+                group,
+                statusQuery.data?.runtime,
+              );
+              const canSmoke =
+                binding.platform === "feishu" || binding.platform === "octo";
+              const enabledRoutes = group.bindings.filter(
+                (item) => item.enabled,
+              ).length;
+              return (
+                <section
+                  key={group.key}
+                  className="grid gap-3 border-b border-line p-3 last:border-b-0"
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted">
+                      <RadioTower className="size-4" />
+                    </span>
+                    <span className="grid min-w-0 flex-1">
+                      <strong className="truncate text-ink-strong">
+                        {binding.displayName || binding.id}
+                      </strong>
+                      <span className="truncate text-sm text-muted">
+                        {binding.platform} · acct {binding.accountId || "—"}
+                      </span>
+                    </span>
+                    <Badge
+                      variant={runtimeState.variant}
+                      title={runtimeState.description}
+                      aria-label="账号运行状态"
+                    >
+                      {runtimeState.label}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant={cred.variant}>{cred.label}</Badge>
+                    <Badge variant="outline">
+                      <GitBranch className="size-3" />
+                      {enabledRoutes}/{group.bindings.length} 路由
+                    </Badge>
+                    <Badge variant={canSmoke ? "info" : "mute"}>
+                      {smokeLabel(binding)}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1 border-t border-line pt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => runSmoke(binding)}
+                      disabled={!canSmoke || smokePending}
+                    >
+                      <Zap />
+                      测试
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditing(binding)}
+                    >
+                      <Pencil />
+                      编辑
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red hover:bg-red-soft"
+                      onClick={() => setDeleteTarget(binding)}
+                    >
+                      <Trash2 />
+                      删除
+                    </Button>
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+          <div className="hidden sm:block">
+            <Table>
           <TableHeader>
             <TableRow>
               <TableHead>平台账号</TableHead>
@@ -341,6 +413,10 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
             {filtered.map((group) => {
               const binding = group.representative;
               const cred = credentialState(binding);
+              const runtimeState = runtimeAccountState(
+                group,
+                statusQuery.data?.runtime,
+              );
               const canSmoke =
                 binding.platform === "feishu" || binding.platform === "octo";
               const enabledRoutes = group.bindings.filter(
@@ -379,8 +455,11 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={enabledRoutes > 0 ? "ok" : "mute"}>
-                      {enabledRoutes > 0 ? "启用" : "停用"}
+                    <Badge
+                      variant={runtimeState.variant}
+                      title={runtimeState.description}
+                    >
+                      {runtimeState.label}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -417,7 +496,9 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
               );
             })}
           </TableBody>
-        </Table>
+            </Table>
+          </div>
+        </>
       )}
 
       <AccountEditor
@@ -432,7 +513,10 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
         config={config}
         supportedPlatforms={supportedPlatforms}
         defaultAgentProfileId={defaultAgentProfileId}
-        onSaved={() => void configQuery.refetch()}
+        onSaved={() => {
+          void configQuery.refetch();
+          void statusQuery.refetch();
+        }}
       />
 
       <Dialog
@@ -458,7 +542,7 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
               variant="ghost"
               size="sm"
               onClick={() => setDeleteTarget(null)}
-              disabled={saveMutation.isPending || applyMutation.isPending}
+              disabled={applyMutation.isPending}
             >
               取消
             </Button>
@@ -466,9 +550,9 @@ export function AccountsView({ selectedBinding }: ChannelConnectorsViewProps) {
               variant="danger"
               size="sm"
               onClick={deleteAccount}
-              disabled={saveMutation.isPending || applyMutation.isPending}
+              disabled={applyMutation.isPending}
             >
-              {saveMutation.isPending || applyMutation.isPending ? "删除中…" : "确认删除"}
+              {applyMutation.isPending ? "删除中…" : "确认删除"}
             </Button>
           </DialogFooter>
         </DialogContent>

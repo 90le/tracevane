@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  applyChannelConnectorsConfig,
   cancelFeishuAppRegistration,
   getChannelConnectorBindingSecrets,
   getChannelConnectorsAgentSessions,
@@ -38,6 +39,8 @@ import type {
   ChannelConnectorOctoTransportSmokeRequest,
   ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorsDaemonConfigResponse,
+  ChannelConnectorsApplyNativeConfigRequest,
+  ChannelConnectorsApplyNativeConfigResponse,
   ChannelConnectorsDaemonRequest,
   ChannelConnectorsDaemonResponse,
   ChannelConnectorsLogsResponse,
@@ -192,6 +195,31 @@ export function useSaveChannelConnectorsConfigMutation(
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.config() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.status() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonConfig() });
+      options?.onSuccess?.(...args);
+    },
+  });
+}
+
+/** Save native config and apply it to the daemon with server-side rollback. */
+export function useApplyChannelConnectorsConfigMutation(
+  options?: MutationOpts<
+    ChannelConnectorsApplyNativeConfigResponse,
+    ChannelConnectorsApplyNativeConfigRequest
+  >,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    ChannelConnectorsApplyNativeConfigResponse,
+    ApiError,
+    ChannelConnectorsApplyNativeConfigRequest
+  >({
+    mutationFn: (payload) => applyChannelConnectorsConfig(payload),
+    ...options,
+    onSuccess: (...args) => {
+      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.config() });
+      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.status() });
+      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonConfig() });
+      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonService() });
       options?.onSuccess?.(...args);
     },
   });

@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { CHANNEL_CONNECTOR_DEFAULT_OCTO_API_URL } from "../../../../types/channel-connectors.js";
 import type {
   ChannelConnectorOctoReplyPlan,
   ChannelConnectorOctoTransportConfig,
@@ -53,7 +54,7 @@ function parseOctoDirectUploadMinBytes(value: unknown): number {
 
 export function octoTransportFromMetadata(metadataValue: unknown): ChannelConnectorOctoTransportConfig | null {
   const metadata = recordFrom(metadataValue);
-  const apiUrl = normalizeString(metadata.apiUrl || metadata.api_url);
+  const apiUrl = normalizeString(metadata.apiUrl || metadata.api_url) || CHANNEL_CONNECTOR_DEFAULT_OCTO_API_URL;
   const botToken = normalizeString(metadata.botToken || metadata.bot_token || metadata.token);
   if (!apiUrl || !botToken) return null;
   const wsUrl = normalizeString(metadata.wsUrl || metadata.ws_url);

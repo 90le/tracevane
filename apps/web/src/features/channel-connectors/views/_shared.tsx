@@ -37,6 +37,7 @@ export function Row({
   iconClass,
   title,
   subtitle,
+  subtitleClassName,
   trailing,
   onClick,
 }: {
@@ -44,6 +45,7 @@ export function Row({
   iconClass?: string;
   title: React.ReactNode;
   subtitle?: React.ReactNode;
+  subtitleClassName?: string;
   trailing?: React.ReactNode;
   onClick?: () => void;
 }) {
@@ -59,7 +61,11 @@ export function Row({
       </span>
       <span className="grid min-w-0 flex-1">
         <strong className="truncate text-base text-ink-strong">{title}</strong>
-        {subtitle && <span className="truncate text-sm text-muted">{subtitle}</span>}
+        {subtitle && (
+          <span className={cn("truncate text-sm text-muted", subtitleClassName)}>
+            {subtitle}
+          </span>
+        )}
       </span>
       {trailing && <span className="ml-auto shrink-0">{trailing}</span>}
     </>

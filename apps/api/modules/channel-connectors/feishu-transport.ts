@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { CHANNEL_CONNECTOR_DEFAULT_FEISHU_API_URL } from "../../../../types/channel-connectors.js";
 import type {
   ChannelConnectorInboundAttachment,
   ChannelConnectorFeishuInteractiveCard,
@@ -14,7 +15,6 @@ import { extractFeishuMessageContent } from "./feishu-adapter.js";
 import { inferChannelConnectorMimeType, safeChannelConnectorFileName } from "./outbound-files.js";
 import { splitChannelConnectorTextChunks } from "./text-chunks.js";
 
-const DEFAULT_FEISHU_API_URL = "https://open.feishu.cn";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_FEISHU_TRANSIENT_RETRIES = 3;
 const FEISHU_TRANSIENT_RETRY_INITIAL_MS = 500;
@@ -190,7 +190,7 @@ function normalizeFeishuTimestampMs(value: unknown): number | undefined {
 }
 
 function normalizeApiUrl(value: unknown): string {
-  return normalizeString(value).replace(/\/+$/, "") || DEFAULT_FEISHU_API_URL;
+  return normalizeString(value).replace(/\/+$/, "") || CHANNEL_CONNECTOR_DEFAULT_FEISHU_API_URL;
 }
 
 function metadataString(metadata: Record<string, unknown>, keys: string[]): string {

@@ -32,14 +32,39 @@ import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 
 import {
+  useApplyChannelConnectorsConfigMutation,
   useChannelConnectorsConfigQuery,
-  useManageChannelConnectorsDaemonServiceMutation,
   useSaveChannelConnectorsConfigMutation,
 } from "@/lib/query/channel-connectors";
 import { toast } from "@/design/ui/sonner";
-import type { ChannelConnectorPlatformBinding } from "../types";
+import type {
+  ChannelConnectorAgentProfile,
+  ChannelConnectorPlatformBinding,
+} from "../types";
 import type { ChannelConnectorsViewProps } from "./types";
 import { RouteEditor } from "./BindingEditor";
+
+const ROUTE_METADATA_KEYS = new Set([
+  "peerKind",
+  "peerId",
+  "sessionMode",
+  "busyGuard",
+  "attachmentStaging",
+  "routeAgent",
+  "routeModel",
+  "routeWorkDir",
+  "routePermissionMode",
+]);
+
+function routeMetadataForCopy(
+  binding: ChannelConnectorPlatformBinding,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(binding.metadata ?? {}).filter(([key]) =>
+      ROUTE_METADATA_KEYS.has(key),
+    ),
+  );
+}
 
 function metaString(
   binding: ChannelConnectorPlatformBinding,
@@ -54,13 +79,54 @@ function isCopiedRoute(binding: ChannelConnectorPlatformBinding): boolean {
   return /-route-[a-z0-9]+$/i.test(binding.id);
 }
 
+function routePresentation(
+  binding: ChannelConnectorPlatformBinding,
+  agentProfiles: ChannelConnectorAgentProfile[],
+) {
+  const profile = agentProfiles.find(
+    (item) => item.id === binding.agentProfileId,
+  );
+  const peerKind = metaString(binding, "peerKind", "未指定");
+  const peerId = metaString(binding, "peerId", "*");
+  const routeAgent = metaString(
+    binding,
+    "routeAgent",
+    profile?.agent ?? "unknown",
+  );
+  const routeModel = metaString(
+    binding,
+    "routeModel",
+    profile?.model ?? "网关默认路由",
+  );
+  const routeWorkDir = metaString(
+    binding,
+    "routeWorkDir",
+    profile?.workDir ?? "—",
+  );
+  const hasRouteOverride = [
+    "routeAgent",
+    "routeModel",
+    "routeWorkDir",
+    "routePermissionMode",
+  ].some((key) => Boolean(metaString(binding, key, "")));
+  return {
+    profile,
+    peerKind,
+    peerId,
+    routeAgent,
+    routeModel,
+    routeWorkDir,
+    hasRouteOverride,
+  };
+}
+
 export function RoutesView({
   selectedBinding,
   goToView,
 }: ChannelConnectorsViewProps) {
   const configQuery = useChannelConnectorsConfigQuery();
   const saveMutation = useSaveChannelConnectorsConfigMutation();
-  const applyMutation = useManageChannelConnectorsDaemonServiceMutation();
+  const applyMutation = useApplyChannelConnectorsConfigMutation();
   const [query, setQuery] = React.useState("");
   const [editing, setEditing] =
     React.useState<ChannelConnectorPlatformBinding | null>(null);
@@ -132,8 +198,11 @@ export function RoutesView({
       setDeleteTarget(null);
       return;
     }
-    saveMutation.mutate(
+    applyMutation.mutate(
       {
+        expectedUpdatedAt: config.updatedAt,
+        reloadMode: "when-idle",
+        rollbackOnFailure: true,
         config: {
           ...config,
           updatedAt: new Date().toISOString(),
@@ -143,33 +212,29 @@ export function RoutesView({
         },
       },
       {
-        onSuccess: () => {
-          applyMutation.mutate(
-            { action: "reload", apply: true, reloadMode: "when-idle" },
-            {
-              onSuccess: (result) => {
-                const reload = result.reload;
-                if (reload?.status === "applied") {
-                  toast.success("已删除副本路由并应用", { description: deleteTarget.id });
-                } else if (reload?.status === "pending") {
-                  toast.info("已删除副本路由，等待任务结束后应用", {
-                    description: `当前运行中 ${reload.activeRuns + reload.activeTurns} 个任务/turn。`,
-                  });
-                } else {
-                  toast.error("已删除副本路由，但尚未应用到 IM 守护", {
-                    description: reload?.error || reload?.restartRequiredReason || deleteTarget.id,
-                  });
-                }
-                setDeleteTarget(null);
-                void configQuery.refetch();
-              },
-              onError: (error) => {
-                toast.error("已删除副本路由，但应用失败", { description: error.message });
-                setDeleteTarget(null);
-                void configQuery.refetch();
-              },
-            },
-          );
+        onSuccess: (result) => {
+          const reload = result.reload;
+          if (reload.status === "applied") {
+            toast.success("已删除副本路由并应用", { description: deleteTarget.id });
+          } else if (reload.status === "pending") {
+            toast.info("已删除副本路由，等待任务结束后应用", {
+              description: `当前运行中 ${reload.activeRuns + reload.activeTurns} 个任务/turn。`,
+            });
+          } else if (reload.status === "restart-required") {
+            toast.warning("路由已删除，需要重启消息守护", {
+              description: reload.restartRequiredReason || deleteTarget.id,
+            });
+          } else if (result.rolledBack) {
+            toast.error("删除应用失败，已自动回滚", {
+              description: reload.error || deleteTarget.id,
+            });
+          } else {
+            toast.warning("路由已删除，等待消息守护启动", {
+              description: reload.error || deleteTarget.id,
+            });
+          }
+          setDeleteTarget(null);
+          void configQuery.refetch();
         },
         onError: (error) =>
           toast.error("删除路由失败", { description: error.message }),
@@ -186,7 +251,7 @@ export function RoutesView({
       displayName: `${binding.displayName || binding.id} / 新路由`,
       enabled: false,
       metadata: {
-        ...(binding.metadata ?? {}),
+        ...routeMetadataForCopy(binding),
         peerId: "*",
       },
     };
@@ -242,7 +307,7 @@ export function RoutesView({
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <div className="rounded-sm border border-line bg-panel-2 p-3">
           <div className="text-xs text-subtle">路由总数</div>
           <div className="text-xl font-semibold text-ink-strong">
@@ -285,7 +350,89 @@ export function RoutesView({
           }
         />
       ) : (
-        <Table className="min-w-full">
+        <>
+          <div className="overflow-hidden rounded-md border border-line bg-panel shadow-sm sm:hidden">
+            {filtered.map((binding) => {
+              const view = routePresentation(binding, agentProfiles);
+              return (
+                <section
+                  key={binding.id}
+                  className="grid gap-3 border-b border-line p-3 last:border-b-0"
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted">
+                      <Route className="size-4" />
+                    </span>
+                    <span className="grid min-w-0 flex-1">
+                      <strong className="truncate text-ink-strong">
+                        {binding.displayName || binding.id}
+                      </strong>
+                      <span className="truncate text-sm text-muted">
+                        {binding.platform} · acct {binding.accountId || "—"}
+                      </span>
+                    </span>
+                    <Badge
+                      variant={binding.enabled ? "ok" : "mute"}
+                      aria-label="路由运行状态"
+                    >
+                      {binding.enabled ? "启用" : "停用"}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-1 text-sm">
+                    <span className="break-all text-muted">
+                      来源 · {view.peerKind} · {view.peerId}
+                    </span>
+                    <strong className="truncate text-ink-strong">
+                      {view.routeAgent} · {view.routeModel}
+                    </strong>
+                    <span
+                      className="truncate text-xs text-muted"
+                      title={`${view.profile?.name ?? binding.agentProfileId} · ${view.routeWorkDir}`}
+                    >
+                      {view.profile?.name ?? binding.agentProfileId} · {view.routeWorkDir}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {view.hasRouteOverride && <Badge variant="info">独立覆盖</Badge>}
+                    <Badge variant={isCopiedRoute(binding) ? "outline" : "warn"}>
+                      {isCopiedRoute(binding) ? "副本路由" : "默认路由·保护"}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1 border-t border-line pt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => duplicateRoute(binding)}
+                      disabled={saveMutation.isPending || applyMutation.isPending}
+                    >
+                      <Copy />
+                      复制
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditing(binding)}
+                    >
+                      <Pencil />
+                      编辑
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={isCopiedRoute(binding) ? "text-red hover:bg-red-soft" : "text-muted"}
+                      onClick={() => setDeleteTarget(binding)}
+                      disabled={saveMutation.isPending || applyMutation.isPending || !isCopiedRoute(binding)}
+                    >
+                      <Trash2 />
+                      删除
+                    </Button>
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+          <div className="hidden sm:block">
+            <Table className="min-w-full">
           <TableHeader>
             <TableRow>
               <TableHead>绑定路由</TableHead>
@@ -298,32 +445,7 @@ export function RoutesView({
           </TableHeader>
           <TableBody>
             {filtered.map((binding) => {
-              const profile = agentProfiles.find(
-                (item) => item.id === binding.agentProfileId,
-              );
-              const peerKind = metaString(binding, "peerKind", "未指定");
-              const peerId = metaString(binding, "peerId", "*");
-              const routeAgent = metaString(
-                binding,
-                "routeAgent",
-                profile?.agent ?? "unknown",
-              );
-              const routeModel = metaString(
-                binding,
-                "routeModel",
-                profile?.model ?? "网关默认路由",
-              );
-              const routeWorkDir = metaString(
-                binding,
-                "routeWorkDir",
-                profile?.workDir ?? "—",
-              );
-              const hasRouteOverride = [
-                "routeAgent",
-                "routeModel",
-                "routeWorkDir",
-                "routePermissionMode",
-              ].some((key) => Boolean(metaString(binding, key, "")));
+              const view = routePresentation(binding, agentProfiles);
               return (
                 <TableRow key={binding.id}>
                   <TableCell className="max-w-[260px]">
@@ -339,7 +461,7 @@ export function RoutesView({
                           {binding.platform} · acct {binding.accountId || "—"}
                         </span>
                         <span className="mt-1 block break-all font-mono text-xs text-muted md:hidden">
-                          {peerKind} · {peerId}
+                          {view.peerKind} · {view.peerId}
                         </span>
                         <span className="mt-1 md:hidden">
                           <Badge variant={binding.enabled ? "ok" : "mute"}>
@@ -351,23 +473,23 @@ export function RoutesView({
                   </TableCell>
                   <TableCell className="hidden max-w-[220px] md:table-cell">
                     <span className="block break-all font-mono text-sm text-muted">
-                      {peerKind} · {peerId}
+                      {view.peerKind} · {view.peerId}
                     </span>
                   </TableCell>
                   <TableCell>
                     <span className="grid min-w-0 max-w-[360px]">
                       <strong className="truncate text-sm text-ink-strong">
-                        {routeAgent} · {routeModel}
+                        {view.routeAgent} · {view.routeModel}
                       </strong>
                       <span
                         className="truncate text-xs text-muted"
-                        title={`${profile?.name ?? binding.agentProfileId} · ${routeWorkDir}`}
+                        title={`${view.profile?.name ?? binding.agentProfileId} · ${view.routeWorkDir}`}
                       >
-                        {profile?.name ?? binding.agentProfileId} ·{" "}
-                        {routeWorkDir}
+                        {view.profile?.name ?? binding.agentProfileId} ·{" "}
+                        {view.routeWorkDir}
                       </span>
                       <span className="mt-1 flex flex-wrap gap-1.5">
-                        {hasRouteOverride && (
+                        {view.hasRouteOverride && (
                           <Badge variant="info" className="w-fit">
                             独立覆盖
                           </Badge>
@@ -447,7 +569,9 @@ export function RoutesView({
               );
             })}
           </TableBody>
-        </Table>
+            </Table>
+          </div>
+        </>
       )}
 
       <RouteEditor

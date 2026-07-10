@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Activity, AlertTriangle, MessageSquare, Recycle, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, MessageSquare, Recycle, Settings2, XCircle } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
@@ -17,11 +17,10 @@ import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 import { toast } from "@/design/ui/sonner";
 
 import {
+  useApplyChannelConnectorsConfigMutation,
   useChannelConnectorsAgentSessionsQuery,
   useChannelConnectorsConfigQuery,
   useManageChannelConnectorsAgentSessionsMutation,
-  useManageChannelConnectorsDaemonServiceMutation,
-  useSaveChannelConnectorsConfigMutation,
 } from "@/lib/query/channel-connectors";
 import type {
   ChannelConnectorAgentSessionDriverBindingStatus,
@@ -284,8 +283,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   const sessionsQuery = useChannelConnectorsAgentSessionsQuery();
   const configQuery = useChannelConnectorsConfigQuery();
   const manageMutation = useManageChannelConnectorsAgentSessionsMutation();
-  const saveConfigMutation = useSaveChannelConnectorsConfigMutation();
-  const restartDaemonMutation = useManageChannelConnectorsDaemonServiceMutation();
+  const applyConfigMutation = useApplyChannelConnectorsConfigMutation();
 
   const [confirm, setConfirm] = React.useState<
     | null
@@ -295,6 +293,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   >(null);
   const [evidence, setEvidence] = React.useState<string | null>(null);
   const [policyNotice, setPolicyNotice] = React.useState<null | { tone: "ok" | "warn" | "bad"; text: string }>(null);
+  const [policyEditing, setPolicyEditing] = React.useState(false);
 
   const data = sessionsQuery.data;
   const config = configQuery.data?.config ?? null;
@@ -332,7 +331,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       : runtimeMatchesDraft
         ? { variant: "ok" as const, label: "运行中已同步" }
         : { variant: "warn" as const, label: "已保存，需重启" };
-  const pending = manageMutation.isPending || saveConfigMutation.isPending || restartDaemonMutation.isPending;
+  const pending = manageMutation.isPending || applyConfigMutation.isPending;
 
   if (sessionsQuery.isLoading || configQuery.isLoading) {
     return (
@@ -364,11 +363,14 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
     );
   }
 
-  const savePolicy = (applyAfterSave = false) => {
+  const savePolicy = () => {
     if (!config) return;
-    setPolicyNotice({ tone: "warn", text: applyAfterSave ? "正在保存策略并应用到 IM 守护……" : "正在保存策略……" });
-    saveConfigMutation.mutate(
+    setPolicyNotice({ tone: "warn", text: "正在保存策略并按空闲状态应用到消息守护……" });
+    applyConfigMutation.mutate(
       {
+        expectedUpdatedAt: config.updatedAt,
+        reloadMode: "when-idle",
+        rollbackOnFailure: true,
         config: {
           ...config,
           updatedAt: new Date().toISOString(),
@@ -376,42 +378,30 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
         },
       },
       {
-        onSuccess: (saved) => {
-          const savedPolicy = saved.config.agentSessionPolicy ?? policyDraft;
+        onSuccess: (result) => {
+          const savedPolicy = result.config.agentSessionPolicy ?? policyDraft;
           setPolicyDraft(savedPolicy);
           void configQuery.refetch();
-          if (applyAfterSave) {
-            setPolicyNotice({ tone: "warn", text: "策略已保存，正在请求 IM 守护按空闲策略热重载……" });
-            restartDaemonMutation.mutate(
-              { action: "reload", apply: true, reloadMode: "when-idle" },
-              {
-                onSuccess: (result) => {
-                  const reload = result.reload;
-                  if (reload?.status === "applied") {
-                    setPolicyNotice({ tone: "ok", text: "已保存并热重载 IM 守护；新的并发/队列策略已生效。" });
-                    toast.success("已保存并应用 IM 守护", { description: "新的全局并发/队列策略已热重载。" });
-                  } else if (reload?.status === "pending") {
-                    setPolicyNotice({ tone: "warn", text: `策略已保存；当前有 ${reload.activeRuns + reload.activeTurns} 个任务/turn 运行中，结束后自动热重载。` });
-                    toast.info("策略已保存，等待任务结束后应用", { description: "IM 守护将在空闲后自动热重载。" });
-                  } else {
-                    setPolicyNotice({ tone: "bad", text: `策略已保存，但应用失败：${reload?.error || reload?.restartRequiredReason || "daemon reload failed"}` });
-                    toast.error("保存成功，但应用失败", { description: reload?.error || reload?.restartRequiredReason || "daemon reload failed" });
-                  }
-                  void sessionsQuery.refetch();
-                  window.setTimeout(() => {
-                    void sessionsQuery.refetch();
-                  }, 1200);
-                },
-                onError: (error) => {
-                  setPolicyNotice({ tone: "bad", text: `策略已保存，但应用失败：${error.message}` });
-                  toast.error("保存成功，但应用失败", { description: error.message });
-                },
-              },
-            );
-            return;
+          const reload = result.reload;
+          if (reload.status === "applied") {
+            setPolicyNotice({ tone: "ok", text: "策略已保存并热重载，新的并发与队列限制已生效。" });
+            toast.success("策略已保存并应用");
+          } else if (reload.status === "pending") {
+            setPolicyNotice({ tone: "warn", text: `策略已保存；当前有 ${reload.activeRuns + reload.activeTurns} 个任务/turn，结束后自动热重载。` });
+            toast.info("策略等待任务结束后应用");
+          } else if (reload.status === "restart-required") {
+            setPolicyNotice({ tone: "warn", text: `策略已保存，需要重启消息守护：${reload.restartRequiredReason || "运行时边界变化"}` });
+            toast.warning("策略已保存，需要重启消息守护");
+          } else if (result.rolledBack) {
+            setPolicyNotice({ tone: "bad", text: `策略应用失败，已自动恢复上一版本：${reload.error || "daemon reload failed"}` });
+            toast.error("策略应用失败，已自动回滚");
+          } else {
+            setPolicyNotice({ tone: "warn", text: `策略已保存；消息守护离线，启动后生效：${reload.error || "daemon unavailable"}` });
+            toast.warning("策略已保存，等待消息守护启动");
           }
-          setPolicyNotice({ tone: "ok", text: "策略已保存；点击“保存并应用”可让运行中 daemon 在空闲后热重载。" });
-          toast.success("已保存 IM Agent 并发策略", { description: "点击“保存并应用”可让运行中 daemon 生效。" });
+          if (!result.rolledBack) setPolicyEditing(false);
+          void sessionsQuery.refetch();
+          window.setTimeout(() => void sessionsQuery.refetch(), 1200);
         },
         onError: (error) => {
           setPolicyNotice({ tone: "bad", text: `保存并发策略失败：${error.message}` });
@@ -494,34 +484,50 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Panel>
         <PanelHead
           title="全局并发 / 队列策略"
-          sub="针对不同 IM 会话的 Agent turn。maxConcurrentTurns 是真正的同时执行上限；超过后按策略拒绝或排队。"
-          action={<Badge variant={policyBadge.variant}>{policyBadge.label}</Badge>}
+          sub="不同 IM 会话共享的 Agent turn 执行上限。"
+          action={policyEditing ? (
+            <Badge variant={policyBadge.variant}>{policyBadge.label}</Badge>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setPolicyEditing(true)}>
+              <Settings2 />
+              编辑策略
+            </Button>
+          )}
         />
-        <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="grid gap-1.5 text-sm">
-            <span className="font-medium text-ink-strong">最大同时执行</span>
-            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyDraft.maxConcurrentTurns} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxConcurrentTurns: Number(e.target.value) || 1 }))} />
-            <span className="text-xs text-subtle">不同会话竞争这个全局槽位。</span>
-          </label>
-          <label className="grid gap-1.5 text-sm">
-            <span className="font-medium text-ink-strong">持久会话缓存</span>
-            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyDraft.maxSessions} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxSessions: Number(e.target.value) || 1 }))} />
-            <span className="text-xs text-subtle">空闲 session 保留上限，不等于并发。</span>
-          </label>
-          <label className="grid gap-1.5 text-sm">
-            <span className="font-medium text-ink-strong">超出策略</span>
-            <select className="h-9 rounded-sm border border-line bg-panel-2 px-2" value={policyDraft.busyStrategy} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, busyStrategy: e.target.value === "queue" ? "queue" : "reject" }))}>
-              <option value="reject">直接拒绝</option>
-              <option value="queue">进入 FIFO 队列</option>
-            </select>
-            <span className="text-xs text-subtle">队列只限制不同会话的全局竞争。</span>
-          </label>
-          <label className="grid gap-1.5 text-sm">
-            <span className="font-medium text-ink-strong">队列容量</span>
-            <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={0} max={5000} value={policyDraft.queueMaxRecords} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, queueMaxRecords: Number(e.target.value) || 0 }))} />
-            <span className="text-xs text-subtle">超过容量会拒绝新任务。</span>
-          </label>
-        </div>
+        {policyEditing ? (
+          <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium text-ink-strong">最大同时执行</span>
+              <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyDraft.maxConcurrentTurns} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxConcurrentTurns: Number(e.target.value) || 1 }))} />
+              <span className="text-xs text-subtle">不同会话竞争这个全局槽位。</span>
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium text-ink-strong">持久会话缓存</span>
+              <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyDraft.maxSessions} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxSessions: Number(e.target.value) || 1 }))} />
+              <span className="text-xs text-subtle">空闲 session 保留上限，不等于并发。</span>
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium text-ink-strong">超出策略</span>
+              <select className="h-9 rounded-sm border border-line bg-panel-2 px-2" value={policyDraft.busyStrategy} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, busyStrategy: e.target.value === "queue" ? "queue" : "reject" }))}>
+                <option value="reject">直接拒绝</option>
+                <option value="queue">进入 FIFO 队列</option>
+              </select>
+              <span className="text-xs text-subtle">队列只限制不同会话的全局竞争。</span>
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium text-ink-strong">队列容量</span>
+              <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={0} max={5000} value={policyDraft.queueMaxRecords} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, queueMaxRecords: Number(e.target.value) || 0 }))} />
+              <span className="text-xs text-subtle">超过容量会拒绝新任务。</span>
+            </label>
+          </div>
+        ) : (
+          <dl className="grid grid-cols-2 divide-x divide-y divide-line sm:grid-cols-4 sm:divide-y-0">
+            <div className="p-3"><dt className="text-xs text-subtle">最大并发</dt><dd className="mt-1 text-lg font-semibold text-ink-strong">{persistedPolicy.maxConcurrentTurns}</dd></div>
+            <div className="p-3"><dt className="text-xs text-subtle">会话缓存</dt><dd className="mt-1 text-lg font-semibold text-ink-strong">{persistedPolicy.maxSessions}</dd></div>
+            <div className="p-3"><dt className="text-xs text-subtle">超出策略</dt><dd className="mt-1 text-sm font-semibold text-ink-strong">{persistedPolicy.busyStrategy === "queue" ? "FIFO 队列" : "直接拒绝"}</dd></div>
+            <div className="p-3"><dt className="text-xs text-subtle">队列容量</dt><dd className="mt-1 text-lg font-semibold text-ink-strong">{persistedPolicy.queueMaxRecords}</dd></div>
+          </dl>
+        )}
         {policyNotice && (
           <div
             className={
@@ -538,11 +544,12 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
         )}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-sm text-muted">
           <span>当前执行中 {policy?.activeTurns ?? 0}，队列中 {policy?.queuedTurns ?? 0}；运行策略 {policy?.maxConcurrentTurns ?? "—"} 并发 / {policy?.busyStrategy === "queue" ? "队列" : "拒绝"}。</span>
-          <span className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={pending || !policyDirty} onClick={() => setPolicyDraft(persistedPolicy)}>撤销</Button>
-            <Button variant="outline" size="sm" disabled={pending || !policyDirty} onClick={() => savePolicy(false)}>保存策略</Button>
-            <Button variant="primary" size="sm" disabled={pending || (!policyDirty && runtimeMatchesDraft)} onClick={() => savePolicy(true)}>保存并应用</Button>
-          </span>
+          {policyEditing && (
+            <span className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={pending} onClick={() => { setPolicyDraft(persistedPolicy); setPolicyEditing(false); }}>取消</Button>
+              <Button variant="primary" size="sm" disabled={pending || (!policyDirty && runtimeMatchesDraft)} onClick={savePolicy}>保存并应用</Button>
+            </span>
+          )}
         </div>
       </Panel>
 

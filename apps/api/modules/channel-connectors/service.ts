@@ -8,9 +8,13 @@ import { registerApp } from "@larksuiteoapi/node-sdk";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import {
   CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME,
+  CHANNEL_CONNECTOR_DEFAULT_FEISHU_API_URL,
+  CHANNEL_CONNECTOR_DEFAULT_OCTO_API_URL,
   CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
   CHANNEL_CONNECTOR_PLATFORM_IDS,
   type ChannelConnectorsBindingPolicy,
+  type ChannelConnectorsApplyNativeConfigRequest,
+  type ChannelConnectorsApplyNativeConfigResponse,
   type ChannelConnectorsDaemonAction,
   type ChannelConnectorsDaemonCommand,
   type ChannelConnectorsDaemonCommandResult,
@@ -59,6 +63,8 @@ import {
   type ChannelConnectorBindingSecretsResponse,
   type ChannelConnectorPermissionMode,
   type ChannelConnectorPlatformBinding,
+  type ChannelConnectorPlatformAccount,
+  type ChannelConnectorRoute,
   type ChannelConnectorPlatformId,
 } from "../../../../types/channel-connectors.js";
 import {
@@ -215,6 +221,7 @@ export interface ChannelConnectorsServiceOptions {
   commandRunner?: ChannelConnectorsDaemonCommandRunner;
   feishuRegisterApp?: ChannelConnectorFeishuRegisterAppRunner;
   now?: () => Date;
+  fetchImpl?: typeof fetch;
 }
 
 export interface ChannelConnectorsService {
@@ -223,6 +230,7 @@ export interface ChannelConnectorsService {
   getPublicNativeConfig(): ChannelConnectorsNativeConfigResponse;
   getBindingSecrets(bindingId: string): ChannelConnectorBindingSecretsResponse;
   saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
+  applyNativeConfig(payload?: ChannelConnectorsApplyNativeConfigRequest): Promise<ChannelConnectorsApplyNativeConfigResponse>;
   startFeishuAppRegistration(payload?: ChannelConnectorFeishuAppRegistrationStartRequest): Promise<ChannelConnectorFeishuAppRegistrationSessionResponse>;
   getFeishuAppRegistration(sessionId: string): ChannelConnectorFeishuAppRegistrationSessionResponse;
   cancelFeishuAppRegistration(sessionId: string): ChannelConnectorFeishuAppRegistrationSessionResponse;
@@ -478,13 +486,304 @@ function normalizeAgentSessionPolicy(value: unknown): ChannelConnectorsNativeCon
   };
 }
 
+function validatePlatformBaseUrl(binding: ChannelConnectorPlatformBinding): void {
+  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
+  const raw = binding.platform === "feishu"
+    ? normalizeString(metadata.apiUrl || metadata.api_url || metadata.domain || metadata.baseUrl || metadata.base_url)
+    : binding.platform === "octo"
+      ? normalizeString(metadata.apiUrl || metadata.api_url)
+      : "";
+  if (!raw) return;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(`Invalid ${binding.platform} API URL for account ${binding.id}: ${raw}`);
+  }
+  if (!(["http:", "https:"] as string[]).includes(parsed.protocol)) {
+    throw new Error(`${binding.platform} API URL for account ${binding.id} must use http or https.`);
+  }
+  if (parsed.username || parsed.password || parsed.hash) {
+    throw new Error(`${binding.platform} API URL for account ${binding.id} must not include credentials or a fragment.`);
+  }
+}
+
+function normalizePlatformBindingMetadata(
+  platform: ChannelConnectorPlatformId,
+  value: unknown,
+): Record<string, unknown> | undefined {
+  const metadata = isRecord(value) ? { ...value } : {};
+  if (platform === "feishu") {
+    const configured = normalizeString(
+      metadata.apiUrl || metadata.api_url || metadata.domain || metadata.baseUrl || metadata.base_url,
+    );
+    if (!configured) metadata.apiUrl = CHANNEL_CONNECTOR_DEFAULT_FEISHU_API_URL;
+  }
+  if (platform === "octo") {
+    const configured = normalizeString(metadata.apiUrl || metadata.api_url);
+    if (!configured) metadata.apiUrl = CHANNEL_CONNECTOR_DEFAULT_OCTO_API_URL;
+  }
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
+}
+
+function validateEnabledPlatformBinding(binding: ChannelConnectorPlatformBinding): void {
+  validatePlatformBaseUrl(binding);
+  if (!binding.enabled) return;
+  if (binding.platform === "feishu" && !feishuTransportFromBinding(binding)) {
+    throw new Error(`Enabled Feishu account ${binding.id} requires App ID and App Secret.`);
+  }
+  if (binding.platform === "octo" && !octoTransportFromBinding(binding)) {
+    throw new Error(`Enabled Octo account ${binding.id} requires API URL and Bot Token.`);
+  }
+}
+
+const ROUTE_METADATA_KEYS = new Set([
+  "peerKind",
+  "peerId",
+  "sessionMode",
+  "busyGuard",
+  "attachmentStaging",
+  "routeAgent",
+  "routeModel",
+  "routeWorkDir",
+  "routePermissionMode",
+]);
+
+function isSensitiveMetadataKey(key: string): boolean {
+  const normalized = key.trim().toLowerCase().replace(/[-_\s]/g, "");
+  return normalized === "apikey"
+    || normalized === "aeskey"
+    || normalized === "appsecret"
+    || normalized === "botsecret"
+    || normalized === "bottoken"
+    || normalized === "clientsecret"
+    || normalized === "encodingaeskey"
+    || normalized === "encryptkey"
+    || normalized === "imtoken"
+    || normalized === "password"
+    || normalized === "privatekey"
+    || normalized === "secret"
+    || normalized === "tenantaccesstoken"
+    || normalized === "token"
+    || normalized === "verificationtoken"
+    || normalized.endsWith("secret")
+    || normalized.endsWith("token");
+}
+
+function routeFromBinding(
+  binding: ChannelConnectorPlatformBinding,
+  accountRef: string,
+): ChannelConnectorRoute {
+  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
+  const routeAgent = normalizeString(metadata.routeAgent);
+  const permissionMode = normalizeString(metadata.routePermissionMode);
+  return {
+    id: binding.id,
+    accountRef,
+    displayName: binding.displayName,
+    enabled: binding.enabled,
+    source: {
+      kind: normalizeString(metadata.peerKind) || "private",
+      id: normalizeString(metadata.peerId) || "*",
+    },
+    agentProfileId: binding.agentProfileId,
+    overrides: {
+      agent: isRuntimeAgentId(routeAgent) ? routeAgent : null,
+      model: normalizeString(metadata.routeModel) || null,
+      workDir: normalizeString(metadata.routeWorkDir) || null,
+      permissionMode: isPermissionMode(permissionMode) ? permissionMode : null,
+    },
+    accessPolicy: {
+      allowlist: [...binding.allowlist],
+      adminUsers: [...binding.adminUsers],
+      disabledCommands: [...binding.disabledCommands],
+    },
+    sessionPolicy: {
+      mode: normalizeString(metadata.sessionMode) || "persistent",
+      busyGuard: metadata.busyGuard !== false,
+      attachmentStaging: metadata.attachmentStaging !== false,
+    },
+  };
+}
+
+function splitBindingsIntoAccountsAndRoutes(
+  bindings: ChannelConnectorPlatformBinding[],
+  seedAccounts: ChannelConnectorPlatformAccount[] = [],
+): {
+  platformAccounts: ChannelConnectorPlatformAccount[];
+  routes: ChannelConnectorRoute[];
+} {
+  const groups = new Map<string, ChannelConnectorPlatformBinding[]>();
+  for (const binding of bindings) {
+    const key = [binding.platform, binding.accountId, binding.botId || ""].join("::");
+    const group = groups.get(key);
+    if (group) group.push(binding);
+    else groups.set(key, [binding]);
+  }
+  const platformAccounts: ChannelConnectorPlatformAccount[] = [];
+  const routes: ChannelConnectorRoute[] = [];
+  for (const group of groups.values()) {
+    const representative = group[0];
+    const seed = seedAccounts.find(
+      (account) =>
+        account.platform === representative.platform
+        && account.externalAccountId === representative.accountId
+        && account.botId === representative.botId,
+    );
+    const credentials: Record<string, unknown> = { ...(seed?.credentials ?? {}) };
+    const settings: Record<string, unknown> = { ...(seed?.settings ?? {}) };
+    for (const binding of group) {
+      for (const [key, value] of Object.entries(binding.metadata ?? {})) {
+        if (ROUTE_METADATA_KEYS.has(key)) continue;
+        const target = isSensitiveMetadataKey(key) ? credentials : settings;
+        target[key] = value;
+      }
+    }
+    const account: ChannelConnectorPlatformAccount = {
+      id: seed?.id || representative.id,
+      platform: representative.platform,
+      displayName: representative.displayName,
+      enabled: group.some((binding) => binding.enabled),
+      externalAccountId: representative.accountId,
+      botId: representative.botId,
+      credentials,
+      settings,
+    };
+    platformAccounts.push(account);
+    routes.push(...group.map((binding) => routeFromBinding(binding, account.id)));
+  }
+  return { platformAccounts, routes };
+}
+
+function materializePlatformBindings(
+  platformAccounts: ChannelConnectorPlatformAccount[],
+  routes: ChannelConnectorRoute[],
+): ChannelConnectorPlatformBinding[] {
+  const accounts = new Map(platformAccounts.map((account) => [account.id, account]));
+  return routes.flatMap((route) => {
+    const account = accounts.get(route.accountRef);
+    if (!account) return [];
+    const metadata: Record<string, unknown> = {
+      ...account.settings,
+      ...account.credentials,
+      peerKind: route.source.kind,
+      peerId: route.source.id,
+      sessionMode: route.sessionPolicy.mode,
+      busyGuard: route.sessionPolicy.busyGuard,
+      attachmentStaging: route.sessionPolicy.attachmentStaging,
+    };
+    if (route.overrides.agent) metadata.routeAgent = route.overrides.agent;
+    if (route.overrides.model) metadata.routeModel = route.overrides.model;
+    if (route.overrides.workDir) metadata.routeWorkDir = route.overrides.workDir;
+    if (route.overrides.permissionMode) {
+      metadata.routePermissionMode = route.overrides.permissionMode;
+    }
+    return [{
+      id: route.id,
+      platform: account.platform,
+      accountId: account.externalAccountId,
+      botId: account.botId,
+      displayName: route.displayName || account.displayName,
+      agentProfileId: route.agentProfileId,
+      enabled: account.enabled && route.enabled,
+      allowlist: [...route.accessPolicy.allowlist],
+      adminUsers: [...route.accessPolicy.adminUsers],
+      disabledCommands: [...route.accessPolicy.disabledCommands],
+      metadata,
+    }];
+  });
+}
+
+function normalizeV2Accounts(value: unknown): ChannelConnectorPlatformAccount[] {
+  if (!Array.isArray(value)) return [];
+  const ids = new Set<string>();
+  const accounts: ChannelConnectorPlatformAccount[] = [];
+  for (const raw of value) {
+    if (!isRecord(raw)) continue;
+    const id = normalizeString(raw.id);
+    const platform = normalizeString(raw.platform);
+    if (!id || ids.has(id) || !isPlatformId(platform)) continue;
+    ids.add(id);
+    accounts.push({
+      id,
+      platform,
+      displayName: normalizeString(raw.displayName) || id,
+      enabled: raw.enabled !== false,
+      externalAccountId: normalizeString(raw.externalAccountId) || id,
+      botId: normalizeString(raw.botId) || null,
+      credentials: isRecord(raw.credentials) ? { ...raw.credentials } : {},
+      settings: normalizePlatformBindingMetadata(
+        platform,
+        isRecord(raw.settings) ? raw.settings : {},
+      ) ?? {},
+    });
+  }
+  return accounts;
+}
+
+function normalizeV2Routes(
+  value: unknown,
+  accounts: ChannelConnectorPlatformAccount[],
+  defaultAgentProfileId: string,
+  validProfileIds: Set<string>,
+): ChannelConnectorRoute[] {
+  if (!Array.isArray(value)) return [];
+  const accountIds = new Set(accounts.map((account) => account.id));
+  const routeIds = new Set<string>();
+  const routes: ChannelConnectorRoute[] = [];
+  for (const raw of value) {
+    if (!isRecord(raw)) continue;
+    const id = normalizeString(raw.id);
+    const accountRef = normalizeString(raw.accountRef);
+    if (!id || routeIds.has(id) || !accountIds.has(accountRef)) continue;
+    routeIds.add(id);
+    const source = isRecord(raw.source) ? raw.source : {};
+    const overrides = isRecord(raw.overrides) ? raw.overrides : {};
+    const accessPolicy = isRecord(raw.accessPolicy) ? raw.accessPolicy : {};
+    const sessionPolicy = isRecord(raw.sessionPolicy) ? raw.sessionPolicy : {};
+    const agent = normalizeString(overrides.agent);
+    const permissionMode = normalizeString(overrides.permissionMode);
+    const requestedProfileId = normalizeString(raw.agentProfileId);
+    routes.push({
+      id,
+      accountRef,
+      displayName: normalizeString(raw.displayName) || id,
+      enabled: raw.enabled !== false,
+      source: {
+        kind: normalizeString(source.kind) || "private",
+        id: normalizeString(source.id) || "*",
+      },
+      agentProfileId: validProfileIds.has(requestedProfileId)
+        ? requestedProfileId
+        : defaultAgentProfileId,
+      overrides: {
+        agent: isRuntimeAgentId(agent) ? agent : null,
+        model: normalizeString(overrides.model) || null,
+        workDir: normalizeString(overrides.workDir) || null,
+        permissionMode: isPermissionMode(permissionMode) ? permissionMode : null,
+      },
+      accessPolicy: {
+        allowlist: stringList(accessPolicy.allowlist),
+        adminUsers: stringList(accessPolicy.adminUsers),
+        disabledCommands: stringList(accessPolicy.disabledCommands),
+      },
+      sessionPolicy: {
+        mode: normalizeString(sessionPolicy.mode) || "persistent",
+        busyGuard: sessionPolicy.busyGuard !== false,
+        attachmentStaging: sessionPolicy.attachmentStaging !== false,
+      },
+    });
+  }
+  return routes;
+}
+
 function defaultNativeConfig(
   config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
   now: Date,
 ): ChannelConnectorsNativeConfig {
   return {
-    version: 1,
+    version: 2,
     updatedAt: now.toISOString(),
     defaultAgentProfileId: "default-codex",
     agentSessionPolicy: DEFAULT_AGENT_SESSION_POLICY,
@@ -501,6 +800,8 @@ function defaultNativeConfig(
         appProfileRef: "default",
       },
     ],
+    platformAccounts: [],
+    routes: [],
     platformBindings: [],
   };
 }
@@ -557,7 +858,8 @@ function normalizeNativeConfig(
     ? normalizeString(input.defaultAgentProfileId)
     : agentProfiles[0].id;
 
-  const rawBindings = Array.isArray(input.platformBindings) ? input.platformBindings : [];
+  const hasCompatibilityBindings = Array.isArray(input.platformBindings);
+  const rawBindings = hasCompatibilityBindings ? input.platformBindings as unknown[] : [];
   const bindingIds = new Set<string>();
   const wechatAccountAgents = new Map<string, string>();
   const platformBindings: ChannelConnectorsNativeConfig["platformBindings"] = [];
@@ -588,7 +890,7 @@ function normalizeNativeConfig(
     }
 
     bindingIds.add(id);
-    platformBindings.push({
+    const normalizedBinding: ChannelConnectorPlatformBinding = {
       id,
       platform: platformId,
       accountId,
@@ -599,16 +901,46 @@ function normalizeNativeConfig(
       allowlist: stringList(raw.allowlist),
       adminUsers: stringList(raw.adminUsers),
       disabledCommands: stringList(raw.disabledCommands ?? raw.disabled_commands),
-      metadata: isRecord(raw.metadata) ? raw.metadata : undefined,
-    });
+      metadata: normalizePlatformBindingMetadata(platformId, raw.metadata),
+    };
+    platformBindings.push(normalizedBinding);
+  }
+
+  const model = hasCompatibilityBindings
+    ? splitBindingsIntoAccountsAndRoutes(
+      platformBindings,
+      normalizeV2Accounts(input.platformAccounts),
+    )
+    : (() => {
+      const platformAccounts = normalizeV2Accounts(input.platformAccounts);
+      const routes = normalizeV2Routes(
+        input.routes,
+        platformAccounts,
+        defaultAgentProfileId,
+        validProfileIds,
+      );
+      platformBindings.push(...materializePlatformBindings(platformAccounts, routes));
+      return { platformAccounts, routes };
+    })();
+  if (hasCompatibilityBindings) {
+    platformBindings.splice(
+      0,
+      platformBindings.length,
+      ...materializePlatformBindings(model.platformAccounts, model.routes),
+    );
+  }
+  if (strict) {
+    for (const binding of platformBindings) validateEnabledPlatformBinding(binding);
   }
 
   return {
-    version: 1,
+    version: 2,
     updatedAt: normalizeString(input.updatedAt, now.toISOString()),
     defaultAgentProfileId,
     agentSessionPolicy: normalizeAgentSessionPolicy(input.agentSessionPolicy),
     agentProfiles,
+    platformAccounts: model.platformAccounts,
+    routes: model.routes,
     platformBindings,
   };
 }
@@ -643,7 +975,20 @@ function writeNativeConfig(
     now,
     true,
   );
-  writeTextAtomic(paths.nativeConfigPath, `${JSON.stringify(normalized, null, 2)}\n`);
+  const previousRaw = readTextIfExists(paths.nativeConfigPath);
+  if (previousRaw && !fs.existsSync(`${paths.nativeConfigPath}.v1.bak`)) {
+    let previousVersion: unknown = null;
+    try {
+      previousVersion = (JSON.parse(previousRaw) as { version?: unknown }).version;
+    } catch {
+      previousVersion = null;
+    }
+    if (previousVersion !== 2) {
+      writeTextAtomic(`${paths.nativeConfigPath}.v1.bak`, previousRaw);
+    }
+  }
+  const { platformBindings: _compatibilityBindings, ...persisted } = normalized;
+  writeTextAtomic(paths.nativeConfigPath, `${JSON.stringify(persisted, null, 2)}\n`);
   return normalized;
 }
 
@@ -693,6 +1038,7 @@ function runtimeStatusError(checkedAt: string, error: unknown): ChannelConnector
     projects: null,
     platformBindings: null,
     octoConnections: null,
+    octoConnectionDetails: [],
     feishuConnections: null,
     feishuConnectionDetails: [],
     activeRuns: null,
@@ -706,6 +1052,36 @@ function runtimeStatusError(checkedAt: string, error: unknown): ChannelConnector
     },
     reload: null,
     error: error instanceof Error ? error.message : normalizeString(error, "Channel daemon runtime status unavailable"),
+  };
+}
+
+function normalizeDaemonOctoConnection(
+  value: unknown,
+): ChannelConnectorsDaemonRuntimeStatus["octoConnectionDetails"][number] | null {
+  if (!isRecord(value)) return null;
+  const credentialSource = value.credentialSource === "register"
+    || value.credentialSource === "cache"
+    ? value.credentialSource
+    : null;
+  return {
+    bindingId: normalizeString(value.bindingId),
+    accountId: normalizeString(value.accountId),
+    botId: nullableString(value.botId),
+    robotId: nullableString(value.robotId),
+    connected: value.connected === true,
+    state: normalizeString(value.state, "unknown"),
+    lastError: nullableString(value.lastError),
+    lastConnectedAt: nullableString(value.lastConnectedAt),
+    lastDisconnectedAt: nullableString(value.lastDisconnectedAt),
+    reconnects: nullableNumber(value.reconnects) ?? 0,
+    receivedMessages: nullableNumber(value.receivedMessages) ?? 0,
+    credentialSource,
+    restHeartbeatIntervalMs: nullableNumber(value.restHeartbeatIntervalMs) ?? 0,
+    restHeartbeatSuccesses: nullableNumber(value.restHeartbeatSuccesses) ?? 0,
+    restHeartbeatFailures: nullableNumber(value.restHeartbeatFailures) ?? 0,
+    restHeartbeatLastOkAt: nullableString(value.restHeartbeatLastOkAt),
+    restHeartbeatLastErrorAt: nullableString(value.restHeartbeatLastErrorAt),
+    restHeartbeatLastError: nullableString(value.restHeartbeatLastError),
   };
 }
 
@@ -963,11 +1339,14 @@ function normalizeDaemonReloadResponse(value: unknown): ChannelConnectorsDaemonR
   };
 }
 
-async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelConnectorsDaemonRuntimeStatus> {
+async function requestDaemonRuntimeStatus(
+  checkedAt: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ChannelConnectorsDaemonRuntimeStatus> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1500);
   try {
-    const response = await fetch(`${managementEndpoint()}/status`, { signal: controller.signal });
+    const response = await fetchImpl(`${managementEndpoint()}/status`, { signal: controller.signal });
     const text = await response.text();
     let body: unknown = null;
     try {
@@ -988,6 +1367,11 @@ async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelCon
         .map(normalizeDaemonFeishuConnection)
         .filter((record): record is ChannelConnectorsDaemonRuntimeStatus["feishuConnectionDetails"][number] => Boolean(record))
       : [];
+    const octoConnectionDetails = Array.isArray(body.octoConnections)
+      ? body.octoConnections
+        .map(normalizeDaemonOctoConnection)
+        .filter((record): record is ChannelConnectorsDaemonRuntimeStatus["octoConnectionDetails"][number] => Boolean(record))
+      : [];
     const pendingAgentRuns = normalizeDaemonPendingAgentRunStatus(body.pendingAgentRuns);
     return {
       ok: true,
@@ -997,7 +1381,8 @@ async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelCon
       pid: nullableNumber(body.pid),
       projects: nullableNumber(body.projects),
       platformBindings: nullableNumber(body.platformBindings),
-      octoConnections: arrayCount(body.octoConnections),
+      octoConnections: octoConnectionDetails.length,
+      octoConnectionDetails,
       feishuConnections: arrayCount(body.feishuConnections),
       feishuConnectionDetails,
       activeRuns: arrayCount(body.activeRuns),
@@ -1016,11 +1401,12 @@ async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelCon
 
 async function requestDaemonReload(
   payload: { mode: ChannelConnectorsDaemonReloadMode },
+  fetchImpl: typeof fetch = fetch,
 ): Promise<ChannelConnectorsDaemonReloadResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch(`${managementEndpoint()}/reload`, {
+    const response = await fetchImpl(`${managementEndpoint()}/reload`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
@@ -1188,26 +1574,6 @@ function buildRuntimeConfig(
     projects,
   };
 }
-function isSensitiveMetadataKey(key: string): boolean {
-  const normalized = key.trim().toLowerCase().replace(/[-_\s]/g, "");
-  return normalized === "apikey"
-    || normalized === "aeskey"
-    || normalized === "appsecret"
-    || normalized === "botsecret"
-    || normalized === "bottoken"
-    || normalized === "clientsecret"
-    || normalized === "encodingaeskey"
-    || normalized === "encryptkey"
-    || normalized === "imtoken"
-    || normalized === "password"
-    || normalized === "privatekey"
-    || normalized === "secret"
-    || normalized === "tenantaccesstoken"
-    || normalized === "token"
-    || normalized === "verificationtoken"
-    || normalized.endsWith("secret")
-    || normalized.endsWith("token");
-}
 
 function redactSensitiveMetadata(value: unknown): unknown {
   if (Array.isArray(value)) return value.map((item) => redactSensitiveMetadata(item));
@@ -1219,6 +1585,17 @@ function redactSensitiveMetadata(value: unknown): unknown {
       : redactSensitiveMetadata(item);
   }
   return output;
+}
+
+function redactPlatformBinding(
+  binding: ChannelConnectorPlatformBinding,
+): ChannelConnectorPlatformBinding {
+  return {
+    ...binding,
+    metadata: redactSensitiveMetadata(binding.metadata) as
+      | Record<string, unknown>
+      | undefined,
+  };
 }
 
 function restoreRedactedSensitiveMetadata(existing: unknown, incoming: unknown): unknown {
@@ -1244,8 +1621,26 @@ function restoreNativeConfigRedactedSecrets(
   incoming: ChannelConnectorsNativeConfig,
 ): ChannelConnectorsNativeConfig {
   const existingById = new Map(existing.platformBindings.map((binding) => [binding.id, binding] as const));
+  const existingAccountsById = new Map(
+    existing.platformAccounts.map((account) => [account.id, account] as const),
+  );
   return {
     ...incoming,
+    platformAccounts: incoming.platformAccounts.map((account) => {
+      const previous = existingAccountsById.get(account.id);
+      if (!previous) return account;
+      return {
+        ...account,
+        credentials: restoreRedactedSensitiveMetadata(
+          previous.credentials,
+          account.credentials,
+        ) as Record<string, unknown>,
+        settings: restoreRedactedSensitiveMetadata(
+          previous.settings,
+          account.settings,
+        ) as Record<string, unknown>,
+      };
+    }),
     platformBindings: incoming.platformBindings.map((binding) => {
       const previous = existingById.get(binding.id);
       if (!previous?.metadata || !binding.metadata) return binding;
@@ -1260,6 +1655,11 @@ function restoreNativeConfigRedactedSecrets(
 function redactNativeConfig(nativeConfig: ChannelConnectorsNativeConfig): ChannelConnectorsNativeConfig {
   return {
     ...nativeConfig,
+    platformAccounts: nativeConfig.platformAccounts.map((account) => ({
+      ...account,
+      credentials: redactSensitiveMetadata(account.credentials) as Record<string, unknown>,
+      settings: redactSensitiveMetadata(account.settings) as Record<string, unknown>,
+    })),
     platformBindings: nativeConfig.platformBindings.map((binding) => ({
       ...binding,
       metadata: redactSensitiveMetadata(binding.metadata) as Record<string, unknown> | undefined,
@@ -1698,6 +2098,31 @@ function validateOctoInboundRequest(payload: ChannelConnectorOctoInboundRequest 
   };
 }
 
+function normalizeTransportSmokeDraftBinding(
+  value: unknown,
+  platform: "feishu" | "octo",
+): ChannelConnectorPlatformBinding | null {
+  if (!isRecord(value) || value.platform !== platform) return null;
+  const metadata = normalizePlatformBindingMetadata(platform, value.metadata);
+  const id = normalizeString(value.id) || `${platform}-draft`;
+  const accountId = normalizeString(value.accountId)
+    || (platform === "feishu" && metadata ? normalizeString(metadata.appId) : "")
+    || id;
+  return {
+    id,
+    platform,
+    accountId,
+    botId: normalizeString(value.botId) || null,
+    displayName: normalizeString(value.displayName) || id,
+    agentProfileId: normalizeString(value.agentProfileId) || "default-codex",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    disabledCommands: [],
+    metadata,
+  };
+}
+
 function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTransportSmokeRequest | undefined): ChannelConnectorOctoTransportSmokeRequest {
   if (!payload || !isRecord(payload)) return { action: "register" };
   const action = payload.action === "typing"
@@ -1747,6 +2172,7 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
   const pullMode = Number(payload.pullMode ?? 1);
   return {
     bindingId: normalizeString(payload.bindingId) || null,
+    binding: normalizeTransportSmokeDraftBinding(payload.binding, "octo"),
     action,
     channelId: normalizeString(payload.channelId) || null,
     channelType: channelType === 1 || channelType === 2 || channelType === 5 ? channelType : 1,
@@ -1806,6 +2232,7 @@ function normalizeFeishuTransportSmokeRequest(payload: ChannelConnectorFeishuTra
     : "tenant-token";
   return {
     bindingId: normalizeString(payload.bindingId) || null,
+    binding: normalizeTransportSmokeDraftBinding(payload.binding, "feishu"),
     action,
     channelId: normalizeString(payload.channelId) || null,
     receiveId: normalizeString(payload.receiveId) || null,
@@ -2632,6 +3059,75 @@ export function createChannelConnectorsService(
     };
   }
 
+  async function applyNativeConfig(
+    payload: ChannelConnectorsApplyNativeConfigRequest = {},
+  ): Promise<ChannelConnectorsApplyNativeConfigResponse> {
+    if (!payload.config) throw new Error("Channel Connectors config payload is required.");
+    const resolvedPaths = paths();
+    const previous = readNativeConfig(config, resolvedPaths, now());
+    const expectedUpdatedAt = normalizeString(payload.expectedUpdatedAt);
+    if (expectedUpdatedAt && previous.updatedAt !== expectedUpdatedAt) {
+      throw new Error(
+        `Channel Connectors config changed since this editor was opened. Expected ${expectedUpdatedAt}, current ${previous.updatedAt}.`,
+      );
+    }
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const runtimeBefore = await requestDaemonRuntimeStatus(
+      now().toISOString(),
+      fetchImpl,
+    );
+    const saved = saveNativeConfig({ config: payload.config });
+    const applyResult = await manageDaemonService({
+      action: "reload",
+      apply: true,
+      reloadMode: payload.reloadMode || "when-idle",
+    });
+    const reload = applyResult.reload ?? {
+      ok: false,
+      checkedAt: now().toISOString(),
+      status: "failed" as const,
+      mode: payload.reloadMode || "when-idle",
+      activeRuns: 0,
+      activeTurns: 0,
+      configUpdatedAt: saved.config.updatedAt,
+      appliedAt: null,
+      restartRequiredReason: null,
+      error: "Channel daemon reload returned no status.",
+    };
+    const accepted = reload.status === "applied"
+      || reload.status === "pending"
+      || reload.status === "restart-required";
+    let rolledBack = false;
+    let rollbackReload: ChannelConnectorsDaemonReloadResponse | null = null;
+    let currentConfig = saved.config;
+    if (
+      !accepted
+      && runtimeBefore.reachable
+      && payload.rollbackOnFailure !== false
+    ) {
+      currentConfig = writeNativeConfig(config, resolvedPaths, previous, now());
+      const rollbackResult = await manageDaemonService({
+        action: "reload",
+        apply: true,
+        reloadMode: "immediate",
+      });
+      rollbackReload = rollbackResult.reload;
+      rolledBack = true;
+    }
+    return {
+      ok: accepted,
+      checkedAt: now().toISOString(),
+      accepted,
+      persisted: !rolledBack,
+      daemonReachableBefore: runtimeBefore.reachable,
+      rolledBack,
+      config: redactNativeConfig(currentConfig),
+      reload,
+      rollbackReload,
+      error: accepted ? null : reload.error || "Channel daemon reload failed.",
+    };
+  }
+
   function feishuRegistrationTerminal(status: ChannelConnectorFeishuAppRegistrationStatus): boolean {
     return status === "succeeded" || status === "failed" || status === "cancelled" || status === "expired";
   }
@@ -3423,8 +3919,9 @@ export function createChannelConnectorsService(
     const nativeConfig = readNativeConfig(config, resolvedPaths, now());
     const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
     const resolved = resolveRuntimeBindingForPlatform(nativeConfig, runtimeConfig, "feishu", request.bindingId, null);
+    const binding = request.binding ?? resolved?.binding ?? null;
     const checkedAt = now().toISOString();
-    if (!resolved) {
+    if (!binding) {
       return {
         ok: true,
         checkedAt,
@@ -3436,13 +3933,13 @@ export function createChannelConnectorsService(
         },
       };
     }
-    const transportConfig = feishuTransportFromBinding(resolved.binding);
+    const transportConfig = feishuTransportFromBinding(binding);
     if (!transportConfig) {
       return {
         ok: true,
         checkedAt,
         adapter: "feishu",
-        binding: resolved.binding,
+        binding: redactPlatformBinding(binding),
         transport: {
           ...emptyFeishuTransportResult(request.action || "tenant-token"),
           error: "feishu_transport_config_missing",
@@ -3520,7 +4017,7 @@ export function createChannelConnectorsService(
       ok: true,
       checkedAt,
       adapter: "feishu",
-      binding: resolved.binding,
+      binding: redactPlatformBinding(binding),
       transport,
     };
   }
@@ -3694,8 +4191,9 @@ export function createChannelConnectorsService(
     const request = normalizeOctoTransportSmokeRequest(payload);
     const nativeConfig = readNativeConfig(config, paths(), now());
     const resolved = resolveOctoBindingById(nativeConfig, request.bindingId);
+    const binding = request.binding ?? resolved?.binding ?? null;
     const checkedAt = now().toISOString();
-    if (!resolved) {
+    if (!binding) {
       return {
         ok: true,
         checkedAt,
@@ -3707,13 +4205,13 @@ export function createChannelConnectorsService(
         },
       };
     }
-    const transportConfig = octoTransportFromBinding(resolved.binding);
+    const transportConfig = octoTransportFromBinding(binding);
     if (!transportConfig) {
       return {
         ok: true,
         checkedAt,
         adapter: "octo",
-        binding: resolved.binding,
+        binding: redactPlatformBinding(binding),
         transport: {
           ...emptyOctoTransportResult(octoTransportSmokeResultAction(request.action)),
           error: "octo_transport_config_missing",
@@ -3934,7 +4432,7 @@ export function createChannelConnectorsService(
       ok: true,
       checkedAt,
       adapter: "octo",
-      binding: resolved.binding,
+      binding: redactPlatformBinding(binding),
       transport,
     };
   }
@@ -4045,7 +4543,10 @@ export function createChannelConnectorsService(
     }
 
     const reload = action === "reload"
-      ? await requestDaemonReload({ mode: payload.reloadMode || "when-idle" })
+      ? await requestDaemonReload(
+        { mode: payload.reloadMode || "when-idle" },
+        options.fetchImpl ?? fetch,
+      )
       : null;
 
     return response({
@@ -4072,7 +4573,10 @@ export function createChannelConnectorsService(
   async function getStatus(): Promise<ChannelConnectorsStatusResponse> {
     const service = await getDaemonService();
     const checkedAt = now().toISOString();
-    const runtime = await requestDaemonRuntimeStatus(checkedAt);
+    const runtime = await requestDaemonRuntimeStatus(
+      checkedAt,
+      options.fetchImpl ?? fetch,
+    );
     return {
       ok: true,
       checkedAt,
@@ -4128,6 +4632,7 @@ export function createChannelConnectorsService(
     getPublicNativeConfig: currentPublicNativeConfig,
     getBindingSecrets,
     saveNativeConfig,
+    applyNativeConfig,
     startFeishuAppRegistration,
     getFeishuAppRegistration,
     cancelFeishuAppRegistration,

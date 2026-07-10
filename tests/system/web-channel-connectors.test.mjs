@@ -61,6 +61,10 @@ test("Channel Connectors overview derives daemon readiness and links to layered 
   assert.match(overview, /useChannelConnectorsStatusQuery/);
   assert.match(overview, /runtime\?\.reachable === true/);
   assert.match(overview, /manager\?\.active === true/);
+  assert.match(overview, /groupChannelConnectorAccounts/);
+  assert.match(overview, /enabledAccounts/);
+  assert.match(overview, /accountIssueCount/);
+  assert.match(overview, /平台账号/);
   assert.match(overview, /DaemonServicePanel/);
   assert.match(overview, /goToView\("accounts"/);
   assert.match(overview, /goToView\("deliveries"/);
@@ -68,12 +72,26 @@ test("Channel Connectors overview derives daemon readiness and links to layered 
 
 test("Channel Connectors accounts view supports account CRUD and verified smoke actions", () => {
   const accounts = read(`${VIEWS_DIR}/AccountsView.tsx`);
+  const accountRuntime = read(`${VIEWS_DIR}/account-runtime.ts`);
   assert.match(accounts, /新建平台账号/);
   assert.match(accounts, /账号身份/);
   assert.match(accounts, /groupAccounts/);
   assert.match(accounts, /确认删除/);
   assert.match(accounts, /useRunFeishuTransportSmokeMutation/);
   assert.match(accounts, /useRunOctoTransportSmokeMutation/);
+  assert.match(accounts, /useChannelConnectorsStatusQuery/);
+  assert.match(accounts, /useApplyChannelConnectorsConfigMutation/);
+  assert.match(accounts, /已自动回滚/);
+  assert.match(accounts, /runtimeAccountState/);
+  assert.match(accountRuntime, /已连接/);
+  assert.match(accountRuntime, /连接异常/);
+  assert.match(accountRuntime, /守护离线/);
+  assert.match(accountRuntime, /im\.message\.receive_v1/);
+  assert.match(accounts, /aria-label="账号运行状态"/);
+  assert.match(accounts, /sm:hidden/);
+  assert.match(accounts, /hidden sm:block/);
+  assert.match(accounts, /result\.transport\.ok/);
+  assert.match(accounts, /测试失败/);
   assert.match(accounts, /tenant-token/);
   assert.match(accounts, /register/);
 });
@@ -84,6 +102,10 @@ test("Channel Connectors route view keeps routing separate from platform credent
   assert.match(routes, /Agent Profile 可被多个渠道复用/);
   assert.match(routes, /一个账号可复制出多条来源路由/);
   assert.match(routes, /复制路由/);
+  assert.match(routes, /routeMetadataForCopy/);
+  assert.match(routes, /ROUTE_METADATA_KEYS/);
+  assert.match(routes, /useApplyChannelConnectorsConfigMutation/);
+  assert.match(routes, /已自动回滚/);
   assert.match(routes, /已复制为停用路由/);
   assert.match(routes, /setEditing\(created \?\? nextBinding\)/);
   assert.match(routes, /删除副本路由/);
@@ -98,13 +120,30 @@ test("Channel Connectors route view keeps routing separate from platform credent
 
 test("Channel Connectors account and route editors use wide Sheets with platform templates", () => {
   const editor = read(`${VIEWS_DIR}/BindingEditor.tsx`);
+  const api = read("apps/web/src/lib/api/channel-connectors.ts");
+  const types = read("types/channel-connectors.ts");
   assert.match(editor, /SheetContent/);
   assert.match(editor, /860px/);
   assert.match(editor, /SecretInput/);
   assert.match(editor, /useChannelConnectorBindingSecretsQuery/);
+  assert.match(api, /X-Tracevane-Secret-Reveal/);
   assert.match(editor, /useStartFeishuAppRegistrationMutation/);
   assert.match(editor, /useFeishuAppRegistrationQuery/);
+  assert.match(editor, /useRunFeishuTransportSmokeMutation/);
+  assert.match(editor, /useRunOctoTransportSmokeMutation/);
+  assert.match(editor, /useApplyChannelConnectorsConfigMutation/);
+  assert.match(editor, /rollbackOnFailure: true/);
+  assert.match(editor, /应用失败，已自动回滚/);
   assert.match(editor, /FeishuRegistrationPanel/);
+  assert.match(editor, /QRCodeSVG/);
+  assert.match(editor, /飞书扫码绑定二维码/);
+  assert.match(editor, /DEFAULT_FEISHU_API_URL/);
+  assert.match(editor, /DEFAULT_OCTO_API_URL/);
+  assert.match(types, /https:\/\/im\.deepminer\.com\.cn\/api/);
+  assert.match(editor, /autoComplete="new-password"/);
+  assert.match(editor, /platformChangePatch/);
+  assert.match(editor, /binding: draftBinding/);
+  assert.match(editor, /测试连接/);
   assert.match(editor, /扫码创建 \/ 绑定/);
   assert.match(editor, /生成扫码绑定/);
   assert.match(editor, /已复制扫码链接/);
@@ -113,6 +152,14 @@ test("Channel Connectors account and route editors use wide Sheets with platform
   assert.match(editor, /SECRET_MASK/);
   assert.match(editor, /显示明文/);
   assert.doesNotMatch(editor, /替换/);
+  assert.match(editor, /useUnsavedEditor/);
+  assert.match(editor, /beforeunload/);
+  assert.match(editor, /有未保存的修改，确定放弃吗/);
+  assert.match(editor, /accountValidationErrors/);
+  assert.match(editor, /aria-invalid/);
+  assert.match(editor, /App ID 不能为空/);
+  assert.match(editor, /App Secret 不能为空/);
+  assert.match(editor, /Bot Token 不能为空/);
   assert.match(editor, /App Secret/);
   assert.match(editor, /Bot Token/);
   assert.match(editor, /EncodingAESKey/);
@@ -139,6 +186,13 @@ test("Channel Connectors account and route editors use wide Sheets with platform
 
 test("Channel Connectors diagnostics demotes generated daemon bindings to evidence", () => {
   const diagnostics = read(`${VIEWS_DIR}/DiagnosticsView.tsx`);
+  assert.match(diagnostics, /账号连接健康/);
+  assert.match(diagnostics, /groupChannelConnectorAccounts/);
+  assert.match(diagnostics, /runtimeAccountState/);
+  assert.match(diagnostics, /需要处理/);
+  assert.ok(
+    diagnostics.indexOf("账号连接健康") < diagnostics.indexOf("DaemonServicePanel onMutated"),
+  );
   assert.match(diagnostics, /生成配置证据/);
   assert.match(diagnostics, /不再作为第二套用户编辑列表/);
   assert.match(diagnostics, /DaemonServicePanel/);
@@ -188,7 +242,8 @@ test("Channel Connectors deliveries compares route defaults with session overrid
   assert.match(sessions, /currentSessionSummary/);
   assert.match(sessions, /默认目录/);
   assert.doesNotMatch(sessions, /session\.sessionId\}\s*<\/strong>/);
-  assert.equal((sessions.match(/useSaveChannelConnectorsConfigMutation/g) || []).length, 2);
+  assert.doesNotMatch(sessions, /useSaveChannelConnectorsConfigMutation/);
+  assert.equal((sessions.match(/applyConfigMutation\.mutate/g) || []).length, 1);
   assert.match(types, /ChannelConnectorAgentSessionControlStatus/);
   assert.match(types, /lastCommand: string \| null/);
   assert.match(types, /permissionMode: ChannelConnectorPermissionMode \| null/);
@@ -240,13 +295,15 @@ test("Channel Connectors deliveries expose global concurrency and queue policy",
   assert.match(sessions, /maxConcurrentTurns/);
   assert.match(sessions, /queueMaxRecords/);
   assert.match(sessions, /不同会话竞争这个全局槽位/);
+  assert.match(sessions, /编辑策略/);
+  assert.match(sessions, /policyEditing/);
   assert.match(sessions, /保存并应用/);
-  assert.match(sessions, /action: "reload", apply: true, reloadMode: "when-idle"/);
-  assert.match(sessions, /useManageChannelConnectorsDaemonServiceMutation/);
+  assert.match(sessions, /useApplyChannelConnectorsConfigMutation/);
+  assert.match(sessions, /rollbackOnFailure: true/);
   assert.match(sessions, /运行中已同步/);
   assert.match(sessions, /已保存，需重启/);
   assert.match(sessions, /policyNotice/);
-  assert.match(sessions, /已保存并热重载 IM 守护；新的并发\/队列策略已生效/);
+  assert.match(sessions, /策略应用失败，已自动回滚/);
 });
 
 test("Channel Connectors deliveries keeps hooks before loading guards", () => {

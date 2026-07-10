@@ -1,4 +1,5 @@
 import * as React from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   ChevronDown,
   Copy,
@@ -8,6 +9,7 @@ import {
   Loader2,
   Save,
   ScanQrCode,
+  Zap,
   X,
 } from "lucide-react";
 
@@ -27,10 +29,11 @@ import { toast } from "@/design/ui/sonner";
 
 import {
   useCancelFeishuAppRegistrationMutation,
+  useApplyChannelConnectorsConfigMutation,
   useChannelConnectorBindingSecretsQuery,
   useFeishuAppRegistrationQuery,
-  useManageChannelConnectorsDaemonServiceMutation,
-  useSaveChannelConnectorsConfigMutation,
+  useRunFeishuTransportSmokeMutation,
+  useRunOctoTransportSmokeMutation,
   useStartFeishuAppRegistrationMutation,
 } from "@/lib/query/channel-connectors";
 import {
@@ -39,6 +42,7 @@ import {
 } from "@/lib/query/model-gateway";
 import type {
   ChannelConnectorsNativeConfig,
+  ChannelConnectorsApplyNativeConfigResponse,
   ChannelConnectorAgentProfile,
   ChannelConnectorPlatformBinding,
   ChannelConnectorPlatformId,
@@ -47,9 +51,14 @@ import type {
   ChannelConnectorFeishuAppRegistrationStatus,
   ChannelConnectorFeishuAppRegistrationTenant,
   ChannelConnectorFeishuAppRegistrationSessionResponse,
-  ChannelConnectorsDaemonResponse,
 } from "../types";
-import { CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS, CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA } from "../types";
+import {
+  CHANNEL_CONNECTOR_DEFAULT_FEISHU_API_URL as DEFAULT_FEISHU_API_URL,
+  CHANNEL_CONNECTOR_DEFAULT_LARK_API_URL as DEFAULT_LARK_API_URL,
+  CHANNEL_CONNECTOR_DEFAULT_OCTO_API_URL as DEFAULT_OCTO_API_URL,
+  CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
+  CHANNEL_CONNECTOR_RUNTIME_AGENT_METADATA,
+} from "../types";
 
 type EditorMode = "create" | "edit";
 
@@ -83,6 +92,10 @@ interface AccountState {
   metadataJson: string;
   advancedOpen: boolean;
 }
+
+type AccountValidationErrors = Partial<
+  Record<"id" | "accountId" | "apiUrl" | "appId" | "appSecret" | "botToken" | "metadataJson", string>
+>;
 
 interface RouteState {
   displayName: string;
@@ -140,6 +153,11 @@ const ROUTE_METADATA_KEYS = new Set([
 
 const REDACTED_SECRET_VALUE = "[redacted]";
 const SECRET_MASK = "****************";
+function defaultPlatformApiUrl(platform: ChannelConnectorPlatformId): string {
+  if (platform === "feishu") return DEFAULT_FEISHU_API_URL;
+  if (platform === "octo") return DEFAULT_OCTO_API_URL;
+  return "";
+}
 
 function createBindingId(platform: ChannelConnectorPlatformId): string {
   return `${platform}-${Date.now().toString(36)}`;
@@ -325,7 +343,7 @@ function toAccountState(
     appSecret: readMeta(binding, "appSecret"),
     verificationToken: readMeta(binding, "verificationToken"),
     encryptKey: readMeta(binding, "encryptKey"),
-    apiUrl: readMeta(binding, "apiUrl"),
+    apiUrl: readMeta(binding, "apiUrl") || defaultPlatformApiUrl(platform),
     botToken: readMeta(binding, "botToken"),
     wsUrl: readMeta(binding, "wsUrl"),
     corpId: readMeta(binding, "corpId"),
@@ -359,6 +377,86 @@ function toAccountState(
     ),
     advancedOpen: false,
   };
+}
+
+function platformChangePatch(
+  state: AccountState,
+  platform: ChannelConnectorPlatformId,
+): Partial<AccountState> {
+  return {
+    platform,
+    id: createBindingId(platform),
+    accountId: "",
+    botId: "",
+    appId: "",
+    appSecret: "",
+    verificationToken: "",
+    encryptKey: "",
+    apiUrl: defaultPlatformApiUrl(platform),
+    botToken: "",
+    wsUrl: "",
+    corpId: "",
+    corpSecret: "",
+    agentId: "",
+    token: "",
+    encodingAesKey: "",
+    feishuProgressCardEntryLimit: "8",
+    stageOctoUrlAttachments: true,
+    attachmentMaxBytes: "128mb",
+    allowPrivateAttachmentUrls: false,
+    cosUploadBaseUrl: "",
+    octoUploadStrategy: "",
+    octoDirectUploadMinBytes: "",
+    metadataJson: "{}",
+    advancedOpen: state.advancedOpen,
+  };
+}
+
+function accountValidationErrors(
+  state: AccountState,
+  requireCredentials = false,
+): AccountValidationErrors {
+  const errors: AccountValidationErrors = {};
+  if (!state.id.trim()) errors.id = "配置 ID 不能为空";
+  const accountId = state.accountId.trim() || (state.platform === "feishu" ? state.appId.trim() : "");
+  if (!accountId) errors.accountId = "账号 ID 不能为空";
+  const apiUrl = state.apiUrl.trim() || defaultPlatformApiUrl(state.platform);
+  if (apiUrl) {
+    try {
+      const parsed = new URL(apiUrl);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        errors.apiUrl = "API URL 必须使用 http 或 https";
+      }
+      if (parsed.username || parsed.password || parsed.hash) {
+        errors.apiUrl = "API URL 不能包含账号密码或片段";
+      }
+    } catch {
+      errors.apiUrl = "API URL 格式无效";
+    }
+  }
+  try {
+    parseMetadata(state.metadataJson);
+  } catch (error) {
+    errors.metadataJson = error instanceof Error ? error.message : "metadata JSON 无效";
+  }
+  if (state.enabled || requireCredentials) {
+    if (state.platform === "feishu") {
+      if (!state.appId.trim()) errors.appId = "App ID 不能为空";
+      if (!state.appSecret.trim()) errors.appSecret = "App Secret 不能为空";
+    }
+    if (state.platform === "octo") {
+      if (!apiUrl) errors.apiUrl = "API URL 不能为空";
+      if (!state.botToken.trim()) errors.botToken = "Bot Token 不能为空";
+    }
+  }
+  return errors;
+}
+
+function accountValidationError(
+  state: AccountState,
+  requireCredentials = false,
+): string | null {
+  return Object.values(accountValidationErrors(state, requireCredentials))[0] ?? null;
 }
 
 function toRouteState(
@@ -403,17 +501,23 @@ function toRouteState(
 function Field({
   label,
   hint,
+  error,
   children,
 }: {
   label: string;
   hint?: string;
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
     <label className="grid gap-1.5">
       <span className="text-sm font-medium text-ink-strong">{label}</span>
       {children}
-      {hint && <span className="text-xs text-subtle">{hint}</span>}
+      {error ? (
+        <span role="alert" className="text-xs text-red">{error}</span>
+      ) : hint ? (
+        <span className="text-xs text-subtle">{hint}</span>
+      ) : null}
     </label>
   );
 }
@@ -448,11 +552,15 @@ function SelectField({
 }
 
 function SecretInput({
+  name,
   value,
   onChange,
+  invalid,
 }: {
+  name: string;
   value: string;
   onChange: (value: string) => void;
+  invalid?: boolean;
 }) {
   const [revealed, setRevealed] = React.useState(false);
   const [hasSavedSecret, setHasSavedSecret] = React.useState(
@@ -473,12 +581,17 @@ function SecretInput({
     <div className="grid gap-1.5">
       <div className="relative">
         <Input
+          name={name}
           type={revealed && canReveal ? "text" : "password"}
           value={displayValue}
           placeholder={hasSavedSecret ? SECRET_MASK : undefined}
           onChange={(event) => onChange(event.target.value)}
           className="pr-11 font-mono"
-          autoComplete="off"
+          autoComplete="new-password"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-invalid={invalid || undefined}
         />
         <div className="absolute inset-y-0 right-1 flex items-center">
           <button
@@ -574,6 +687,7 @@ function FeishuRegistrationPanel({
   const qrUrl = registration?.qrUrl ?? "";
   const status = registration?.status ?? null;
   const canCancel = registration ? !feishuRegistrationTerminal(registration.status) : false;
+  const showQrCode = Boolean(qrUrl) && !feishuRegistrationTerminal(status);
   return (
     <FormSection
       title="扫码创建 / 绑定"
@@ -630,35 +744,62 @@ function FeishuRegistrationPanel({
         <div className="grid gap-3 rounded-sm border border-line bg-panel p-3">
           {qrUrl ? (
             <>
-              <div className="grid gap-2 rounded-sm border border-line bg-panel-2 p-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <ScanQrCode className="size-4 text-primary" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-strong">
-                    {qrUrl}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => copyToClipboard(qrUrl, "已复制扫码链接")}
-                  >
-                    <Copy />
-                    复制链接
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => window.open(qrUrl, "_blank", "noopener,noreferrer")}
-                  >
-                    <ExternalLink />
-                    打开链接
-                  </Button>
+              <div
+                className={cn(
+                  "grid gap-4 rounded-sm border border-line bg-panel-2 p-3",
+                  showQrCode && "sm:grid-cols-[224px_minmax(0,1fr)] sm:items-center",
+                )}
+              >
+                {showQrCode && (
+                  <div className="mx-auto grid size-[224px] place-items-center rounded-sm border border-line bg-white p-2">
+                    <QRCodeSVG
+                      value={qrUrl}
+                      title="飞书扫码绑定二维码"
+                      aria-label="飞书扫码绑定二维码"
+                      size={208}
+                      level="M"
+                      marginSize={2}
+                      bgColor="#ffffff"
+                      fgColor="#111827"
+                      className="size-full"
+                    />
+                  </div>
+                )}
+                <div className="grid min-w-0 gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ScanQrCode className="size-4 shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-strong">
+                      {qrUrl}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted">
+                    {showQrCode
+                      ? "请使用手机飞书/Lark 扫描二维码，并在手机端完成应用创建确认。"
+                      : "本次扫码流程已结束，可重新生成二维码开始新的绑定。"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => copyToClipboard(qrUrl, "已复制扫码链接")}
+                    >
+                      <Copy />
+                      复制链接
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(qrUrl, "_blank", "noopener,noreferrer")}
+                    >
+                      <ExternalLink />
+                      打开链接
+                    </Button>
+                  </div>
                 </div>
               </div>
               <p className="text-xs text-subtle">
-                使用飞书/Lark 手机端打开或扫描该链接完成确认；确认成功后会自动回填凭据。
+                二维码仅在本机浏览器生成，不会把授权链接发送给第三方服务；确认成功后会自动回填凭据。
               </p>
             </>
           ) : (
@@ -688,9 +829,11 @@ function FeishuRegistrationPanel({
 function PlatformCredentialFields({
   state,
   patch,
+  errors,
 }: {
   state: AccountState;
   patch: (next: Partial<AccountState>) => void;
+  errors: AccountValidationErrors;
 }) {
   if (state.platform === "feishu") {
     return (
@@ -700,16 +843,32 @@ function PlatformCredentialFields({
           sub="用于 tenant_access_token 与发送能力；保存后敏感值只以掩码显示。"
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="App ID">
+            <Field label="App ID" error={errors.appId}>
               <Input
+                name="channel-feishu-app-id"
                 value={state.appId}
-                onChange={(e) => patch({ appId: e.target.value })}
+                onChange={(e) => {
+                  const appId = e.target.value;
+                  patch({
+                    appId,
+                    ...(state.accountId.trim() === "" || state.accountId === state.appId
+                      ? { accountId: appId }
+                      : {}),
+                  });
+                }}
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-invalid={Boolean(errors.appId) || undefined}
               />
             </Field>
-            <Field label="App Secret">
+            <Field label="App Secret" error={errors.appSecret}>
               <SecretInput
+                name="channel-feishu-app-secret"
                 value={state.appSecret}
                 onChange={(appSecret) => patch({ appSecret })}
+                invalid={Boolean(errors.appSecret)}
               />
             </Field>
           </div>
@@ -727,12 +886,14 @@ function PlatformCredentialFields({
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Verification Token">
               <SecretInput
+                name="channel-feishu-verification-token"
                 value={state.verificationToken}
                 onChange={(verificationToken) => patch({ verificationToken })}
               />
             </Field>
             <Field label="Encrypt Key">
               <SecretInput
+                name="channel-feishu-encrypt-key"
                 value={state.encryptKey}
                 onChange={(encryptKey) => patch({ encryptKey })}
               />
@@ -751,24 +912,41 @@ function PlatformCredentialFields({
         title="连接"
         sub="Octo 当前有 verified register transport smoke。"
       >
-        <Field label="API URL">
+        <Field label="API URL" error={errors.apiUrl}>
           <Input
+            name="channel-octo-api-url"
+            type="url"
+            inputMode="url"
             value={state.apiUrl}
             onChange={(e) => patch({ apiUrl: e.target.value })}
-            placeholder="https://..."
+            placeholder={DEFAULT_OCTO_API_URL}
+            autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-invalid={Boolean(errors.apiUrl) || undefined}
           />
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Bot Token">
+          <Field label="Bot Token" error={errors.botToken}>
             <SecretInput
+              name="channel-octo-bot-token"
               value={state.botToken}
               onChange={(botToken) => patch({ botToken })}
+              invalid={Boolean(errors.botToken)}
             />
           </Field>
           <Field label="WebSocket URL" hint="可选">
             <Input
+              name="channel-octo-websocket-url"
+              type="url"
+              inputMode="url"
               value={state.wsUrl}
               onChange={(e) => patch({ wsUrl: e.target.value })}
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </Field>
         </div>
@@ -798,6 +976,7 @@ function PlatformCredentialFields({
           </div>
           <Field label="Secret">
             <SecretInput
+              name="channel-wecom-secret"
               value={state.corpSecret}
               onChange={(corpSecret) => patch({ corpSecret })}
             />
@@ -810,12 +989,14 @@ function PlatformCredentialFields({
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Token">
               <SecretInput
+                name="channel-wecom-token"
                 value={state.token}
                 onChange={(token) => patch({ token })}
               />
             </Field>
             <Field label="EncodingAESKey">
               <SecretInput
+                name="channel-wecom-encoding-aes-key"
                 value={state.encodingAesKey}
                 onChange={(encodingAesKey) => patch({ encodingAesKey })}
               />
@@ -841,9 +1022,11 @@ function PlatformCredentialFields({
 function PlatformAdvancedFields({
   state,
   patch,
+  errors,
 }: {
   state: AccountState;
   patch: (next: Partial<AccountState>) => void;
+  errors: AccountValidationErrors;
 }) {
   return (
     <FormSection
@@ -862,11 +1045,19 @@ function PlatformAdvancedFields({
 
       {state.platform === "feishu" && (
         <>
-          <Field label="飞书 API URL" hint="默认 https://open.feishu.cn。">
+          <Field label="飞书 API URL" hint="默认 https://open.feishu.cn。" error={errors.apiUrl}>
             <Input
+              name="channel-feishu-api-url"
+              type="url"
+              inputMode="url"
               value={state.apiUrl}
               onChange={(e) => patch({ apiUrl: e.target.value })}
-              placeholder="https://open.feishu.cn"
+              placeholder={DEFAULT_FEISHU_API_URL}
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              aria-invalid={Boolean(errors.apiUrl) || undefined}
             />
           </Field>
           <Field
@@ -912,9 +1103,16 @@ function PlatformAdvancedFields({
             </Field>
             <Field label="COS 上传 Base URL" hint="可选；Octo 文件直传入口。">
               <Input
+                name="channel-octo-cos-upload-url"
+                type="url"
+                inputMode="url"
                 value={state.cosUploadBaseUrl}
                 onChange={(e) => patch({ cosUploadBaseUrl: e.target.value })}
                 placeholder="https://..."
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
             </Field>
           </div>
@@ -995,25 +1193,13 @@ function buildAccountMetadata(
   const advanced = parseMetadata(state.metadataJson);
   const next = { ...base, ...advanced };
   const existing = binding?.metadata;
-  mergeString(next, "appId", state.appId);
-  mergeSecretString(next, existing, "appSecret", state.appSecret);
-  mergeSecretString(
-    next,
-    existing,
-    "verificationToken",
-    state.verificationToken,
-  );
-  mergeSecretString(next, existing, "encryptKey", state.encryptKey);
-  mergeString(next, "apiUrl", state.apiUrl);
-  mergeSecretString(next, existing, "botToken", state.botToken);
-  mergeString(next, "wsUrl", state.wsUrl);
-  mergeString(next, "corpId", state.corpId);
-  mergeSecretString(next, existing, "corpSecret", state.corpSecret);
-  mergeString(next, "agentId", state.agentId);
-  mergeSecretString(next, existing, "token", state.token);
-  mergeSecretString(next, existing, "encodingAesKey", state.encodingAesKey);
   mergeString(next, "agentSessionDriver", state.agentSessionDriver);
   if (state.platform === "feishu") {
+    mergeString(next, "appId", state.appId);
+    mergeSecretString(next, existing, "appSecret", state.appSecret);
+    mergeSecretString(next, existing, "verificationToken", state.verificationToken);
+    mergeSecretString(next, existing, "encryptKey", state.encryptKey);
+    mergeString(next, "apiUrl", state.apiUrl || DEFAULT_FEISHU_API_URL);
     mergeNumberString(
       next,
       "feishuProgressCardEntryLimit",
@@ -1021,6 +1207,9 @@ function buildAccountMetadata(
     );
   }
   if (state.platform === "octo") {
+    mergeString(next, "apiUrl", state.apiUrl || DEFAULT_OCTO_API_URL);
+    mergeSecretString(next, existing, "botToken", state.botToken);
+    mergeString(next, "wsUrl", state.wsUrl);
     next.stageOctoUrlAttachments = state.stageOctoUrlAttachments;
     mergeString(next, "attachmentMaxBytes", state.attachmentMaxBytes);
     next.allowPrivateAttachmentUrls = state.allowPrivateAttachmentUrls;
@@ -1032,14 +1221,63 @@ function buildAccountMetadata(
       state.octoDirectUploadMinBytes,
     );
   }
+  if (state.platform === "wecom") {
+    mergeString(next, "corpId", state.corpId);
+    mergeSecretString(next, existing, "corpSecret", state.corpSecret);
+    mergeString(next, "agentId", state.agentId);
+    mergeSecretString(next, existing, "token", state.token);
+    mergeSecretString(next, existing, "encodingAesKey", state.encodingAesKey);
+  }
   return next;
+}
+
+function effectiveAccountState(state: AccountState): AccountState {
+  return {
+    ...state,
+    accountId:
+      state.accountId.trim() ||
+      (state.platform === "feishu" ? state.appId.trim() : ""),
+    apiUrl: state.apiUrl.trim() || defaultPlatformApiUrl(state.platform),
+  };
+}
+
+function buildDraftAccountBinding(
+  state: AccountState,
+  binding: ChannelConnectorPlatformBinding | null,
+  defaultAgentProfileId: string,
+): ChannelConnectorPlatformBinding {
+  return {
+    ...(binding ?? {
+      id: state.id.trim(),
+      platform: state.platform,
+      displayName: state.displayName.trim() || state.id.trim(),
+      agentProfileId: defaultAgentProfileId,
+      enabled: state.enabled,
+      accountId: state.accountId,
+      botId: null,
+      allowlist: [],
+      adminUsers: [],
+      disabledCommands: [],
+    }),
+    id: state.id.trim(),
+    platform: state.platform,
+    displayName: state.displayName.trim() || state.id.trim(),
+    enabled: state.enabled,
+    accountId: state.accountId,
+    botId: state.botId.trim() || null,
+    metadata: buildAccountMetadata(binding, state),
+  };
 }
 
 function buildRouteMetadata(
   binding: ChannelConnectorPlatformBinding | null,
   state: RouteState,
 ) {
-  const next = stripKeys(binding?.metadata ?? {}, ROUTE_METADATA_KEYS);
+  const next = Object.fromEntries(
+    Object.entries(binding?.metadata ?? {}).filter(([key]) =>
+      ROUTE_METADATA_KEYS.has(key),
+    ),
+  );
   next.peerKind = state.peerKind;
   next.peerId = state.peerId.trim() || "*";
   next.sessionMode = state.sessionMode;
@@ -1052,9 +1290,10 @@ function buildRouteMetadata(
   return next;
 }
 
-function daemonApplyDescription(result: ChannelConnectorsDaemonResponse): string {
+function configApplyDescription(
+  result: ChannelConnectorsApplyNativeConfigResponse,
+): string {
   const reload = result.reload;
-  if (!reload) return "配置已保存；daemon 状态未返回应用结果。";
   if (reload.status === "applied") return "已热重载到 IM 守护，新配置已生效。";
   if (reload.status === "pending") {
     const active = reload.activeRuns + reload.activeTurns;
@@ -1065,19 +1304,76 @@ function daemonApplyDescription(result: ChannelConnectorsDaemonResponse): string
   if (reload.status === "restart-required") {
     return `此类变更需要重启 IM 守护：${reload.restartRequiredReason || "runtime boundary changed"}`;
   }
-  return `配置已保存，但应用失败：${reload.error || "daemon reload failed"}`;
+  if (result.rolledBack) {
+    return `新配置应用失败，已恢复上一版本：${reload.error || "daemon reload failed"}`;
+  }
+  return `配置已保存，守护当前离线：${reload.error || "daemon unavailable"}`;
 }
 
-function toastDaemonApplyResult(label: string, result: ChannelConnectorsDaemonResponse): void {
+function toastConfigApplyResult(
+  label: string,
+  result: ChannelConnectorsApplyNativeConfigResponse,
+): void {
   const reload = result.reload;
-  const description = daemonApplyDescription(result);
-  if (reload?.status === "applied") {
+  const description = configApplyDescription(result);
+  if (reload.status === "applied") {
     toast.success(label, { description });
-  } else if (reload?.status === "pending") {
+  } else if (reload.status === "pending") {
     toast.info("已保存，等待任务结束后应用", { description });
+  } else if (reload.status === "restart-required") {
+    toast.warning("已保存，需要重启消息守护", { description });
+  } else if (result.rolledBack) {
+    toast.error("应用失败，已自动回滚", { description });
   } else {
-    toast.error("已保存，但尚未应用到 IM 守护", { description });
+    toast.warning("已保存，等待消息守护启动", { description });
   }
+}
+
+function useUnsavedEditor(
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+) {
+  const [dirty, setDirty] = React.useState(false);
+  const allowCloseRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setDirty(false);
+    allowCloseRef.current = false;
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open || !dirty) return;
+    const protectNavigation = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", protectNavigation);
+    return () => window.removeEventListener("beforeunload", protectNavigation);
+  }, [dirty, open]);
+
+  const requestOpenChange = React.useCallback(
+    (nextOpen: boolean) => {
+      if (
+        !nextOpen &&
+        dirty &&
+        !allowCloseRef.current &&
+        !window.confirm("有未保存的修改，确定放弃吗？")
+      ) {
+        return;
+      }
+      onOpenChange(nextOpen);
+    },
+    [dirty, onOpenChange],
+  );
+
+  const closeAfterSave = React.useCallback(() => {
+    allowCloseRef.current = true;
+    setDirty(false);
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  return { closeAfterSave, dirty, markDirty: () => setDirty(true), requestOpenChange };
 }
 
 function useSaveBinding({
@@ -1093,8 +1389,7 @@ function useSaveBinding({
   onSaved?: () => void;
   onOpenChange: (open: boolean) => void;
 }) {
-  const saveMutation = useSaveChannelConnectorsConfigMutation();
-  const applyMutation = useManageChannelConnectorsDaemonServiceMutation();
+  const applyMutation = useApplyChannelConnectorsConfigMutation();
   const save = React.useCallback(
     (nextBinding: ChannelConnectorPlatformBinding, label: string) => {
       if (!config) return;
@@ -1105,8 +1400,11 @@ function useSaveBinding({
         toast.error("绑定 ID 已存在", { description: nextBinding.id });
         return;
       }
-      saveMutation.mutate(
+      applyMutation.mutate(
         {
+          expectedUpdatedAt: config.updatedAt,
+          reloadMode: "when-idle",
+          rollbackOnFailure: true,
           config: {
             ...config,
             updatedAt: new Date().toISOString(),
@@ -1119,32 +1417,18 @@ function useSaveBinding({
         },
         {
           onSuccess: (result) => {
-            applyMutation.mutate(
-              { action: "reload", apply: true, reloadMode: "when-idle" },
-              {
-                onSuccess: (applyResult) => {
-                  toastDaemonApplyResult(label, applyResult);
-                  onSaved?.();
-                  onOpenChange(false);
-                },
-                onError: (error) => {
-                  toast.error("已保存，但应用到 IM 守护失败", {
-                    description: `${error.message} · 配置更新于 ${new Date(result.config.updatedAt).toLocaleString()}`,
-                  });
-                  onSaved?.();
-                  onOpenChange(false);
-                },
-              },
-            );
+            toastConfigApplyResult(label, result);
+            onSaved?.();
+            if (result.accepted) onOpenChange(false);
           },
           onError: (error) =>
             toast.error("保存失败", { description: error.message }),
         },
       );
     },
-    [applyMutation, binding, config, mode, onOpenChange, onSaved, saveMutation],
+    [applyMutation, binding, config, mode, onOpenChange, onSaved],
   );
-  return { save, pending: saveMutation.isPending || applyMutation.isPending };
+  return { save, pending: applyMutation.isPending };
 }
 
 export function AccountEditor({
@@ -1170,6 +1454,12 @@ export function AccountEditor({
     React.useState<ChannelConnectorFeishuAppRegistrationTenant>("feishu");
   const [feishuRegistrationSessionId, setFeishuRegistrationSessionId] =
     React.useState<string | null>(null);
+  const [preflight, setPreflight] = React.useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+  const [validationMode, setValidationMode] = React.useState<"save" | "smoke" | null>(null);
+  const unsaved = useUnsavedEditor(open, onOpenChange);
   const appliedFeishuRegistrationRef = React.useRef<string | null>(null);
   const bindingSecretsQuery = useChannelConnectorBindingSecretsQuery(
     open && binding ? binding.id : null,
@@ -1180,6 +1470,8 @@ export function AccountEditor({
   );
   const startFeishuRegistrationMutation = useStartFeishuAppRegistrationMutation();
   const cancelFeishuRegistrationMutation = useCancelFeishuAppRegistrationMutation();
+  const feishuSmokeMutation = useRunFeishuTransportSmokeMutation();
+  const octoSmokeMutation = useRunOctoTransportSmokeMutation();
   const feishuRegistrationQuery = useFeishuAppRegistrationQuery(
     feishuRegistrationSessionId,
     {
@@ -1194,16 +1486,21 @@ export function AccountEditor({
     binding,
     mode,
     onSaved,
-    onOpenChange,
+    onOpenChange: unsaved.closeAfterSave,
   });
-  const accountSaveMutation = useSaveChannelConnectorsConfigMutation();
-  const accountApplyMutation = useManageChannelConnectorsDaemonServiceMutation();
-  const pending = createPending || accountSaveMutation.isPending || accountApplyMutation.isPending;
+  const accountApplyMutation = useApplyChannelConnectorsConfigMutation();
+  const pending =
+    createPending ||
+    accountApplyMutation.isPending ||
+    feishuSmokeMutation.isPending ||
+    octoSmokeMutation.isPending;
 
   React.useEffect(() => {
     if (open) {
       setState(toAccountState(binding, supportedPlatforms));
       setFeishuRegistrationSessionId(null);
+      setPreflight(null);
+      setValidationMode(null);
       appliedFeishuRegistrationRef.current = null;
     }
   }, [binding, open, supportedPlatforms]);
@@ -1228,6 +1525,7 @@ export function AccountEditor({
         enabled: true,
       };
     });
+    unsaved.markDirty();
     setFeishuRegistrationTenant(result.tenant);
     toast.success("飞书扫码绑定成功", {
       description: "App ID / App Secret 已回填，确认后保存平台账号。",
@@ -1268,9 +1566,18 @@ export function AccountEditor({
   }, [binding, bindingSecretsQuery.data?.secrets, open]);
 
   if (!state || !config) return null;
-  const patch = (next: Partial<AccountState>) =>
+  const patch = (next: Partial<AccountState>) => {
+    setPreflight(null);
+    unsaved.markDirty();
     setState((prev) => (prev ? { ...prev, ...next } : prev));
+  };
+  const effectiveState = effectiveAccountState(state);
+  const validationErrors = validationMode
+    ? accountValidationErrors(effectiveState, validationMode === "smoke")
+    : {};
   const canSmoke = state.platform === "feishu" || state.platform === "octo";
+  const smokePending =
+    feishuSmokeMutation.isPending || octoSmokeMutation.isPending;
 
   const handleStartFeishuRegistration = () => {
     startFeishuRegistrationMutation.mutate(
@@ -1282,8 +1589,8 @@ export function AccountEditor({
       {
         onSuccess: (result) => {
           setFeishuRegistrationSessionId(result.sessionId);
-          toast.success("已生成飞书扫码链接", {
-            description: "请用飞书/Lark 手机端确认授权。",
+          toast.success("已生成飞书扫码二维码", {
+            description: "请用飞书/Lark 手机端扫描并确认授权。",
           });
         },
         onError: (error) =>
@@ -1301,16 +1608,75 @@ export function AccountEditor({
     });
   };
 
+  const handleTestConnection = () => {
+    setValidationMode("smoke");
+    const validationError = accountValidationError(effectiveState, true);
+    if (validationError) {
+      setPreflight({ ok: false, message: validationError });
+      toast.error("连接测试无法开始", { description: validationError });
+      return;
+    }
+    let draftBinding: ChannelConnectorPlatformBinding;
+    try {
+      draftBinding = buildDraftAccountBinding(
+        effectiveState,
+        binding,
+        defaultAgentProfileId,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPreflight({ ok: false, message });
+      toast.error("高级 metadata JSON 无效", { description: message });
+      return;
+    }
+    const onResult = (result: {
+      transport: {
+        ok: boolean | null;
+        statusCode: number | null;
+        error: string | null;
+      };
+    }) => {
+      const ok = result.transport.ok === true;
+      const message = ok
+        ? `连接验证通过 · HTTP ${result.transport.statusCode ?? "ok"}`
+        : result.transport.error ||
+          `连接失败 · HTTP ${result.transport.statusCode ?? "unknown"}`;
+      setPreflight({ ok, message });
+      if (ok) {
+        toast.success("连接验证通过", { description: message });
+      } else {
+        toast.error("连接测试失败", { description: message });
+      }
+    };
+    const onError = (error: Error) => {
+      setPreflight({ ok: false, message: error.message });
+      toast.error("连接测试失败", { description: error.message });
+    };
+    if (effectiveState.platform === "feishu") {
+      feishuSmokeMutation.mutate(
+        { action: "tenant-token", binding: draftBinding },
+        { onSuccess: onResult, onError },
+      );
+    } else if (effectiveState.platform === "octo") {
+      octoSmokeMutation.mutate(
+        { action: "register", binding: draftBinding },
+        { onSuccess: onResult, onError },
+      );
+    }
+  };
+
   const handleSave = () => {
-    if (!state.id.trim() || !state.accountId.trim()) {
-      toast.error("账号 ID 和绑定 ID 不能为空");
+    setValidationMode("save");
+    const validationError = accountValidationError(effectiveState);
+    if (validationError) {
+      toast.error("平台账号配置不完整", { description: validationError });
       return;
     }
     try {
       const nextAccount = {
-        platform: state.platform,
-        accountId: state.accountId.trim(),
-        botId: state.botId.trim() || null,
+        platform: effectiveState.platform,
+        accountId: effectiveState.accountId,
+        botId: effectiveState.botId.trim() || null,
       };
       if (mode === "edit" && binding && config) {
         const originalKey = accountIdentityKey(binding);
@@ -1320,15 +1686,18 @@ export function AccountEditor({
             ...item,
             platform: nextAccount.platform,
             displayName:
-              state.displayName.trim() || item.displayName || item.id,
-            enabled: state.enabled,
+              effectiveState.displayName.trim() || item.displayName || item.id,
+            enabled: effectiveState.enabled,
             accountId: nextAccount.accountId,
             botId: nextAccount.botId,
-            metadata: buildAccountMetadata(item, state),
+            metadata: buildAccountMetadata(item, effectiveState),
           };
         });
-        accountSaveMutation.mutate(
+        accountApplyMutation.mutate(
           {
+            expectedUpdatedAt: config.updatedAt,
+            reloadMode: "when-idle",
+            rollbackOnFailure: true,
             config: {
               ...config,
               updatedAt: new Date().toISOString(),
@@ -1341,28 +1710,14 @@ export function AccountEditor({
                 (item) =>
                   accountIdentityKey(item) === accountIdentityKey(nextAccount),
               ).length;
-              accountApplyMutation.mutate(
-                { action: "reload", apply: true, reloadMode: "when-idle" },
-                {
-                  onSuccess: (applyResult) => {
-                    toastDaemonApplyResult("已保存平台账号", applyResult);
-                    if (applyResult.reload?.status === "applied") {
-                      toast.info("平台账号已同步", {
-                        description: `已同步 ${count} 条绑定路由 · 更新于 ${new Date(result.config.updatedAt).toLocaleString()}`,
-                      });
-                    }
-                    onSaved?.();
-                    onOpenChange(false);
-                  },
-                  onError: (error) => {
-                    toast.error("已保存，但应用到 IM 守护失败", {
-                      description: `${error.message} · 已同步 ${count} 条绑定路由`,
-                    });
-                    onSaved?.();
-                    onOpenChange(false);
-                  },
-                },
-              );
+              toastConfigApplyResult("已保存平台账号", result);
+              if (result.reload.status === "applied") {
+                toast.info("平台账号已同步", {
+                  description: `已同步 ${count} 条绑定路由`,
+                });
+              }
+              onSaved?.();
+              if (result.accepted) unsaved.closeAfterSave();
             },
             onError: (error) =>
               toast.error("保存失败", { description: error.message }),
@@ -1371,28 +1726,22 @@ export function AccountEditor({
         return;
       }
 
-      const metadata = buildAccountMetadata(binding, state);
-      const nextBinding: ChannelConnectorPlatformBinding = {
-        ...(binding ?? {
-          id: state.id.trim(),
-          platform: state.platform,
-          displayName: state.displayName.trim() || state.id.trim(),
-          agentProfileId: defaultAgentProfileId,
-          enabled: true,
-          accountId: state.accountId.trim(),
-          botId: null,
-          allowlist: [],
-          adminUsers: [],
-          disabledCommands: [],
-        }),
-        id: state.id.trim(),
-        platform: state.platform,
-        displayName: state.displayName.trim() || state.id.trim(),
-        enabled: state.enabled,
-        accountId: nextAccount.accountId,
-        botId: nextAccount.botId,
-        metadata,
-      };
+      if (
+        config.platformBindings.some(
+          (item) => accountIdentityKey(item) === accountIdentityKey(nextAccount),
+        )
+      ) {
+        toast.error("平台账号已存在", {
+          description: "请在绑定路由页为现有账号新增或复制路由。",
+        });
+        return;
+      }
+
+      const nextBinding = buildDraftAccountBinding(
+        effectiveState,
+        binding,
+        defaultAgentProfileId,
+      );
       save(nextBinding, "已新建平台账号");
     } catch (error) {
       toast.error("高级 metadata JSON 无效", {
@@ -1404,7 +1753,7 @@ export function AccountEditor({
   return (
     <Sheet
       open={open}
-      onOpenChange={(value) => !pending && onOpenChange(value)}
+      onOpenChange={(value) => !pending && unsaved.requestOpenChange(value)}
     >
       <SheetContent className="w-[min(860px,94vw)] sm:max-w-[860px]">
         <SheetHeader className="items-start pr-12">
@@ -1425,11 +1774,12 @@ export function AccountEditor({
             sub="一个 IM 平台里的 bot/app/account 身份。"
           >
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="配置 ID" hint="稳定键；创建后不建议修改。">
+              <Field label="配置 ID" hint="稳定键；创建后不建议修改。" error={validationErrors.id}>
                 <Input
                   value={state.id}
                   disabled={mode === "edit"}
                   onChange={(e) => patch({ id: e.target.value })}
+                  aria-invalid={Boolean(validationErrors.id) || undefined}
                 />
               </Field>
               <SelectField
@@ -1437,11 +1787,7 @@ export function AccountEditor({
                 value={state.platform}
                 onChange={(value) => {
                   const platform = value as ChannelConnectorPlatformId;
-                  patch({
-                    platform,
-                    id:
-                      mode === "create" ? createBindingId(platform) : state.id,
-                  });
+                  if (mode === "create") patch(platformChangePatch(state, platform));
                 }}
                 disabled={mode === "edit"}
               >
@@ -1459,10 +1805,16 @@ export function AccountEditor({
                   onChange={(e) => patch({ displayName: e.target.value })}
                 />
               </Field>
-              <Field label="账号 ID">
+              <Field label="账号 ID" error={validationErrors.accountId}>
                 <Input
+                  name="channel-account-id"
                   value={state.accountId}
                   onChange={(e) => patch({ accountId: e.target.value })}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-invalid={Boolean(validationErrors.accountId) || undefined}
                 />
               </Field>
             </div>
@@ -1477,7 +1829,15 @@ export function AccountEditor({
           {state.platform === "feishu" && (
             <FeishuRegistrationPanel
               tenant={feishuRegistrationTenant}
-              onTenantChange={setFeishuRegistrationTenant}
+              onTenantChange={(tenant) => {
+                setFeishuRegistrationTenant(tenant);
+                patch({
+                  apiUrl:
+                    tenant === "lark"
+                      ? DEFAULT_LARK_API_URL
+                      : DEFAULT_FEISHU_API_URL,
+                });
+              }}
               registration={feishuRegistrationQuery.data ?? null}
               starting={startFeishuRegistrationMutation.isPending}
               canceling={cancelFeishuRegistrationMutation.isPending}
@@ -1486,9 +1846,9 @@ export function AccountEditor({
             />
           )}
 
-          <PlatformCredentialFields state={state} patch={patch} />
+          <PlatformCredentialFields state={state} patch={patch} errors={validationErrors} />
 
-          <PlatformAdvancedFields state={state} patch={patch} />
+          <PlatformAdvancedFields state={state} patch={patch} errors={validationErrors} />
 
           <section className="rounded-sm border border-line bg-panel-2">
             <button
@@ -1514,18 +1874,36 @@ export function AccountEditor({
                   onChange={(e) => patch({ metadataJson: e.target.value })}
                   className="min-h-[120px] w-full rounded-sm border border-line bg-panel px-[11px] py-2 font-mono text-sm text-ink-strong outline-none focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]"
                   spellCheck={false}
+                  aria-invalid={Boolean(validationErrors.metadataJson) || undefined}
                 />
-                <p className="text-xs text-subtle">
-                  只放当前表单尚未覆盖的扩展字段；平台可用配置优先在上方表单维护。
-                </p>
+                {validationErrors.metadataJson ? (
+                  <p role="alert" className="text-xs text-red">{validationErrors.metadataJson}</p>
+                ) : (
+                  <p className="text-xs text-subtle">
+                    只放当前表单尚未覆盖的扩展字段；平台可用配置优先在上方表单维护。
+                  </p>
+                )}
               </div>
             )}
           </section>
 
           {!canSmoke && (
             <div className="rounded-sm border border-amber bg-amber-soft p-3 text-sm text-amber">
-              当前平台没有 verified transport
-              smoke；“保存并测试”不会显示为可用能力。
+              当前平台暂不支持连接测试，请先保存为停用草稿。
+            </div>
+          )}
+          {preflight && (
+            <div
+              role="status"
+              className={cn(
+                "rounded-sm border p-3 text-sm",
+                preflight.ok
+                  ? "border-green bg-green-soft text-green"
+                  : "border-red bg-red-soft text-red",
+              )}
+            >
+              <strong>{preflight.ok ? "连接正常" : "连接异常"}</strong>
+              <span className="ml-2 break-all">{preflight.message}</span>
             </div>
           )}
         </SheetBody>
@@ -1533,16 +1911,31 @@ export function AccountEditor({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onOpenChange(false)}
+            onClick={() => unsaved.requestOpenChange(false)}
             disabled={pending}
           >
             取消
           </Button>
+          {canSmoke && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTestConnection}
+              disabled={pending}
+            >
+              {smokePending ? <Loader2 className="animate-spin" /> : <Zap />}
+              {smokePending ? "测试中…" : "测试连接"}
+            </Button>
+          )}
           <Button
             variant="primary"
             size="sm"
             onClick={handleSave}
-            disabled={pending || !state.id.trim() || !state.accountId.trim()}
+            disabled={
+              pending ||
+              !state.id.trim() ||
+              !(state.accountId.trim() || (state.platform === "feishu" && state.appId.trim()))
+            }
           >
             <Save />
             {pending ? "保存中…" : "保存"}
@@ -1569,12 +1962,13 @@ export function RouteEditor({
   onSaved?: () => void;
 }) {
   const [state, setState] = React.useState<RouteState | null>(null);
+  const unsaved = useUnsavedEditor(open, onOpenChange);
   const { save, pending } = useSaveBinding({
     config,
     binding,
     mode: "edit",
     onSaved,
-    onOpenChange,
+    onOpenChange: unsaved.closeAfterSave,
   });
   const gatewayModelsQuery = useModelGatewayModelsQuery({
     enabled: open,
@@ -1596,8 +1990,10 @@ export function RouteEditor({
   }, [agentProfiles, binding, defaultAgentProfileId, open]);
 
   if (!binding || !state || !config) return null;
-  const patch = (next: Partial<RouteState>) =>
+  const patch = (next: Partial<RouteState>) => {
+    unsaved.markDirty();
     setState((prev) => (prev ? { ...prev, ...next } : prev));
+  };
   const selectedProfile = agentProfiles.find(
     (profile) => profile.id === state.agentProfileId,
   );
@@ -1633,7 +2029,7 @@ export function RouteEditor({
   return (
     <Sheet
       open={open}
-      onOpenChange={(value) => !pending && onOpenChange(value)}
+      onOpenChange={(value) => !pending && unsaved.requestOpenChange(value)}
     >
       <SheetContent className="w-[min(860px,94vw)] sm:max-w-[860px]">
         <SheetHeader className="items-start pr-12">
@@ -1870,7 +2266,7 @@ export function RouteEditor({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => onOpenChange(false)}
+            onClick={() => unsaved.requestOpenChange(false)}
             disabled={pending}
           >
             取消

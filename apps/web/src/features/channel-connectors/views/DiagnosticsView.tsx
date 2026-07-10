@@ -8,6 +8,7 @@ import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 
 import {
+  useChannelConnectorsConfigQuery,
   useChannelConnectorsDaemonConfigQuery,
   useChannelConnectorsDaemonLogsQuery,
   useChannelConnectorsStatusQuery,
@@ -15,6 +16,10 @@ import {
 import type { ChannelConnectorsViewProps } from "./types";
 import { Panel, PanelHead, Row, formatTime } from "./_shared";
 import { DaemonServicePanel } from "./DaemonServicePanel";
+import {
+  groupChannelConnectorAccounts,
+  runtimeAccountState,
+} from "./account-runtime";
 
 function isProblemLogLine(line: string): boolean {
   return /\b(error|failed|failure|exception|fatal|timeout|denied|warn|502|500|401|403)\b/i.test(line);
@@ -35,22 +40,35 @@ function summarizeLogs(lines: string[]) {
   };
 }
 
-export function DiagnosticsView(_props: ChannelConnectorsViewProps) {
+export function DiagnosticsView({ goToView }: ChannelConnectorsViewProps) {
   const statusQuery = useChannelConnectorsStatusQuery();
+  const configQuery = useChannelConnectorsConfigQuery();
   const daemonConfigQuery = useChannelConnectorsDaemonConfigQuery();
   const logsQuery = useChannelConnectorsDaemonLogsQuery();
   const [showNative, setShowNative] = React.useState(false);
   const [showRawLogs, setShowRawLogs] = React.useState(false);
 
-  if (statusQuery.isLoading || daemonConfigQuery.isLoading || logsQuery.isLoading) {
+  if (statusQuery.isLoading || configQuery.isLoading || daemonConfigQuery.isLoading || logsQuery.isLoading) {
     return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-12 w-full" /><SkeletonRow /><SkeletonRow /></div>;
   }
-  const error = statusQuery.error ?? daemonConfigQuery.error ?? logsQuery.error;
+  const error = statusQuery.error ?? configQuery.error ?? daemonConfigQuery.error ?? logsQuery.error;
   if (error) {
-    return <ErrorState title="无法加载守护诊断" description={error.message} action={<Button variant="outline" size="sm" onClick={() => { void statusQuery.refetch(); void daemonConfigQuery.refetch(); void logsQuery.refetch(); }}>重试</Button>} />;
+    return <ErrorState title="无法加载守护诊断" description={error.message} action={<Button variant="outline" size="sm" onClick={() => { void statusQuery.refetch(); void configQuery.refetch(); void daemonConfigQuery.refetch(); void logsQuery.refetch(); }}>重试</Button>} />;
   }
 
   const status = statusQuery.data;
+  const accountHealth = groupChannelConnectorAccounts(
+    configQuery.data?.config.platformBindings ?? [],
+  ).map((group) => ({
+    group,
+    state: runtimeAccountState(group, status?.runtime),
+  })).sort((a, b) => {
+    const priority = { warn: 0, info: 1, ok: 2, mute: 3 } as const;
+    return priority[a.state.variant] - priority[b.state.variant];
+  });
+  const accountIssueCount = accountHealth.filter(
+    ({ state }) => state.variant === "warn",
+  ).length;
   const manager = status?.service.serviceManager;
   const config = daemonConfigQuery.data?.config;
   const nativeBindings = (config?.projects ?? []).flatMap((project) => project.platformBindings.map((binding) => ({ project, binding })));
@@ -64,7 +82,36 @@ export function DiagnosticsView(_props: ChannelConnectorsViewProps) {
         <p className="text-sm text-muted">Channel Connectors daemon、service、生成配置和日志证据；不在此编辑账号或路由。</p>
       </div>
 
-      <DaemonServicePanel onMutated={() => { void statusQuery.refetch(); void daemonConfigQuery.refetch(); }} />
+      <Panel>
+        <PanelHead
+          title="账号连接健康"
+          sub={accountIssueCount > 0 ? `${accountIssueCount} 个账号需要处理` : "所有启用账号连接正常"}
+          action={<Button variant="ghost" size="sm" onClick={() => goToView("accounts")}>平台账号</Button>}
+        />
+        {accountHealth.length === 0 ? (
+          <EmptyState title="暂无平台账号" description="创建账号后将在这里显示连接健康。" />
+        ) : (
+          <div className="divide-y divide-line py-1.5">
+            {accountHealth.map(({ group, state }) => {
+              const binding = group.representative;
+              return (
+                <Row
+                  key={group.key}
+                  icon={<RadioTower />}
+                  iconClass={state.variant === "ok" ? "bg-green-soft text-green" : state.variant === "warn" ? "bg-amber-soft text-amber" : undefined}
+                  title={binding.displayName || binding.id}
+                  subtitle={`${binding.platform} · ${state.description}`}
+                  subtitleClassName="whitespace-normal break-words"
+                  trailing={<Badge variant={state.variant}>{state.label}</Badge>}
+                  onClick={() => goToView("accounts", { binding: binding.id })}
+                />
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+
+      <DaemonServicePanel onMutated={() => { void statusQuery.refetch(); void configQuery.refetch(); void daemonConfigQuery.refetch(); }} />
 
       <Panel>
         <PanelHead title="诊断检查" sub={`检查于 ${formatTime(status?.checkedAt)}`} />

@@ -14,6 +14,8 @@ import type {
   ChannelConnectorOctoTransportSmokeRequest,
   ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorsDaemonConfigResponse,
+  ChannelConnectorsApplyNativeConfigRequest,
+  ChannelConnectorsApplyNativeConfigResponse,
   ChannelConnectorsDaemonRequest,
   ChannelConnectorsDaemonResponse,
   ChannelConnectorsLogsResponse,
@@ -68,7 +70,10 @@ export function getChannelConnectorBindingSecrets(
 ): Promise<ChannelConnectorBindingSecretsResponse> {
   return apiRequest<ChannelConnectorBindingSecretsResponse>(
     `${BASE}/config/bindings/${encodeURIComponent(bindingId)}/secrets`,
-    { signal },
+    {
+      signal,
+      headers: { "X-Tracevane-Secret-Reveal": "account-editor" },
+    },
   );
 }
 
@@ -80,6 +85,16 @@ export function saveChannelConnectorsConfig(
     method: "PUT",
     body: jsonBody(payload),
   });
+}
+
+/** PUT /api/channel-connectors/config/apply — save, reload, and roll back failed live changes. */
+export function applyChannelConnectorsConfig(
+  payload: ChannelConnectorsApplyNativeConfigRequest,
+): Promise<ChannelConnectorsApplyNativeConfigResponse> {
+  return apiRequest<ChannelConnectorsApplyNativeConfigResponse>(
+    `${BASE}/config/apply`,
+    { method: "PUT", body: jsonBody(payload) },
+  );
 }
 
 /** POST /api/channel-connectors/accounts/feishu/registration/start */

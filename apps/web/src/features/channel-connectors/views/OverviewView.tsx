@@ -25,6 +25,10 @@ import type { ChannelConnectorAgentSessionDriverRuntimeEvent } from "../types";
 import type { ChannelConnectorsViewProps } from "./types";
 import { Panel, PanelHead, Row, formatTime } from "./_shared";
 import { DaemonServicePanel } from "./DaemonServicePanel";
+import {
+  groupChannelConnectorAccounts,
+  runtimeAccountState,
+} from "./account-runtime";
 
 const EVENT_TONE: Record<
   ChannelConnectorAgentSessionDriverRuntimeEvent["type"],
@@ -120,6 +124,17 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
 
   const bindings = config?.platformBindings ?? [];
   const enabledBindings = bindings.filter((b) => b.enabled);
+  const accounts = groupChannelConnectorAccounts(bindings);
+  const enabledAccounts = accounts.filter((group) =>
+    group.bindings.some((binding) => binding.enabled),
+  );
+  const accountHealth = accounts.map((group) => ({
+    group,
+    state: runtimeAccountState(group, runtime),
+  }));
+  const accountIssueCount = accountHealth.filter(
+    ({ state }) => state.variant === "warn",
+  ).length;
   const agentProfiles = config?.agentProfiles ?? [];
 
   const activeSessions = sessions?.activeSessions ?? [];
@@ -128,7 +143,10 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
 
   const pending = runtime?.pendingAgentRuns;
   const feishuConnections = runtime?.feishuConnectionDetails ?? [];
-  const feishuDegraded = feishuConnections.some((c) => c.connected === false);
+  const feishuDegraded = accountHealth.some(
+    ({ group, state }) =>
+      group.representative.platform === "feishu" && state.variant === "warn",
+  );
   const failedEvents = recentEvents.filter((event) => event.error || event.type === "turn.failed" || event.type === "turn.fallback").length;
 
   return (
@@ -159,17 +177,17 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
         <p className="mt-3 text-base text-ink-strong">
           {daemonOnline ? "守护运行中" : "守护状态未知"}
           <span className="text-muted"> · </span>
-          {enabledBindings.length}/{bindings.length} 个账号启用
+          {enabledAccounts.length}/{accounts.length} 个账号启用
           <span className="text-muted"> · </span>
           {activeSessions.length} 个活跃会话
           <span className="text-muted"> · </span>
-          {failedEvents} 个需关注事件
+          {accountIssueCount + failedEvents} 个需关注项
         </p>
-        <dl className="mt-4 grid overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4">
-          <div className="min-w-0 border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r">
-            <dt className="text-xs text-subtle">平台绑定</dt>
-            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">{bindings.length}</dd>
-            <dd className="truncate text-xs text-muted">{enabledBindings.length} 启用</dd>
+        <dl className="mt-4 grid grid-cols-2 overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4">
+          <div className="min-w-0 border-b border-r border-line px-3 py-2.5 sm:border-b-0">
+            <dt className="text-xs text-subtle">平台账号</dt>
+            <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">{accounts.length}</dd>
+            <dd className="truncate text-xs text-muted">{enabledAccounts.length} 启用 · {bindings.length} 路由</dd>
           </div>
           <div className="min-w-0 border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r">
             <dt className="text-xs text-subtle">活跃会话</dt>
@@ -181,7 +199,7 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
             </dd>
             <dd className="truncate text-xs text-muted">{recentEvents.length} 条事件</dd>
           </div>
-          <div className="min-w-0 border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r">
+          <div className="min-w-0 border-r border-line px-3 py-2.5 sm:border-r">
             <dt className="text-xs text-subtle">待 replay</dt>
             <dd className="mt-0.5 text-xl font-semibold tabular-nums text-ink-strong">{pending?.count ?? 0}</dd>
             <dd className="truncate text-xs text-muted">
@@ -231,10 +249,10 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
               icon={<RadioTower />}
               iconClass={feishuDegraded ? "bg-amber-soft text-amber" : undefined}
               title="Feishu 长连接"
-              subtitle={`${feishuConnections.length} 路连接`}
+              subtitle={`${feishuConnections.length} 路连接${feishuDegraded ? " · 有账号尚未验证事件入口" : ""}`}
               trailing={
                 <Badge variant={feishuDegraded ? "warn" : "ok"}>
-                  {feishuDegraded ? "部分断开" : "正常"}
+                  {feishuDegraded ? "待处理" : "正常"}
                 </Badge>
               }
             />
@@ -261,27 +279,26 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
               </Button>
             }
           />
-          {bindings.length === 0 ? (
+          {accounts.length === 0 ? (
             <EmptyState
               title="暂无绑定"
               description="尚未配置任何平台账号。先建账号，再去绑定路由设置 Agent / 模型 / 启动目录。"
             />
           ) : (
             <div className="py-1.5">
-              {bindings.slice(0, 6).map((binding) => (
-                <Row
-                  key={binding.id}
-                  icon={<PlugZap />}
-                  title={binding.displayName || binding.id}
-                  subtitle={`${binding.platform} · acct ${binding.accountId || "—"}`}
-                  trailing={
-                    <Badge variant={binding.enabled ? "ok" : "mute"}>
-                      {binding.enabled ? "启用" : "停用"}
-                    </Badge>
-                  }
-                  onClick={() => goToView("accounts", { binding: binding.id })}
-                />
-              ))}
+              {accountHealth.slice(0, 6).map(({ group, state }) => {
+                const binding = group.representative;
+                return (
+                  <Row
+                    key={group.key}
+                    icon={<PlugZap />}
+                    title={binding.displayName || binding.id}
+                    subtitle={`${binding.platform} · acct ${binding.accountId || "—"} · ${group.bindings.length} 路由`}
+                    trailing={<Badge variant={state.variant}>{state.label}</Badge>}
+                    onClick={() => goToView("accounts", { binding: binding.id })}
+                  />
+                );
+              })}
               {agentProfiles.length > 0 && (
                 <Row
                   icon={<Bot />}
@@ -333,7 +350,7 @@ export function OverviewView({ goToView }: ChannelConnectorsViewProps) {
       </Panel>
 
       {/* Healthy summary anchor when everything is clear. */}
-      {daemonOnline && enabledBindings.length > 0 && (pending?.count ?? 0) === 0 && (
+      {daemonOnline && enabledBindings.length > 0 && accountIssueCount === 0 && (pending?.count ?? 0) === 0 && (
         <p className="flex items-center gap-1.5 text-sm text-green">
           <Check className="size-4" />
           守护在线、绑定就绪、无 replay 积压。

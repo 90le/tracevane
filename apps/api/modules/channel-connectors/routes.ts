@@ -2,6 +2,7 @@ import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { TracevaneRouter } from "../../core/router.js";
 import type {
   ChannelConnectorsDaemonRequest,
+  ChannelConnectorsApplyNativeConfigRequest,
   ChannelConnectorAgentSessionActionRequest,
   ChannelConnectorCommandActionRequest,
   ChannelConnectorFeishuAppRegistrationStartRequest,
@@ -38,7 +39,14 @@ export function registerChannelConnectorsRoutes(router: TracevaneRouter): void {
     }
   });
 
-  router.get("/api/channel-connectors/config/bindings/:bindingId/secrets", (_req, res, routeCtx, params) => {
+  router.get("/api/channel-connectors/config/bindings/:bindingId/secrets", (req, res, routeCtx, params) => {
+    if (req.headers["x-tracevane-secret-reveal"] !== "account-editor") {
+      sendJson(res, 403, {
+        error: "secret_reveal_confirmation_required",
+        message: "Secret reveal requires an explicit account editor request.",
+      });
+      return;
+    }
     try {
       sendJson(res, 200, routeCtx.services.channelConnectors.getBindingSecrets(params.bindingId));
     } catch (error) {
@@ -51,6 +59,15 @@ export function registerChannelConnectorsRoutes(router: TracevaneRouter): void {
       const payload = await parseJsonBody<ChannelConnectorsSaveNativeConfigRequest>(req);
       routeCtx.services.channelConnectors.saveNativeConfig(payload);
       sendJson(res, 200, routeCtx.services.channelConnectors.getPublicNativeConfig());
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.put("/api/channel-connectors/config/apply", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorsApplyNativeConfigRequest>(req);
+      sendJson(res, 200, await routeCtx.services.channelConnectors.applyNativeConfig(payload));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

@@ -246,10 +246,13 @@ function requestJson(url, options = {}) {
       port: target.port,
       path: `${target.pathname}${target.search}`,
       method: options.method || "GET",
-      headers: body ? {
-        "content-type": "application/json",
-        "content-length": Buffer.byteLength(body),
-      } : {},
+      headers: {
+        ...(options.headers || {}),
+        ...(body ? {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(body),
+        } : {}),
+      },
     }, (res) => {
       const chunks = [];
       res.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
@@ -1629,6 +1632,373 @@ test("native Channel Connectors store persists agent profiles and derives daemon
   assert.equal(routeProject.platformBindings[0].agent, "opencode");
 });
 
+test("native Channel Connectors rejects incomplete enabled platform accounts and allows disabled drafts", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const initial = service.getNativeConfig().config;
+  const baseBinding = {
+    id: "draft-account",
+    accountId: "draft-account",
+    botId: null,
+    displayName: "Draft account",
+    agentProfileId: initial.defaultAgentProfileId,
+    allowlist: [],
+    adminUsers: [],
+    disabledCommands: [],
+  };
+
+  assert.throws(() => service.saveNativeConfig({
+    config: {
+      ...initial,
+      platformBindings: [{
+        ...baseBinding,
+        platform: "feishu",
+        enabled: true,
+        metadata: { appId: "cli_incomplete", apiUrl: "https://open.feishu.cn" },
+      }],
+    },
+  }), /Enabled Feishu account draft-account requires App ID and App Secret/);
+
+  assert.throws(() => service.saveNativeConfig({
+    config: {
+      ...initial,
+      platformBindings: [{
+        ...baseBinding,
+        platform: "octo",
+        enabled: true,
+        metadata: { apiUrl: "https://im.deepminer.com.cn/api" },
+      }],
+    },
+  }), /Enabled Octo account draft-account requires API URL and Bot Token/);
+
+  const octoWithDefault = service.saveNativeConfig({
+    config: {
+      ...initial,
+      platformBindings: [{
+        ...baseBinding,
+        platform: "octo",
+        enabled: true,
+        metadata: { botToken: "octo-token" },
+      }],
+    },
+  });
+  assert.equal(
+    octoWithDefault.config.platformBindings[0].metadata.apiUrl,
+    "https://im.deepminer.com.cn/api",
+  );
+
+  const saved = service.saveNativeConfig({
+    config: {
+      ...initial,
+      platformBindings: [{
+        ...baseBinding,
+        platform: "octo",
+        enabled: false,
+        metadata: {},
+      }],
+    },
+  });
+  assert.equal(saved.config.platformBindings[0].enabled, false);
+});
+
+test("native Channel Connectors migrates v1 bindings into v2 accounts and routes with backup", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const initial = service.getNativeConfig();
+  const v1 = {
+    version: 1,
+    updatedAt: "2026-06-05T08:00:00.000Z",
+    defaultAgentProfileId: initial.config.defaultAgentProfileId,
+    agentSessionPolicy: initial.config.agentSessionPolicy,
+    agentProfiles: initial.config.agentProfiles,
+    platformBindings: [
+      {
+        id: "feishu-main",
+        platform: "feishu",
+        accountId: "cli_migrated",
+        botId: "bot_migrated",
+        displayName: "Feishu migrated",
+        agentProfileId: initial.config.defaultAgentProfileId,
+        enabled: true,
+        allowlist: ["user-a"],
+        adminUsers: [],
+        disabledCommands: [],
+        metadata: {
+          appId: "cli_migrated",
+          appSecret: "migrated-secret",
+          apiUrl: "https://open.feishu.cn",
+          peerKind: "private",
+          peerId: "user-a",
+        },
+      },
+      {
+        id: "feishu-main-route-group",
+        platform: "feishu",
+        accountId: "cli_migrated",
+        botId: "bot_migrated",
+        displayName: "Feishu migrated group",
+        agentProfileId: initial.config.defaultAgentProfileId,
+        enabled: true,
+        allowlist: ["group-a"],
+        adminUsers: [],
+        disabledCommands: ["stop"],
+        metadata: {
+          appId: "cli_migrated",
+          appSecret: "migrated-secret",
+          apiUrl: "https://open.feishu.cn",
+          peerKind: "group",
+          peerId: "group-a",
+          routeModel: "gpt-5.5",
+        },
+      },
+    ],
+  };
+  fs.mkdirSync(path.dirname(initial.configPath), { recursive: true });
+  fs.writeFileSync(initial.configPath, `${JSON.stringify(v1, null, 2)}\n`);
+
+  const migrated = service.getNativeConfig().config;
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.platformAccounts.length, 1);
+  assert.equal(migrated.routes.length, 2);
+  assert.equal(migrated.platformBindings.length, 2);
+  assert.equal(migrated.platformAccounts[0].credentials.appSecret, "migrated-secret");
+  assert.equal(migrated.routes[1].accountRef, migrated.platformAccounts[0].id);
+  assert.equal(migrated.routes[1].source.kind, "group");
+  assert.equal(migrated.routes[1].overrides.model, "gpt-5.5");
+  assert.equal(JSON.stringify(migrated.routes).includes("migrated-secret"), false);
+
+  service.saveNativeConfig({ config: migrated });
+  const persisted = JSON.parse(fs.readFileSync(initial.configPath, "utf8"));
+  const backup = JSON.parse(fs.readFileSync(`${initial.configPath}.v1.bak`, "utf8"));
+  assert.equal(persisted.version, 2);
+  assert.equal("platformBindings" in persisted, false);
+  assert.equal(persisted.platformAccounts.length, 1);
+  assert.equal(persisted.routes.length, 2);
+  assert.equal(backup.version, 1);
+  assert.equal(backup.platformBindings.length, 2);
+
+  const reloaded = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  }).getNativeConfig().config;
+  assert.equal(reloaded.platformBindings.length, 2);
+  assert.equal(reloaded.platformBindings[1].metadata.appSecret, "migrated-secret");
+  assert.equal(reloaded.platformBindings[1].metadata.peerId, "group-a");
+
+  const publicConfig = service.getPublicNativeConfig().config;
+  service.saveNativeConfig({
+    config: {
+      ...publicConfig,
+      platformBindings: publicConfig.platformBindings.map((binding) => ({
+        ...binding,
+        metadata: {
+          peerKind: binding.metadata.peerKind,
+          peerId: binding.id === "feishu-main-route-group" ? "group-b" : binding.metadata.peerId,
+          routeModel: binding.metadata.routeModel,
+        },
+      })),
+    },
+  });
+  const routeOnlyReload = service.getNativeConfig().config;
+  assert.equal(routeOnlyReload.platformAccounts[0].credentials.appSecret, "migrated-secret");
+  assert.equal(routeOnlyReload.platformBindings[1].metadata.appSecret, "migrated-secret");
+  assert.equal(routeOnlyReload.routes[1].source.id, "group-b");
+  assert.equal(JSON.stringify(routeOnlyReload.routes).includes("migrated-secret"), false);
+});
+
+test("native Channel Connectors tests an unsaved Octo account without persisting or exposing its secret", async () => {
+  await withMockOctoServer(async (apiUrl) => {
+    const root = makeTempRoot();
+    const config = createTracevaneConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+
+    const result = await service.runOctoTransportSmoke({
+      action: "register",
+      binding: {
+        id: "octo-draft",
+        platform: "octo",
+        accountId: "octo-draft",
+        botId: null,
+        displayName: "Unsaved Octo",
+        agentProfileId: "default-codex",
+        enabled: true,
+        allowlist: [],
+        adminUsers: [],
+        disabledCommands: [],
+        metadata: { apiUrl, botToken: "draft-octo-token" },
+      },
+    });
+
+    assert.equal(result.transport.ok, true);
+    assert.equal(result.binding?.id, "octo-draft");
+    assert.equal(result.binding?.metadata?.botToken, "[redacted]");
+    assert.equal(service.getNativeConfig().config.platformBindings.length, 0);
+  });
+});
+
+test("native Channel Connectors tests an unsaved Feishu account without persisting or exposing its secret", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createTracevaneConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+
+    const result = await service.runFeishuTransportSmoke({
+      action: "tenant-token",
+      binding: {
+        id: "feishu-draft",
+        platform: "feishu",
+        accountId: "cli_draft",
+        botId: null,
+        displayName: "Unsaved Feishu",
+        agentProfileId: "default-codex",
+        enabled: true,
+        allowlist: [],
+        adminUsers: [],
+        disabledCommands: [],
+        metadata: {
+          apiUrl,
+          appId: "cli_draft",
+          appSecret: "draft-feishu-secret",
+        },
+      },
+    });
+
+    assert.equal(result.transport.ok, true);
+    assert.equal(result.binding?.metadata?.appSecret, "[redacted]");
+    assert.equal(requests[0].body.app_id, "cli_draft");
+    assert.equal(requests[0].body.app_secret, "draft-feishu-secret");
+    assert.equal(service.getNativeConfig().config.platformBindings.length, 0);
+  });
+});
+
+test("native Channel Connectors rolls config back when a reachable daemon rejects reload", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  let reloadCalls = 0;
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+    commandRunner: async (command) => ({
+      ...command,
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      error: null,
+    }),
+    fetchImpl: async (url) => {
+      if (String(url).endsWith("/status")) {
+        return new Response(JSON.stringify({
+          ok: true,
+          implementation: "tracevane-native",
+          pid: 123,
+          projects: 0,
+          platformBindings: 0,
+          octoConnections: [],
+          feishuConnections: [],
+          activeRuns: [],
+          agentRuns: [],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      reloadCalls += 1;
+      const failed = reloadCalls === 1;
+      return new Response(JSON.stringify({
+        ok: !failed,
+        checkedAt: "2026-06-06T08:00:00.000Z",
+        status: failed ? "failed" : "applied",
+        mode: failed ? "when-idle" : "immediate",
+        activeRuns: 0,
+        activeTurns: 0,
+        configUpdatedAt: null,
+        appliedAt: failed ? null : "2026-06-06T08:00:00.000Z",
+        restartRequiredReason: null,
+        error: failed ? "synthetic reload rejection" : null,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+  const initial = service.getNativeConfig().config;
+  const result = await service.applyNativeConfig({
+    expectedUpdatedAt: initial.updatedAt,
+    config: {
+      ...initial,
+      platformBindings: [{
+        id: "octo-rollback",
+        platform: "octo",
+        accountId: "octo-rollback",
+        botId: null,
+        displayName: "Octo rollback",
+        agentProfileId: initial.defaultAgentProfileId,
+        enabled: true,
+        allowlist: [],
+        adminUsers: [],
+        disabledCommands: [],
+        metadata: { apiUrl: "https://im.deepminer.com.cn/api", botToken: "rollback-token" },
+      }],
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.daemonReachableBefore, true);
+  assert.equal(result.rolledBack, true);
+  assert.equal(result.persisted, false);
+  assert.equal(result.reload.error, "synthetic reload rejection");
+  assert.equal(result.rollbackReload?.status, "applied");
+  assert.equal(service.getNativeConfig().config.platformBindings.length, 0);
+});
+
+test("native Channel Connectors keeps saved config when daemon was already offline", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+    commandRunner: async (command) => ({
+      ...command,
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      error: null,
+    }),
+    fetchImpl: async () => {
+      throw new Error("synthetic daemon offline");
+    },
+  });
+  const initial = service.getNativeConfig().config;
+  const result = await service.applyNativeConfig({
+    expectedUpdatedAt: initial.updatedAt,
+    config: {
+      ...initial,
+      platformBindings: [{
+        id: "octo-offline",
+        platform: "octo",
+        accountId: "octo-offline",
+        botId: null,
+        displayName: "Octo offline",
+        agentProfileId: initial.defaultAgentProfileId,
+        enabled: true,
+        allowlist: [],
+        adminUsers: [],
+        disabledCommands: [],
+        metadata: { apiUrl: "https://im.deepminer.com.cn/api", botToken: "offline-token" },
+      }],
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.daemonReachableBefore, false);
+  assert.equal(result.rolledBack, false);
+  assert.equal(result.persisted, true);
+  assert.equal(service.getNativeConfig().config.platformBindings[0].id, "octo-offline");
+});
+
 
 test("native Channel Connectors daemon restart writes the latest saved runtime config", async () => {
   const root = makeTempRoot();
@@ -1842,6 +2212,10 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
           enabled: true,
           allowlist: ["user-1"],
           adminUsers: ["admin-1"],
+          metadata: {
+            apiUrl: "https://im.deepminer.com.cn/api",
+            botToken: "octo-dry-run-token",
+          },
         },
       ],
     },
@@ -2072,6 +2446,10 @@ test("Octo adapter normalizes mixed-case account identity like the Octo plugin",
           enabled: true,
           allowlist: [],
           adminUsers: [],
+          metadata: {
+            apiUrl: "https://im.deepminer.com.cn/api",
+            botToken: "octo-mixed-case-token",
+          },
         },
       ],
     },
@@ -2152,6 +2530,10 @@ test("Octo adapter follows group direction and mention rendering rules", async (
           enabled: true,
           allowlist: [],
           adminUsers: [],
+          metadata: {
+            apiUrl: "https://im.deepminer.com.cn/api",
+            botToken: "octo-group-token",
+          },
         },
         {
           id: "octo-persona",
@@ -2164,6 +2546,8 @@ test("Octo adapter follows group direction and mention rendering rules", async (
           allowlist: [],
           adminUsers: [],
           metadata: {
+            apiUrl: "https://im.deepminer.com.cn/api",
+            botToken: "octo-persona-token",
             onBehalfOf: "grantor-1",
           },
         },
@@ -5406,7 +5790,11 @@ test("native Channel Connectors service slash compact works for Feishu and Octo 
             enabled: true,
             allowlist: ["ou_admin"],
             adminUsers: ["ou_admin"],
-            metadata: { verificationToken: "verify-token" },
+            metadata: {
+              appId: "cli_test",
+              appSecret: "feishu-compact-secret",
+              verificationToken: "verify-token",
+            },
           },
           {
             id: "octo-main",
@@ -5418,6 +5806,10 @@ test("native Channel Connectors service slash compact works for Feishu and Octo 
             enabled: true,
             allowlist: ["user-1"],
             adminUsers: ["user-1"],
+            metadata: {
+              apiUrl: "https://im.deepminer.com.cn/api",
+              botToken: "octo-compact-token",
+            },
           },
         ],
       },
@@ -7895,6 +8287,8 @@ test("native Channel Connectors command surface loads Gateway models when reques
             allowlist: [],
             adminUsers: [],
             metadata: {
+              appId: "cli_gateway",
+              appSecret: "feishu-gateway-secret",
               verificationToken: "gateway-token",
             },
           },
@@ -8785,6 +9179,8 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
           allowlist: ["ou_admin"],
           adminUsers: ["ou_admin"],
           metadata: {
+            appId: "cli_test",
+            appSecret: "feishu-webhook-secret",
             verificationToken: "verify-token",
           },
         },
@@ -14186,6 +14582,8 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
               allowlist: [],
               adminUsers: [],
               metadata: {
+                apiUrl: baseUrl,
+                botToken: "route-bot-token",
                 aliases: {
                   帮助: "/help",
                   状态: "/status",
@@ -14203,6 +14601,9 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
               allowlist: [],
               adminUsers: [],
               metadata: {
+                appId: "cli_route",
+                appSecret: "route-app-secret",
+                apiUrl: baseUrl,
                 verificationToken: "route-token",
                 aliases: {
                   帮助: "/help",
@@ -14216,6 +14617,23 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     });
     assert.equal(savedConfig.status, 200);
     assert.equal(savedConfig.body.config.agentProfiles[0].agent, "opencode");
+
+    const deniedSecrets = await requestJson(
+      `${baseUrl}/api/channel-connectors/config/bindings/feishu-route/secrets`,
+    );
+    assert.equal(deniedSecrets.status, 403);
+    assert.equal(deniedSecrets.body.error, "secret_reveal_confirmation_required");
+
+    const revealedSecrets = await requestJson(
+      `${baseUrl}/api/channel-connectors/config/bindings/feishu-route/secrets`,
+      { headers: { "x-tracevane-secret-reveal": "account-editor" } },
+    );
+    assert.equal(revealedSecrets.status, 200);
+    assert.deepEqual(revealedSecrets.body.secrets, {
+      appSecret: "route-app-secret",
+      verificationToken: "route-token",
+    });
+    assert.doesNotMatch(JSON.stringify(revealedSecrets.body), /route-bot-token/);
 
     const commandSurface = await requestJson(`${baseUrl}/api/channel-connectors/commands/surface`, {
       method: "POST",
@@ -14394,7 +14812,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     });
     assert.equal(feishuAliasWebhook.status, 200);
     assert.equal(feishuAliasWebhook.body.accepted, false);
-    assert.equal(feishuAliasWebhook.body.skippedReason, "feishu_transport_config_missing");
+    assert.equal(feishuAliasWebhook.body.skippedReason, "feishu_transport_send_failed");
     assert.equal(feishuAliasWebhook.body.commandAction.accepted, true);
     assert.equal(feishuAliasWebhook.body.commandAction.command, "/status");
     assert.equal(feishuAliasWebhook.body.commandAction.commandResult.action, "show");
@@ -14460,7 +14878,10 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     });
     assert.equal(feishuTransportSmoke.status, 200);
     assert.equal(feishuTransportSmoke.body.adapter, "feishu");
-    assert.equal(feishuTransportSmoke.body.transport.error, "feishu_transport_config_missing");
+    assert.equal(
+      feishuTransportSmoke.body.transport.error,
+      "Feishu API /open-apis/auth/v3/tenant_access_token/internal failed",
+    );
 
     const octoSmoke = await requestJson(`${baseUrl}/api/channel-connectors/adapters/octo/incoming`, {
       method: "POST",
@@ -14494,7 +14915,10 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     });
     assert.equal(transportSmoke.status, 200);
     assert.equal(transportSmoke.body.adapter, "octo");
-    assert.equal(transportSmoke.body.transport.error, "octo_transport_config_missing");
+    assert.equal(
+      transportSmoke.body.transport.error,
+      "Octo API POST /v1/bot/register failed with HTTP 404",
+    );
 
     const service = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`);
     assert.equal(service.status, 200);

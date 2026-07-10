@@ -96,6 +96,10 @@ export const CHANNEL_CONNECTOR_PLATFORM_IDS = [
 export type ChannelConnectorAgentId = typeof CHANNEL_CONNECTOR_AGENT_IDS[number];
 export type ChannelConnectorPlatformId = typeof CHANNEL_CONNECTOR_PLATFORM_IDS[number];
 
+export const CHANNEL_CONNECTOR_DEFAULT_FEISHU_API_URL = "https://open.feishu.cn";
+export const CHANNEL_CONNECTOR_DEFAULT_LARK_API_URL = "https://open.larksuite.com";
+export const CHANNEL_CONNECTOR_DEFAULT_OCTO_API_URL = "https://im.deepminer.com.cn/api";
+
 export type ChannelConnectorPermissionMode =
   | "suggest"
   | "read-only"
@@ -368,6 +372,7 @@ export interface ChannelConnectorOctoTransportResult {
 
 export interface ChannelConnectorOctoTransportSmokeRequest {
   bindingId?: string | null;
+  binding?: ChannelConnectorPlatformBinding | null;
   action?:
     | "register"
     | "typing"
@@ -773,6 +778,7 @@ export interface ChannelConnectorFeishuTransportResult {
 
 export interface ChannelConnectorFeishuTransportSmokeRequest {
   bindingId?: string | null;
+  binding?: ChannelConnectorPlatformBinding | null;
   action?: "tenant-token" | "send-message" | "send-post" | "send-card" | "patch-card" | "upload-and-send-media";
   channelId?: string | null;
   receiveId?: string | null;
@@ -999,12 +1005,54 @@ export interface ChannelConnectorPlatformBinding {
   metadata?: Record<string, unknown>;
 }
 
+export interface ChannelConnectorPlatformAccount {
+  id: string;
+  platform: ChannelConnectorPlatformId;
+  displayName: string;
+  enabled: boolean;
+  externalAccountId: string;
+  botId: string | null;
+  credentials: Record<string, unknown>;
+  settings: Record<string, unknown>;
+}
+
+export interface ChannelConnectorRoute {
+  id: string;
+  accountRef: string;
+  displayName: string;
+  enabled: boolean;
+  source: {
+    kind: string;
+    id: string;
+  };
+  agentProfileId: string;
+  overrides: {
+    agent: ChannelConnectorAgentId | null;
+    model: string | null;
+    workDir: string | null;
+    permissionMode: ChannelConnectorPermissionMode | null;
+  };
+  accessPolicy: {
+    allowlist: string[];
+    adminUsers: string[];
+    disabledCommands: string[];
+  };
+  sessionPolicy: {
+    mode: string;
+    busyGuard: boolean;
+    attachmentStaging: boolean;
+  };
+}
+
 export interface ChannelConnectorsNativeConfig {
-  version: 1;
+  version: 2;
   updatedAt: string;
   defaultAgentProfileId: string;
   agentSessionPolicy: ChannelConnectorAgentSessionPolicyConfig;
   agentProfiles: ChannelConnectorAgentProfile[];
+  platformAccounts: ChannelConnectorPlatformAccount[];
+  routes: ChannelConnectorRoute[];
+  /** Runtime compatibility view materialized from platformAccounts + routes. */
   platformBindings: ChannelConnectorPlatformBinding[];
 }
 
@@ -1020,6 +1068,26 @@ export interface ChannelConnectorsNativeConfigResponse {
 
 export interface ChannelConnectorsSaveNativeConfigRequest {
   config?: ChannelConnectorsNativeConfig;
+}
+
+export interface ChannelConnectorsApplyNativeConfigRequest
+  extends ChannelConnectorsSaveNativeConfigRequest {
+  expectedUpdatedAt?: string | null;
+  reloadMode?: ChannelConnectorsDaemonReloadMode;
+  rollbackOnFailure?: boolean;
+}
+
+export interface ChannelConnectorsApplyNativeConfigResponse {
+  ok: boolean;
+  checkedAt: string;
+  accepted: boolean;
+  persisted: boolean;
+  daemonReachableBefore: boolean;
+  rolledBack: boolean;
+  config: ChannelConnectorsNativeConfig;
+  reload: ChannelConnectorsDaemonReloadResponse;
+  rollbackReload: ChannelConnectorsDaemonReloadResponse | null;
+  error: string | null;
 }
 
 export interface ChannelConnectorBindingSecretsResponse {
@@ -1312,6 +1380,27 @@ export interface ChannelConnectorsDaemonRuntimeFeishuConnectionStatus {
   lastError: string | null;
 }
 
+export interface ChannelConnectorsDaemonRuntimeOctoConnectionStatus {
+  bindingId: string;
+  accountId: string;
+  botId: string | null;
+  robotId: string | null;
+  connected: boolean;
+  state: string;
+  lastError: string | null;
+  lastConnectedAt: string | null;
+  lastDisconnectedAt: string | null;
+  reconnects: number;
+  receivedMessages: number;
+  credentialSource: "register" | "cache" | null;
+  restHeartbeatIntervalMs: number;
+  restHeartbeatSuccesses: number;
+  restHeartbeatFailures: number;
+  restHeartbeatLastOkAt: string | null;
+  restHeartbeatLastErrorAt: string | null;
+  restHeartbeatLastError: string | null;
+}
+
 export interface ChannelConnectorsDaemonRuntimePendingAgentRunRecord {
   id: string;
   adapter: "octo" | "feishu";
@@ -1356,6 +1445,7 @@ export interface ChannelConnectorsDaemonRuntimeStatus {
   projects: number | null;
   platformBindings: number | null;
   octoConnections: number | null;
+  octoConnectionDetails: ChannelConnectorsDaemonRuntimeOctoConnectionStatus[];
   feishuConnections: number | null;
   feishuConnectionDetails: ChannelConnectorsDaemonRuntimeFeishuConnectionStatus[];
   activeRuns: number | null;
