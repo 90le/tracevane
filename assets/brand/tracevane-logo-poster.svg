@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Tracevane Vane Loop flat logo poster</title>
+  <desc id="desc">A flat identity poster showing Tracevane's directional vane, execution route, handoff node, and incident signal.</desc>
+  <rect width="1600" height="900" fill="#111517"/>
+  <rect x="72" y="72" width="1456" height="756" rx="28" fill="#151A1C" stroke="#F4F1EA" stroke-opacity="0.12"/>
+  <path d="M784 120V780" stroke="#F4F1EA" stroke-opacity="0.12"/>
+
+  <text x="132" y="145" fill="#B8FFE5" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="18" font-weight="700" letter-spacing="4">TRACEVANE / BRAND SYSTEM</text>
+  <text x="132" y="690" fill="#F4F1EA" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="54" font-weight="650">让路径可见，</text>
+  <text x="132" y="756" fill="#F4F1EA" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="54" font-weight="650">让接管可控。</text>
+  <text x="132" y="790" fill="#7E8D8A" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="16" letter-spacing="2">LOCAL AGENT CONTROL WORKBENCH</text>
+
+  <g transform="translate(195 212) scale(5.2)">
+    <rect x="3" y="3" width="58" height="58" rx="16" fill="#111517"/>
+    <path d="M22 12.8C12.8 17.1 8.6 27.2 11.3 37.2C14.4 48.4 24.8 54.8 36.6 52.3C42 51.1 46.6 48.2 49.8 44.2" fill="none" stroke="#35E69A" stroke-width="4.4" stroke-linecap="butt"/>
+    <path d="M49.8 44.2L42.5 40.2L52 39.6L52 49.1Z" fill="#35E69A"/>
+    <path d="M49.5 34.2C52.2 29 51.8 23.7 48.8 19.1" fill="none" stroke="#F05F4F" stroke-width="4.4" stroke-linecap="butt"/>
+    <path d="M48.8 19.1C47.2 16.9 45.2 15.1 42.8 13.8" fill="none" stroke="#F6A44B" stroke-width="4.4" stroke-linecap="butt"/>
+    <path d="M43.8 16.1L32.2 25.2L35.1 28.1L28.5 34.8C23.8 39.5 22.8 44.7 27.7 48.1C25.7 43.4 28 39.8 31.3 36.4L37.5 30.2L34.5 27.1Z" fill="#F4F1EA"/>
+  </g>
+
+  <text x="882" y="205" fill="#F4F1EA" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="70" font-weight="760" letter-spacing="5">TRACEVANE</text>
+  <text x="888" y="250" fill="#35E69A" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="18" font-weight="700" letter-spacing="5">LOCAL AGENT CONTROL</text>
+  <path d="M888 308H1395" stroke="#F4F1EA" stroke-opacity="0.16"/>
+  <text x="888" y="365" fill="#F4F1EA" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="28" font-weight="600">A flat mark for a visible route.</text>
+  <text x="888" y="410" fill="#7E8D8A" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="20">Vane = direction. Loop = evidence.</text>
+  <text x="888" y="442" fill="#7E8D8A" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="20">Signal = controlled recovery.</text>
+
+  <g transform="translate(888 550)">
+    <circle cx="10" cy="10" r="10" fill="#35E69A"/>
+    <text x="38" y="17" fill="#F4F1EA" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="18" font-weight="650">ROUTE</text>
+    <circle cx="190" cy="10" r="10" fill="#F6A44B"/>
+    <text x="218" y="17" fill="#F4F1EA" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="18" font-weight="650">HANDOFF</text>
+    <circle cx="390" cy="10" r="10" fill="#F05F4F"/>
+    <text x="418" y="17" fill="#F4F1EA" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="18" font-weight="650">INCIDENT</text>
+  </g>
+  <text x="888" y="670" fill="#B8FFE5" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="15" letter-spacing="2">01 / OBSERVE   02 / STEER   03 / RECOVER</text>
+  <text x="888" y="733" fill="#7E8D8A" font-family="Inter, Avenir Next, Segoe UI, sans-serif" font-size="15" letter-spacing="2">THE PATH STAYS VISIBLE WHEN THE SYSTEM CHANGES.</text>
+</svg>
