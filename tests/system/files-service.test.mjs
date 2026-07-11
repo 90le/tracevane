@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 const { createFilesService } = await (async () => {
   try {
@@ -157,6 +158,37 @@ test("files service persists favorites through sqlite across service instances",
   const replaced = first.getFavoriteBookmarks();
   assert.equal(replaced.items.length, 1);
   assert.equal(replaced.items[0].id, "bookmark:folder");
+});
+
+test("files service uses a portable SQLite schema without optional FTS5 modules", () => {
+  const root = makeTempRoot();
+  const config = makeConfig(root);
+  const service = createFilesService(config);
+
+  const favorites = service.replaceFavoriteBookmarks({
+    items: [
+      {
+        id: "bookmark:portable",
+        type: "bookmark",
+        title: "Portable",
+        location: {
+          rootId: "openclaw-root",
+          directoryPath: "docs",
+          label: "/docs",
+        },
+      },
+    ],
+  });
+
+  assert.equal(favorites.items[0]?.title, "Portable");
+
+  const db = new DatabaseSync(path.join(config.openclawRoot, ".tracevane", "file-manager.sqlite"));
+  try {
+    const optionalFtsTable = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'content_index_fts'").get();
+    assert.equal(optionalFtsTable, undefined);
+  } finally {
+    db.close();
+  }
 });
 
 test("files service supports search, read, write, create, rename, copy, move, delete, and upload", () => {

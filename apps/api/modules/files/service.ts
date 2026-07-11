@@ -992,11 +992,6 @@ function fileManagerDb(config: TracevaneServerConfig): FileManagerSqliteDatabase
       newest_indexed_at TEXT,
       updated_at TEXT NOT NULL
     ) STRICT;
-    CREATE VIRTUAL TABLE IF NOT EXISTS content_index_fts USING fts5(
-      root_id UNINDEXED,
-      path,
-      sha256 UNINDEXED
-    );
     CREATE TABLE IF NOT EXISTS favorite_bookmarks (
       id TEXT PRIMARY KEY,
       parent_id TEXT REFERENCES favorite_bookmarks(id) ON DELETE CASCADE,
@@ -1465,11 +1460,6 @@ function upsertContentIndexRecordSql(db: FileManagerSqliteDatabase, record: Cont
       mtime_ms = excluded.mtime_ms,
       indexed_at = excluded.indexed_at
   `).run(record.rootId, record.path, record.sha256, record.size, record.mtimeMs, record.indexedAt);
-  const row = db.prepare("SELECT rowid FROM content_index_records WHERE root_id = ? AND path = ?").get(record.rootId, record.path) as { rowid?: number } | undefined;
-  if (row?.rowid != null) {
-    db.prepare("DELETE FROM content_index_fts WHERE rowid = ?").run(row.rowid);
-    db.prepare("INSERT INTO content_index_fts(rowid, root_id, path, sha256) VALUES (?, ?, ?, ?)").run(row.rowid, record.rootId, record.path, record.sha256);
-  }
 }
 
 function refreshContentIndexStatsSql(db: FileManagerSqliteDatabase, rootId: string): void {
