@@ -35,6 +35,10 @@ function quoteSystemdToken(value: string): string {
     .replace(/\t/g, "\\t")}"`;
 }
 
+function quoteSystemdExecToken(value: string): string {
+  return quoteSystemdToken(value.replaceAll("$", () => "$$"));
+}
+
 function quoteWindowsArgument(value: string): string {
   if (value && !/[\s"]/u.test(value)) return value;
 
@@ -80,7 +84,7 @@ function buildSystemdTemplate(
     "[Service]",
     "Type=simple",
     `WorkingDirectory=${quoteSystemdToken(definition.workingDirectory)}`,
-    `ExecStart=${[process.execPath, ...args].map(quoteSystemdToken).join(" ")}`,
+    `ExecStart=${[process.execPath, ...args].map(quoteSystemdExecToken).join(" ")}`,
     "Restart=on-failure",
     "RestartSec=5",
     "",

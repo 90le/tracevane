@@ -750,12 +750,14 @@ test("Windows and launchd status ignore localized prose and launchd uses a fixed
     {
       platform: "win32",
       result: { ok: true, exitCode: 0, stdout: "任务正在运行\n" },
-      expected: { installed: true, active: null, state: "unknown", errorCode: null },
+      expected: { installed: true, active: null, state: "degraded", errorCode: "runtime-not-ready" },
+      expectedProbes: 1,
     },
     {
       platform: "darwin",
       result: { ok: true, exitCode: 0, stdout: "服务正在运行\n" },
-      expected: { installed: true, active: null, state: "unknown", errorCode: null },
+      expected: { installed: true, active: null, state: "degraded", errorCode: "runtime-not-ready" },
+      expectedProbes: 1,
     },
     {
       platform: "darwin",
@@ -773,6 +775,7 @@ test("Windows and launchd status ignore localized prose and launchd uses a fixed
         state: "not-installed",
         errorCode: "task-not-found",
       },
+      expectedProbes: 0,
     },
   ]) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-localized-"));
@@ -786,13 +789,21 @@ test("Windows and launchd status ignore localized prose and launchd uses a fixed
     fs.mkdirSync(path.dirname(plan.configPath), { recursive: true });
     fs.writeFileSync(plan.configPath, plan.template, "utf8");
     const { session } = createFakeSession();
+    const commandCalls = [];
+    let probes = 0;
     const manager = createServiceManager({
       platform: scenario.platform,
       homeDir: root,
       windowsUserId: "TEST\\Fixture",
       session,
-      runner: async (command) => commandResult(command, scenario.result),
-      probe: async () => false,
+      runner: async (command) => {
+        commandCalls.push(command);
+        return commandResult(command, scenario.result);
+      },
+      probe: async () => {
+        probes += 1;
+        return false;
+      },
     });
     try {
       const response = await manager.manage(definition, {
@@ -810,6 +821,10 @@ test("Windows and launchd status ignore localized prose and launchd uses a fixed
         scenario.expected,
         `${scenario.platform}:${scenario.result.exitCode}`,
       );
+      assert.equal(response.ok, false);
+      assert.deepEqual(commandCalls, plan.commands.status);
+      assert.equal(probes, scenario.expectedProbes);
+      assert.equal(response.templateWritten, false);
       assert.doesNotMatch(response.manager.errorMessage ?? "", /找不到|正在运行/);
     } finally {
       await manager.dispose();

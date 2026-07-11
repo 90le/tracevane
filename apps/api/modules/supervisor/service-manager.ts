@@ -765,20 +765,32 @@ export function createServiceManager(
         inspection.manager.installed &&
         inspection.manager.configCurrent &&
         inspection.manager.active === null &&
-        inspection.manager.errorCode === null &&
-        await probeHealth(definition.healthUrl)
+        inspection.manager.errorCode === null
       ) {
+        const ready = await probeHealth(definition.healthUrl);
+        if (!ready &&
+          plan.supervisor !== "launchd-user" &&
+          plan.supervisor !== "scheduled-task") {
+          return {
+            ok: true,
+            action: request.action,
+            manager: inspection.manager,
+            commands: inspection.commands,
+            templateWritten: false,
+            configCurrent: true,
+          };
+        }
         return {
-          ok: true,
+          ok: ready,
           action: request.action,
           manager: persistentManagerStatus(plan, {
             installed: true,
             enabled: inspection.manager.enabled,
-            active: true,
-            state: "running",
+            active: ready ? true : null,
+            state: ready ? "running" : "degraded",
             configCurrent: true,
-            errorCode: null,
-            errorMessage: null,
+            errorCode: ready ? null : "runtime-not-ready",
+            errorMessage: ready ? null : stableErrorMessage("runtime-not-ready"),
           }),
           commands: inspection.commands,
           templateWritten: false,

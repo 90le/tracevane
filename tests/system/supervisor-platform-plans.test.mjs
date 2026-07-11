@@ -26,6 +26,7 @@ function fixtureDefinition(root = "C:/Trace vane/项目 & workers") {
 
 function quoteSystemdToken(value) {
   return `"${value
+    .replaceAll("$", () => "$$")
     .replaceAll("%", "%%")
     .replaceAll("\\", "\\\\")
     .replaceAll('"', '\\"')
@@ -33,6 +34,27 @@ function quoteSystemdToken(value) {
     .replaceAll("\r", "\\r")
     .replaceAll("\t", "\\t")}"`;
 }
+
+test("systemd plans preserve literal dollar paths with CJK, spaces, percent, and quotes", () => {
+  const definition = fixtureDefinition('/opt/${NAME}/项目 % workers');
+  definition.args.push("--literal", '配置/${NAME}/space % "quote"');
+  const plan = createSupervisorPlan(definition, "linux", "/home/测试 user");
+  const expectedExecStart = [
+    process.execPath,
+    definition.entryPath,
+    ...definition.args,
+    "--config",
+    definition.configPath,
+  ].map(quoteSystemdToken).join(" ");
+
+  assert.match(
+    plan.template,
+    new RegExp(`^ExecStart=${escapeRegExp(expectedExecStart)}$`, "m"),
+  );
+  assert.match(plan.template, /\$\$\{NAME\}/);
+  assert.match(plan.template, /%%/);
+  assert.match(plan.template, /\\"quote\\"/);
+});
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

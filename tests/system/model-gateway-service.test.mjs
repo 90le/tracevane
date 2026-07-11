@@ -6791,8 +6791,19 @@ test("model gateway client key protects client endpoints and stays separate from
 
   try {
     await withServer(handler, async (baseUrl) => {
+      for (const origin of ["https://evil.example", "null", "not an origin"]) {
+        const blocked = await requestJson(`${baseUrl}/api/model-gateway/client-auth`, {
+          method: "POST",
+          headers: { origin },
+          body: { apiKey: "sk-browser-csrf-must-not-save" },
+        });
+        assert.equal(blocked.status, 403, origin);
+        assert.equal(blocked.body.error.code, "model_gateway_management_locked", origin);
+        assert.equal(ctx.services.modelGateway.getClientAuth().clientAuth.enabled, false, origin);
+      }
       const saveKey = await requestJson(`${baseUrl}/api/model-gateway/client-auth`, {
         method: "POST",
+        headers: { origin: "http://127.0.0.1:5173" },
         body: { apiKey: "sk-local-client-one" },
       });
       assert.equal(saveKey.status, 200);
@@ -8757,10 +8768,28 @@ test("model gateway daemon service defaults status to the API-owned session", as
     runtimePath: "browser-runtime",
     serviceName: "browser-service",
   });
+  const loopbackRequest = (origin) => ({
+    headers: { origin },
+    socket: { remoteAddress: "127.0.0.1" },
+  });
+  await assert.rejects(
+    () => service.manageDaemonService(loopbackRequest("https://evil.example"), {
+      action: "start",
+      apply: true,
+    }),
+    (error) => error instanceof ModelGatewayServiceError
+      && error.code === "model_gateway_management_locked"
+      && error.statusCode === 403,
+  );
+  const browserStarted = await service.manageDaemonService(
+    loopbackRequest("http://127.0.0.1:5173"),
+    { action: "start", apply: true },
+  );
 
   assert.equal(legacyRunnerCalled, false);
   assert.deepEqual(managed.map(({ request }) => request), [
     { action: "status", mode: "session", apply: false },
+    { action: "start", mode: "session", apply: true },
     { action: "start", mode: "session", apply: true },
   ]);
   assert.equal(status.action, "status");
@@ -8770,6 +8799,7 @@ test("model gateway daemon service defaults status to the API-owned session", as
   assert.equal(started.manager.state, "running");
   assert.equal(started.bootstrap.mode, "session");
   assert.equal(started.bootstrap.started, true);
+  assert.equal(browserStarted.bootstrap.started, true);
   assert.equal(managed[1].definition.workingDirectory, config.projectRoot);
   assert.equal(managed[1].definition.configPath, config.openclawConfigFile);
   assert.equal(
@@ -8800,6 +8830,19 @@ test("model gateway daemon service defaults status to the API-owned session", as
     assert.equal(recursive.manager.errorCode, "runtime-not-ready", action);
     assert.equal(recursive.manager.active, null, action);
     assert.equal(recursive.commandsRun.length, 0, action);
+    assert.equal(recursive.bootstrap.mode, "blocked", action);
+    assert.equal(recursive.bootstrap.allowed, false, action);
+    assert.equal(recursive.bootstrap.attempted, false, action);
+    assert.match(
+      recursive.bootstrap.notes.join(" "),
+      /local daemon cannot create another session owner/i,
+      action,
+    );
+    assert.doesNotMatch(
+      recursive.bootstrap.notes.join(" "),
+      /owned by the Tracevane API session/i,
+      action,
+    );
   }
   assert.equal(localManagerCalls, 0);
 });
@@ -9118,7 +9161,18 @@ test("model gateway daemon service management executes selected supervisor comma
               ? "session"
               : "scheduled-task",
           }),
-          commands: [],
+          commands: [{
+            label: "Inspect persistent service",
+            command: "supervisor-status",
+            args: [],
+            ok: true,
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+            errorCode: null,
+            errorMessage: null,
+            durationMs: 1,
+          }],
           templateWritten: false,
           configCurrent: true,
         };
@@ -9137,10 +9191,27 @@ test("model gateway daemon service management executes selected supervisor comma
     mode: "persistent",
     runCommands: true,
   });
+  const inspectedStatus = await aliasService.manageDaemonService(undefined, {
+    action: "status",
+    mode: "persistent",
+    apply: true,
+  });
+  const inspectedPreview = await aliasService.manageDaemonService(undefined, {
+    action: "preview",
+    mode: "persistent",
+    apply: true,
+  });
   assert.deepEqual(normalizedRequests, [
     { action: "install", mode: "persistent", apply: false },
     { action: "repair", mode: "persistent", apply: true },
+    { action: "status", mode: "persistent", apply: true },
+    { action: "preview", mode: "persistent", apply: true },
   ]);
+  for (const inspected of [inspectedStatus, inspectedPreview]) {
+    assert.equal(inspected.commandsRun.length, 1, inspected.action);
+    assert.equal(inspected.applied, false, inspected.action);
+    assert.equal(inspected.bootstrap.attempted, false, inspected.action);
+  }
 
   const missingRoot = makeTempRoot();
   const missingCalls = [];
@@ -9814,6 +9885,7 @@ test("model gateway child daemon keeps serving after Tracevane API listener shut
     assert.equal(apiStatus.status, 200);
     assert.equal(apiStatus.body.lifecycle.localDaemon.state, "running");
     assert.equal(apiStatus.body.lifecycle.localDaemon.pid, child.pid);
+    assert.equal(apiStatus.body.lifecycle.localDaemon.supervisor.active, "session");
 
     await api.close();
     apiClosed = true;
@@ -9824,6 +9896,7 @@ test("model gateway child daemon keeps serving after Tracevane API listener shut
     assert.equal(daemonStatus.status, 200);
     assert.equal(daemonStatus.body.lifecycle.controlPlane.state, "not-attached");
     assert.equal(daemonStatus.body.lifecycle.localDaemon.runtimeMode, "local-daemon");
+    assert.equal(daemonStatus.body.lifecycle.localDaemon.supervisor.active, "session");
     assert.equal(daemonStatus.body.lifecycle.localDaemon.survivesControlPlaneCrash, true);
     assert.equal(daemonStatus.body.lifecycle.endpointPolicy.preferredCliEndpoint, `${daemonBaseUrl}/v1`);
 

@@ -3736,6 +3736,7 @@ function normalizeSupervisorKind(value: unknown): ModelGatewaySupervisorKind {
     || value === "launchd-user"
     || value === "windows-service"
     || value === "scheduled-task"
+    || value === "session"
     || value === "none") {
     return value;
   }
@@ -3778,6 +3779,23 @@ function isLoopbackRequest(req?: http.IncomingMessage): boolean {
     || remoteAddress === "::1"
     || remoteAddress === "::ffff:127.0.0.1"
     || remoteAddress === "localhost";
+}
+
+function allowsLoopbackManagementOrigin(req: http.IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  if (typeof origin !== "string" || !origin || origin !== origin.trim()) {
+    return false;
+  }
+  try {
+    const parsed = new URL(origin);
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
+    return parsed.origin === origin
+      && (parsed.protocol === "http:" || parsed.protocol === "https:")
+      && (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1");
+  } catch {
+    return false;
+  }
 }
 
 function hasConfiguredGatewayAuth(config: TracevaneServerConfig): boolean {
@@ -7257,7 +7275,7 @@ export function createModelGatewayService(
 
   function requireManagement(req?: http.IncomingMessage): void {
     if (!req) return;
-    if (isLoopbackRequest(req)) return;
+    if (isLoopbackRequest(req) && allowsLoopbackManagementOrigin(req)) return;
     if (hasConfiguredGatewayAuth(config) && isTracevaneGatewayHttpAuthorized(config, req)) return;
     throw new ModelGatewayServiceError(
       "model_gateway_management_locked",
@@ -8602,20 +8620,23 @@ export function createModelGatewayService(
     action: ModelGatewayDaemonServiceAction,
     applied: boolean,
     lifecycle: ReturnType<typeof getLifecycleStatus>,
+    blocked = false,
   ): ModelGatewayDaemonBootstrapStatus {
     const session = mode === "session";
     return daemonBootstrapStatus({
-      mode: session ? "session" : "supervisor",
-      allowed: true,
-      attempted: applied,
-      started: manager.active === true,
-      temporary: session,
+      mode: blocked ? "blocked" : session ? "session" : "supervisor",
+      allowed: !blocked,
+      attempted: blocked ? false : applied,
+      started: blocked ? false : manager.active === true,
+      temporary: blocked ? false : session,
       endpoint: lifecycle.localDaemon.endpoint,
       error: manager.errorMessage,
       notes: [
-        session
-          ? "The Model Gateway daemon is owned by the Tracevane API session."
-          : "The Model Gateway daemon is owned by the current-user OS supervisor.",
+        blocked
+          ? "The local daemon cannot create another session owner."
+          : session
+            ? "The Model Gateway daemon is owned by the Tracevane API session."
+            : "The Model Gateway daemon is owned by the current-user OS supervisor.",
         `${action} was normalized through the shared service manager.`,
       ],
     });
@@ -8625,11 +8646,14 @@ export function createModelGatewayService(
     mode: TracevaneServiceMode,
     apply: boolean,
     managed: ManageServiceResponse,
+    blocked = false,
   ): ModelGatewayDaemonServiceResponse {
     const mutating = managed.action !== "preview" && managed.action !== "status";
-    const applied = managed.templateWritten
+    const applied = mutating && (
+      managed.templateWritten
       || managed.commands.length > 0
-      || (mode === "session" && apply && mutating && managed.ok);
+      || (mode === "session" && apply && managed.ok)
+    );
     const lifecycle = getLifecycleStatus();
     const manager = managed.manager;
     return {
@@ -8655,6 +8679,7 @@ export function createModelGatewayService(
         managed.action,
         applied,
         lifecycle,
+        blocked,
       ),
     };
   }
@@ -8692,7 +8717,7 @@ export function createModelGatewayService(
         templateWritten: false,
         configCurrent: true,
       };
-      return daemonServiceResponse(mode, false, managed);
+      return daemonServiceResponse(mode, false, managed, true);
     }
     const definition = createModelGatewayServiceDefinition(config, {
       mode,
