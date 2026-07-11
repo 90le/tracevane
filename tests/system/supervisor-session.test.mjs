@@ -6,6 +6,8 @@ import test from "node:test";
 
 import {
   createSessionSupervisor,
+  disposeProcessSessionSupervisor,
+  getProcessSessionSupervisor,
 } from "../../dist/apps/api/modules/supervisor/session-supervisor.js";
 
 function fixtureDefinition(root, options = {}) {
@@ -17,7 +19,8 @@ function fixtureDefinition(root, options = {}) {
       "import { spawn } from 'node:child_process';",
       "const [mode = 'idle', statePath = '', ...payload] = process.argv.slice(2);",
       "if (mode === 'record') {",
-      "  fs.writeFileSync(statePath, JSON.stringify(payload), 'utf8');",
+      "  fs.writeFileSync(statePath + '.tmp', JSON.stringify(payload), 'utf8');",
+      "  fs.renameSync(statePath + '.tmp', statePath);",
       "} else if (mode === 'crash-once') {",
       "  const count = fs.existsSync(statePath) ? Number(fs.readFileSync(statePath, 'utf8')) : 0;",
       "  fs.writeFileSync(statePath, String(count + 1), 'utf8');",
@@ -157,6 +160,30 @@ test("session supervisor owns one tokenized child and stops it", async () => {
   }
 });
 
+test("unknown service status is complete and session-ready", async () => {
+  const supervisor = createSessionSupervisor();
+  try {
+    const status = await supervisor.status("channel-connectors");
+    assert.match(status.checkedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual({ ...status, checkedAt: "<iso>" }, {
+      mode: "session",
+      supervisor: "session",
+      installed: false,
+      enabled: null,
+      active: false,
+      state: "stopped",
+      configCurrent: true,
+      checkedAt: "<iso>",
+      errorCode: null,
+      errorMessage: null,
+      pid: null,
+      restartCount: 0,
+    });
+  } finally {
+    await supervisor.dispose();
+  }
+});
+
 test("owned descendant tree is gone after bounded stop", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-tree-"));
   const childPidPath = path.join(root, "child.pid");
@@ -187,6 +214,47 @@ test("owned descendant tree is gone after bounded stop", async () => {
     await removeRoot(root);
   }
 });
+
+test(
+  "POSIX owned process-group cleanup removes descendants",
+  { skip: process.platform === "win32" ? "POSIX process groups only" : false },
+  async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-posix-tree-"));
+    const childPidPath = path.join(root, "child.pid");
+    const supervisor = createSessionSupervisor({ stopGraceMs: 100 });
+    let parentPid = null;
+    let childPid = null;
+    try {
+      parentPid = (await supervisor.start(
+        fixtureDefinition(root, { args: ["tree", childPidPath] }),
+      )).pid;
+      await waitFor(() => fs.existsSync(childPidPath));
+      childPid = Number(fs.readFileSync(childPidPath, "utf8"));
+      await supervisor.stop("model-gateway");
+      await waitForProcessExit(parentPid);
+      await waitForProcessExit(childPid);
+    } finally {
+      await supervisor.dispose();
+      if (parentPid && processIsAlive(parentPid)) process.kill(parentPid, "SIGKILL");
+      if (childPid && processIsAlive(childPid)) process.kill(childPid, "SIGKILL");
+      await removeRoot(root);
+    }
+  },
+);
+
+test(
+  "Windows tree cleanup is scoped to the recorded PID",
+  { skip: process.platform !== "win32" ? "Windows taskkill only" : false },
+  () => {
+    const source = fs.readFileSync(
+      path.resolve("apps/api/modules/supervisor/session-supervisor.ts"),
+      "utf8",
+    );
+    assert.match(source, /command: "taskkill\.exe"/);
+    assert.match(source, /"\/PID",[\s\S]*String\(pid\),[\s\S]*"\/T"/);
+    assert.doesNotMatch(source, /"\/IM"/);
+  },
+);
 
 test("unexpected exit restarts once and exposes the new owned pid", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-restart-"));
@@ -325,6 +393,103 @@ test("dispose stops every service id and is idempotent", async () => {
   }
 });
 
+test("concurrent dispose callers await the same cleanup", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-dispose-race-"));
+  const supervisor = createSessionSupervisor({ stopGraceMs: 100 });
+  let pid = null;
+  try {
+    pid = (await supervisor.start(fixtureDefinition(root))).pid;
+    const first = supervisor.dispose();
+    const second = supervisor.dispose();
+    assert.equal(second, first);
+    await second;
+    await waitForProcessExit(pid);
+  } finally {
+    if (pid && processIsAlive(pid)) process.kill(pid, "SIGKILL");
+    await removeRoot(root);
+  }
+});
+
+test("dispose rejects when owned cleanup cannot terminate the child", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-dispose-failure-"));
+  const supervisor = createSessionSupervisor({
+    stopGraceMs: 20,
+    forceKillWaitMs: 50,
+    terminateOwnedTree: async () => {},
+  });
+  let pid = null;
+  try {
+    pid = (await supervisor.start(fixtureDefinition(root))).pid;
+    await assert.rejects(
+      supervisor.dispose(),
+      /did not exit/,
+    );
+    assert.equal(processIsAlive(pid), true);
+  } finally {
+    if (pid && processIsAlive(pid)) {
+      process.kill(pid, "SIGKILL");
+      await waitForProcessExit(pid);
+    }
+    await removeRoot(root);
+  }
+});
+
+test("a graceful owned-tree stop does not invoke the force branch", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-grace-"));
+  const calls = [];
+  const supervisor = createSessionSupervisor({
+    stopGraceMs: 250,
+    terminateOwnedTree: async (pid, force) => {
+      calls.push(force);
+      process.kill(pid, force ? "SIGKILL" : "SIGTERM");
+    },
+  });
+  try {
+    await supervisor.start(fixtureDefinition(root));
+    assert.equal((await supervisor.stop("model-gateway")).state, "stopped");
+    assert.deepEqual(calls, [false]);
+  } finally {
+    await supervisor.dispose();
+    await removeRoot(root);
+  }
+});
+
+test("spawn failure never reports running without an owned pid", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-spawn-error-"));
+  const supervisor = createSessionSupervisor({ maxRestarts: 0 });
+  try {
+    const definition = fixtureDefinition(root);
+    definition.workingDirectory = path.join(root, "missing-directory");
+    const status = await supervisor.start(definition);
+    assert.notEqual(status.state, "running");
+    assert.notEqual(status.active, true);
+    assert.equal(status.pid, null);
+  } finally {
+    await supervisor.dispose();
+    await removeRoot(root);
+  }
+});
+
+test("process singleton cannot be replaced while disposal is in flight", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-singleton-"));
+  let pid = null;
+  try {
+    const singleton = getProcessSessionSupervisor();
+    pid = (await singleton.start(fixtureDefinition(root))).pid;
+    const disposing = disposeProcessSessionSupervisor();
+    assert.throws(
+      () => getProcessSessionSupervisor(),
+      /being disposed/,
+    );
+    await Promise.all([disposing, disposeProcessSessionSupervisor()]);
+    await waitForProcessExit(pid);
+  } finally {
+    await disposeProcessSessionSupervisor();
+    if (pid && processIsAlive(pid)) process.kill(pid, "SIGKILL");
+    await removeRoot(root);
+  }
+});
+
 test("standalone API disposes the process session supervisor before exit", () => {
   const source = fs.readFileSync(
     path.resolve("scripts/start-standalone-api.mjs"),
@@ -335,4 +500,12 @@ test("standalone API disposes the process session supervisor before exit", () =>
   const exitIndex = source.indexOf("process.exit(0)", disposeIndex);
   assert.ok(disposeIndex >= 0);
   assert.ok(exitIndex > disposeIndex);
+  for (const reason of [
+    "SIGINT",
+    "SIGTERM",
+    "uncaughtException",
+    "unhandledRejection",
+  ]) {
+    assert.match(source, new RegExp(`shutdown\\('${reason}'\\)`));
+  }
 });
