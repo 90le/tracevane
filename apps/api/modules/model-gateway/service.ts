@@ -9,7 +9,6 @@ import type {
   TracevaneServiceMode,
   TracevaneSupervisorErrorCode,
 } from "../../../../types/supervisor.js";
-import { hasConfiguredSecretInput } from "../../core/secret-ref.js";
 import {
   MODEL_GATEWAY_ACCOUNT_CREDENTIAL_SOURCES,
   MODEL_GATEWAY_ACCOUNT_PROVIDER_KINDS,
@@ -132,7 +131,7 @@ import {
 } from "../../../../types/model-gateway.js";
 import { sendJson, setCorsHeaders } from "../../core/http.js";
 import { readJsonFile } from "../../core/state.js";
-import { isTracevaneGatewayHttpAuthorized } from "../../gateway-http-auth.js";
+import { isTracevaneTrustedManagementRequest } from "../../gateway-http-auth.js";
 import {
   createServiceManager,
   type ManageServiceResponse,
@@ -3773,39 +3772,6 @@ function isPidAlive(pid: number | null): boolean {
   }
 }
 
-function isLoopbackRequest(req?: http.IncomingMessage): boolean {
-  const remoteAddress = req?.socket?.remoteAddress || "";
-  return remoteAddress === "127.0.0.1"
-    || remoteAddress === "::1"
-    || remoteAddress === "::ffff:127.0.0.1"
-    || remoteAddress === "localhost";
-}
-
-function allowsLoopbackManagementOrigin(req: http.IncomingMessage): boolean {
-  const origin = req.headers.origin;
-  if (origin === undefined) return true;
-  if (typeof origin !== "string" || !origin || origin !== origin.trim()) {
-    return false;
-  }
-  try {
-    const parsed = new URL(origin);
-    const hostname = parsed.hostname.toLowerCase().replace(/^\[(.*)\]$/, "$1");
-    return parsed.origin === origin
-      && (parsed.protocol === "http:" || parsed.protocol === "https:")
-      && (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1");
-  } catch {
-    return false;
-  }
-}
-
-function hasConfiguredGatewayAuth(config: TracevaneServerConfig): boolean {
-  const openclaw = readJsonFile<Record<string, any>>(config.openclawConfigFile, {});
-  const auth = isRecord(openclaw.gateway) && isRecord(openclaw.gateway.auth) ? openclaw.gateway.auth : {};
-  const mode = normalizeString(auth.mode);
-  const secrets = [auth.token, auth.password].filter(hasConfiguredSecretInput);
-  return Boolean(mode && mode !== "none" && secrets.length);
-}
-
 function readRequestBody(req: http.IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -7275,8 +7241,7 @@ export function createModelGatewayService(
 
   function requireManagement(req?: http.IncomingMessage): void {
     if (!req) return;
-    if (isLoopbackRequest(req) && allowsLoopbackManagementOrigin(req)) return;
-    if (hasConfiguredGatewayAuth(config) && isTracevaneGatewayHttpAuthorized(config, req)) return;
+    if (isTracevaneTrustedManagementRequest(config, req)) return;
     throw new ModelGatewayServiceError(
       "model_gateway_management_locked",
       "Model Gateway provider and secret changes require a trusted local request or configured Gateway authentication.",

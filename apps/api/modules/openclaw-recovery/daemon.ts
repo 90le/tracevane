@@ -46,6 +46,13 @@ export interface OpenClawRecoveryDaemonOptions {
   serviceName?: string;
   gatewayProbe?: typeof probeOpenClawGateway;
   captureInstallManifest?: typeof captureOpenClawRecoveryInstallManifest;
+  recoveryRepair?: typeof runOpenClawRecoveryRepair;
+  beforeControlListen?: () => Promise<void>;
+  listenControlServer?: (
+    server: http.Server,
+    port: number,
+    host: string,
+  ) => void;
 }
 
 function addMs(date: Date, ms: number): string {
@@ -101,6 +108,18 @@ function sendJson(res: http.ServerResponse, statusCode: number, payload: unknown
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.end(JSON.stringify(payload, null, 2));
+}
+
+function readControlRequestUrl(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): URL | null {
+  try {
+    return new URL(req.url || "/", "http://127.0.0.1");
+  } catch {
+    sendJson(res, 400, { error: "invalid_request_url" });
+    return null;
+  }
 }
 
 function writeRuntimeMetadata(
@@ -167,8 +186,15 @@ export function createOpenClawRecoveryDaemon(
   const gatewayProbe = options.gatewayProbe ?? probeOpenClawGateway;
   const captureInstallManifest = options.captureInstallManifest
     ?? captureOpenClawRecoveryInstallManifest;
+  const recoveryRepair = options.recoveryRepair ?? runOpenClawRecoveryRepair;
+  const beforeControlListen = options.beforeControlListen;
+  const listenControlServer = options.listenControlServer
+    ?? ((server: http.Server, port: number, host: string) => {
+      server.listen(port, host);
+    });
   let interval: NodeJS.Timeout | null = null;
   let startPromise: Promise<void> | null = null;
+  let activeStartup: { cancelled: boolean } | null = null;
   let controlServer: http.Server | null = null;
   let startedAt: string | null = null;
   let repairInFlight: Promise<unknown> | null = null;
@@ -182,7 +208,7 @@ export function createOpenClawRecoveryDaemon(
     ) {
       return;
     }
-    repairInFlight = runOpenClawRecoveryRepair(config, {
+    repairInFlight = recoveryRepair(config, {
       trigger: "auto",
       policy,
     }).finally(() => {
@@ -191,7 +217,9 @@ export function createOpenClawRecoveryDaemon(
     await repairInFlight;
   }
 
-  async function checkOnce(): Promise<void> {
+  async function checkOnce(
+    cancelled: () => boolean = () => false,
+  ): Promise<void> {
     const state = readRecoveryState(config);
     const policy = state.policy;
     const checkedAt = new Date();
@@ -199,6 +227,7 @@ export function createOpenClawRecoveryDaemon(
       config.gatewayPort,
       policy.probeTimeoutMs,
     );
+    if (cancelled()) return;
     const failureStartedAt = gatewayReachable
       ? null
       : state.probe.failureStartedAt || checkedAt.toISOString();
@@ -247,6 +276,39 @@ export function createOpenClawRecoveryDaemon(
     await maybeRepair(nextState.policy);
   }
 
+  async function stopControlServer(): Promise<void> {
+    const server = controlServer;
+    if (controlServer === server) controlServer = null;
+    if (!server) return;
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => {
+        server.off("listening", onListening);
+        server.off("error", onError);
+        server.off("close", onClose);
+      };
+      const settle = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) reject(error);
+        else resolve();
+      };
+      const close = () => {
+        server.off("listening", onListening);
+        server.close((error) => settle(error || undefined));
+        server.closeAllConnections?.();
+      };
+      const onListening = () => close();
+      const onError = () => settle();
+      const onClose = () => settle();
+      server.once("error", onError);
+      server.once("close", onClose);
+      if (server.listening) close();
+      else server.once("listening", onListening);
+    });
+  }
+
   async function startControlServer(): Promise<number | null> {
     if (!controlPort) return null;
     if (controlServer) {
@@ -255,7 +317,8 @@ export function createOpenClawRecoveryDaemon(
     }
     const token = ensureRecoveryToken(config);
     const server = http.createServer(async (req, res) => {
-      const url = new URL(req.url || "/", "http://127.0.0.1");
+      const url = readControlRequestUrl(req, res);
+      if (!url) return;
       if (req.method === "GET" && url.pathname === "/health") {
         sendJson(res, 200, { ok: true, status: "ready" });
         return;
@@ -284,7 +347,7 @@ export function createOpenClawRecoveryDaemon(
       }
       if (req.method === "POST" && url.pathname === "/run") {
         const state = readRecoveryState(config);
-        const repair = await runOpenClawRecoveryRepair(config, {
+        const repair = await recoveryRepair(config, {
           trigger: "manual",
           policy: state.policy,
         });
@@ -346,7 +409,11 @@ export function createOpenClawRecoveryDaemon(
         };
         server.once("error", onError);
         server.once("listening", onListening);
-        server.listen(controlPort, OPENCLAW_RECOVERY_DEFAULT_HOST);
+        listenControlServer(
+          server,
+          controlPort,
+          OPENCLAW_RECOVERY_DEFAULT_HOST,
+        );
       });
     } catch (error) {
       if (controlServer === server) controlServer = null;
@@ -367,10 +434,18 @@ export function createOpenClawRecoveryDaemon(
     async start(): Promise<void> {
       if (interval) return;
       if (startPromise) return startPromise;
+      const startup = { cancelled: false };
+      activeStartup = startup;
       const starting = (async () => {
         startedAt = new Date().toISOString();
         try {
+          await beforeControlListen?.();
+          if (startup.cancelled) return;
           const actualPort = await startControlServer();
+          if (startup.cancelled) {
+            await stopControlServer();
+            return;
+          }
           const updatedAt = new Date().toISOString();
           writeRuntimeMetadata(paths.runtimePath, {
             version: 1,
@@ -399,13 +474,16 @@ export function createOpenClawRecoveryDaemon(
               details: { pid: process.pid },
             }),
           );
-          await checkOnce();
+          await checkOnce(() => startup.cancelled);
+          if (startup.cancelled) return;
           const policy = readRecoveryState(config).policy;
           interval = setInterval(() => {
             checkOnce().catch((error) => logger.error("openclaw-recovery-daemon: check failed", error));
           }, policy.checkIntervalMs);
         } catch (error) {
-          await this.stop();
+          startup.cancelled = true;
+          await stopControlServer();
+          removeOwnedRuntimeMetadata(paths.runtimePath, process.pid);
           throw error;
         }
       })();
@@ -414,23 +492,16 @@ export function createOpenClawRecoveryDaemon(
         await starting;
       } finally {
         if (startPromise === starting) startPromise = null;
+        if (activeStartup === startup) activeStartup = null;
       }
     },
 
     async stop(): Promise<void> {
+      if (activeStartup) activeStartup.cancelled = true;
       if (interval) clearInterval(interval);
       interval = null;
-      const server = controlServer;
-      controlServer = null;
       try {
-        if (server?.listening) {
-          await new Promise<void>((resolve, reject) => {
-            server.close((error) => {
-              if (error) reject(error);
-              else resolve();
-            });
-          });
-        }
+        await stopControlServer();
       } finally {
         removeOwnedRuntimeMetadata(paths.runtimePath, process.pid);
       }

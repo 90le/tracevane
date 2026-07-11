@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -57,6 +58,11 @@ import {
   OPENCLAW_RECOVERY_DAEMON_SERVICE_NAME,
 } from "../../dist/types/openclaw-recovery.js";
 import * as recoveryDaemonEntry from "../../dist/apps/api/openclaw-recovery-daemon.js";
+import {
+  createTracevaneContext,
+  createTracevaneRequestHandler,
+} from "../../dist/apps/api/index.js";
+import { isTracevaneTrustedManagementRequest } from "../../dist/apps/api/gateway-http-auth.js";
 
 const rootDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -169,6 +175,19 @@ function closeServer(server) {
   });
 }
 
+function sendRawHttp(port, payload) {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(port, "127.0.0.1", () => socket.end(payload));
+    const chunks = [];
+    socket.setTimeout(2_000, () => {
+      socket.destroy(new Error("raw HTTP response timed out"));
+    });
+    socket.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    socket.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    socket.on("error", reject);
+  });
+}
+
 async function reserveLoopbackPort() {
   const { server, port } = await listenProbeServer((_request, response) => {
     response.writeHead(204);
@@ -248,6 +267,152 @@ function createFakeServiceManager(respond) {
     },
   };
 }
+
+async function withRecoveryHttpServer(config, service, task) {
+  const ctx = createTracevaneContext({
+    config,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  ctx.services.openclawRecovery = service;
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const server = http.createServer((req, res) => {
+    Promise.resolve(handler(req, res)).then((handled) => {
+      if (!handled && !res.writableEnded) {
+        res.statusCode = 404;
+        res.end("not found");
+      }
+    }).catch((error) => {
+      if (!res.writableEnded) {
+        res.statusCode = 500;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: String(error?.message || error) }));
+      }
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    await task(`http://127.0.0.1:${address.port}`);
+  } finally {
+    server.closeAllConnections?.();
+    await closeServer(server);
+  }
+}
+
+test("recovery daemon-service route gates browser origins before manager effects", async () => {
+  const config = makeConfig();
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  await withRecoveryHttpServer(config, service, async (baseUrl) => {
+    const endpoint = `${baseUrl}/api/openclaw-recovery/daemon-service`;
+    for (const origin of [
+      "https://evil.example",
+      "null",
+      "not an origin",
+      "http://LOCALHOST:80",
+    ]) {
+      const blocked = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify({ action: "start", apply: true }),
+      });
+      assert.equal(blocked.status, 403, origin);
+      assert.equal((await blocked.json()).error.code, "openclaw_recovery_management_locked");
+      assert.equal(fake.calls.length, 0, origin);
+    }
+
+    for (const headers of [
+      { origin: "http://127.0.0.1:5173" },
+      { origin: "https://localhost" },
+      { origin: "http://[::1]:5173" },
+      {},
+    ]) {
+      const allowed = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ action: "status" }),
+      });
+      assert.equal(allowed.status, 200);
+      assert.equal((await allowed.json()).ok, true);
+    }
+
+    const openclaw = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+    openclaw.gateway = { auth: { mode: "token", token: "gateway-review-secret" } };
+    fs.writeFileSync(config.openclawConfigFile, `${JSON.stringify(openclaw)}\n`, "utf8");
+    const authenticated = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer gateway-review-secret",
+        "content-type": "application/json",
+        origin: "https://evil.example",
+      },
+      body: JSON.stringify({ action: "status" }),
+    });
+    assert.equal(authenticated.status, 200);
+    const authenticatedBody = await authenticated.json();
+    assert.equal(authenticatedBody.ok, true);
+    assert.doesNotMatch(JSON.stringify(authenticatedBody), /gateway-review-secret/);
+    assert.equal(fake.calls.length, 5);
+  });
+});
+
+test("trusted management helper denies remote native requests without configured auth", () => {
+  const config = makeConfig();
+  const remoteRequest = {
+    method: "POST",
+    url: "/api/openclaw-recovery/daemon-service",
+    headers: {},
+    socket: { remoteAddress: "203.0.113.9" },
+  };
+  assert.equal(
+    isTracevaneTrustedManagementRequest(config, remoteRequest),
+    false,
+  );
+
+  const openclaw = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  openclaw.gateway = { auth: { mode: "token", token: "remote-auth-secret" } };
+  fs.writeFileSync(config.openclawConfigFile, `${JSON.stringify(openclaw)}\n`, "utf8");
+  assert.equal(
+    isTracevaneTrustedManagementRequest(config, {
+      ...remoteRequest,
+      headers: { authorization: "Bearer remote-auth-secret" },
+    }),
+    true,
+  );
+});
+
+test("recovery daemon-service POST null defaults to read-only session status", async () => {
+  const config = makeConfig();
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  await withRecoveryHttpServer(config, service, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/openclaw-recovery/daemon-service`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "null",
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).ok, true);
+    assert.deepEqual(fake.calls.map(({ request }) => request), [
+      { action: "status", mode: "session", apply: false },
+    ]);
+  });
+});
 
 test("recovery exports one trusted definition with dedicated runtime and control port", () => {
   assert.equal(
@@ -736,6 +901,227 @@ test("recovery health listener binds before the initial gateway check settles", 
   }
 });
 
+test("recovery stop during pre-listen startup cannot create later runtime", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseListen;
+  const listenGate = new Promise((resolve) => {
+    releaseListen = resolve;
+  });
+  let listenGateCalls = 0;
+  let intervalCalls = 0;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = () => {
+    intervalCalls += 1;
+    return { unref() {} };
+  };
+  globalThis.clearInterval = () => {};
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    beforeControlListen: async () => {
+      listenGateCalls += 1;
+      await listenGate;
+    },
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const starting = daemon.start();
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(listenGateCalls, 1);
+    await daemon.stop();
+    releaseListen();
+    await starting;
+    assert.equal(intervalCalls, 0);
+    assert.equal(fs.existsSync(runtimePath), false);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    releaseListen();
+    await Promise.allSettled([starting]);
+    await daemon.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("recovery stop awaits a pending listen and its close before returning", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseListen;
+  let listenCalls = 0;
+  const listenQueued = new Promise((resolve) => {
+    releaseListen = resolve;
+  });
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    listenControlServer(server, requestedPort, host) {
+      listenCalls += 1;
+      void listenQueued.then(() => server.listen(requestedPort, host));
+    },
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const starting = daemon.start();
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(listenCalls, 1);
+    let stopReturned = false;
+    const stopping = daemon.stop().then(() => {
+      stopReturned = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(stopReturned, false);
+    releaseListen();
+    await stopping;
+    await starting;
+    assert.equal(fs.existsSync(runtimePath), false);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    releaseListen();
+    await Promise.allSettled([starting]);
+    await daemon.stop();
+  }
+});
+
+test("recovery stop during initial probe cannot resurrect interval or runtime", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseProbe;
+  const probeGate = new Promise((resolve) => {
+    releaseProbe = resolve;
+  });
+  let intervalCalls = 0;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = () => {
+    intervalCalls += 1;
+    return { unref() {} };
+  };
+  globalThis.clearInterval = () => {};
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => probeGate,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const starting = daemon.start();
+
+  try {
+    const health = await fetchWhenListening(
+      `http://127.0.0.1:${port}/health`,
+      { headers: { connection: "close" } },
+    );
+    assert.deepEqual(await health.json(), { ok: true, status: "ready" });
+    await waitForFile(runtimePath);
+    await daemon.stop();
+    assert.equal(fs.existsSync(runtimePath), false);
+    releaseProbe(true);
+    await starting;
+    assert.equal(intervalCalls, 0);
+    assert.equal(fs.existsSync(runtimePath), false);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    releaseProbe(true);
+    await Promise.allSettled([starting]);
+    await daemon.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("recovery stop closes control without waiting for an active repair", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseRepair;
+  let markRepairStarted;
+  const repairGate = new Promise((resolve) => {
+    releaseRepair = resolve;
+  });
+  const repairStarted = new Promise((resolve) => {
+    markRepairStarted = resolve;
+  });
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    recoveryRepair: async () => {
+      markRepairStarted();
+      await repairGate;
+      const finishedAt = new Date().toISOString();
+      return {
+        ok: true,
+        trigger: "manual",
+        startedAt: finishedAt,
+        finishedAt,
+        durationMs: 0,
+        backupPath: null,
+        changedKeys: [],
+        commands: [],
+        error: "",
+      };
+    },
+    logger: { info() {}, warn() {}, error() {} },
+  });
+
+  await daemon.start();
+  const token = fs.readFileSync(
+    path.join(config.openclawRoot, "tracevane", "recovery", "token"),
+    "utf8",
+  ).trim();
+  const repairRequest = fetch(`http://127.0.0.1:${port}/run`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, connection: "close" },
+  }).then((response) => response.arrayBuffer()).catch(() => null);
+
+  try {
+    await repairStarted;
+    let timeout;
+    const stoppedPromptly = await Promise.race([
+      daemon.stop().then(() => true),
+      new Promise((resolve) => {
+        timeout = setTimeout(() => resolve(false), 500);
+      }),
+    ]);
+    clearTimeout(timeout);
+    assert.equal(stoppedPromptly, true);
+    assert.equal(fs.existsSync(runtimePath), false);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    releaseRepair();
+    await repairRequest;
+    await daemon.stop();
+  }
+});
+
 test("concurrent recovery daemon starts share one bind and initial check", async () => {
   const config = makeConfig();
   const port = await reserveLoopbackPort();
@@ -1018,6 +1404,52 @@ test("recovery daemon entrypoint cleans up on termination and abnormal failures"
       < source.indexOf("await daemon.start()"),
     "termination cleanup must be armed before startup writes runtime metadata",
   );
+});
+
+test("recovery daemon shutdown does not await an in-flight repair", () => {
+  const source = fs.readFileSync(
+    path.join(rootDir, "apps/api/modules/openclaw-recovery/daemon.ts"),
+    "utf8",
+  );
+  assert.match(source, /const recoveryRepair = options\.recoveryRepair/);
+  const stopStart = source.indexOf("async stop(): Promise<void>");
+  const stopEnd = source.indexOf("    checkOnce,", stopStart);
+  const stopBlock = source.slice(stopStart, stopEnd);
+  assert.doesNotMatch(stopBlock, /await repairInFlight/);
+  assert.match(stopBlock, /stopControlServer/);
+});
+
+test("recovery control rejects malformed request URLs before authentication", () => {
+  const source = fs.readFileSync(
+    path.join(rootDir, "apps/api/modules/openclaw-recovery/daemon.ts"),
+    "utf8",
+  );
+  assert.match(source, /function readControlRequestUrl/);
+  assert.match(source, /invalid_request_url/);
+});
+
+test("recovery control returns 400 for an unauthenticated malformed absolute URL", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  try {
+    await daemon.start();
+    const raw = await sendRawHttp(
+      port,
+      "GET http://[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+    );
+    assert.match(raw, /^HTTP\/1\.1 400 /);
+    assert.deepEqual(JSON.parse(raw.split("\r\n\r\n")[1]), {
+      error: "invalid_request_url",
+    });
+  } finally {
+    await daemon.stop();
+  }
 });
 
 test("recovery repair creates backups before pruning dynamic validation paths", () => {

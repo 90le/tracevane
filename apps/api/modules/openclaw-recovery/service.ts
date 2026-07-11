@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import type http from "node:http";
 import path from "node:path";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import {
@@ -48,6 +49,24 @@ import {
   type ServiceManager,
 } from "../supervisor/index.js";
 import type { SupervisorCommandResult } from "../supervisor/command-runner.js";
+import { isTracevaneTrustedManagementRequest } from "../../gateway-http-auth.js";
+
+export class OpenClawRecoveryServiceError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = "OpenClawRecoveryServiceError";
+  }
+}
+
+export function isOpenClawRecoveryServiceError(
+  error: unknown,
+): error is OpenClawRecoveryServiceError {
+  return error instanceof OpenClawRecoveryServiceError;
+}
 
 export interface OpenClawRecoveryService {
   getStatus(): Promise<OpenClawRecoveryState>;
@@ -68,7 +87,10 @@ export interface OpenClawRecoveryService {
   runRecovery(payload?: OpenClawRecoveryRunRequest): Promise<OpenClawRecoveryRunResponse>;
   restoreBackup(payload: OpenClawRecoveryRestoreBackupRequest): Promise<OpenClawRecoveryRestoreBackupResponse>;
   getDaemonService(): Promise<OpenClawRecoveryState["service"]>;
-  applyDaemonServiceAction(payload: OpenClawRecoveryDaemonServiceRequest): Promise<OpenClawRecoveryDaemonServiceResponse>;
+  applyDaemonServiceAction(
+    payload?: OpenClawRecoveryDaemonServiceRequest | null,
+    req?: http.IncomingMessage,
+  ): Promise<OpenClawRecoveryDaemonServiceResponse>;
 }
 
 export interface OpenClawRecoveryServiceOptions {
@@ -137,6 +159,14 @@ function normalizeDaemonServiceApply(
   payload: OpenClawRecoveryDaemonServiceRequest,
 ): boolean {
   return payload.apply === true || payload.runCommands === true;
+}
+
+function normalizeDaemonServicePayload(
+  value: unknown,
+): OpenClawRecoveryDaemonServiceRequest {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as OpenClawRecoveryDaemonServiceRequest
+    : {};
 }
 
 function legacyActiveState(manager: TracevaneServiceManagerStatus): string {
@@ -302,8 +332,9 @@ export function createOpenClawRecoveryService(
   }
 
   async function executeDaemonService(
-    payload: OpenClawRecoveryDaemonServiceRequest = {},
+    value: unknown = {},
   ): Promise<OpenClawRecoveryDaemonServiceResponse> {
+    const payload = normalizeDaemonServicePayload(value);
     const action = normalizeDaemonServiceAction(payload.action);
     const mode = normalizeDaemonServiceMode(payload.mode);
     const apply = normalizeDaemonServiceApply(payload);
@@ -485,8 +516,16 @@ export function createOpenClawRecoveryService(
     },
 
     async applyDaemonServiceAction(
-      payload: OpenClawRecoveryDaemonServiceRequest,
+      payload: OpenClawRecoveryDaemonServiceRequest | null = {},
+      req?: http.IncomingMessage,
     ): Promise<OpenClawRecoveryDaemonServiceResponse> {
+      if (req && !isTracevaneTrustedManagementRequest(config, req)) {
+        throw new OpenClawRecoveryServiceError(
+          "openclaw_recovery_management_locked",
+          "Recovery service management requires a trusted local request or configured Gateway authentication.",
+          403,
+        );
+      }
       const result = await executeDaemonService(payload);
       const state = readRecoveryState(config);
       writeRecoveryState(config, {
