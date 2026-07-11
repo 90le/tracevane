@@ -1615,3 +1615,323 @@ test("successful health probe establishes running when native status is indeterm
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("persistent start restart and stop refuse mutators for untrusted status", async () => {
+  const failures = [
+    { errorCode: "permission-denied", exitCode: -2147024891 },
+    { errorCode: "command-timeout", exitCode: null },
+    { errorCode: "command-not-found", exitCode: null },
+    { errorCode: "unknown", exitCode: 1 },
+  ];
+
+  for (const action of ["start", "restart", "stop"]) {
+    for (const failure of failures) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-untrusted-"));
+      const definition = fixtureDefinition(root);
+      const plan = createSupervisorPlan(definition, "win32", root, {
+        windowsUserId: "TEST\\Fixture",
+      });
+      fs.mkdirSync(path.dirname(plan.configPath), { recursive: true });
+      fs.writeFileSync(plan.configPath, plan.template, "utf8");
+      const commandCalls = [];
+      const { calls, session } = createFakeSession();
+      const manager = createServiceManager({
+        platform: "win32",
+        homeDir: root,
+        windowsUserId: "TEST\\Fixture",
+        session,
+        runner: async (command) => {
+          commandCalls.push(command);
+          if (command.args.includes("/Query")) {
+            return commandResult(command, {
+              ok: false,
+              exitCode: failure.exitCode,
+              stderr: "本地化失败输出",
+              errorCode: failure.errorCode,
+              errorMessage: "本地化失败输出",
+            });
+          }
+          return commandResult(command);
+        },
+        probe: async () => assert.fail("untrusted status must not probe"),
+      });
+
+      try {
+        const response = await manager.manage(definition, {
+          action,
+          mode: "persistent",
+          apply: true,
+        });
+        assert.equal(response.ok, false, `${action}:${failure.errorCode}`);
+        assert.equal(response.manager.state, "unknown", `${action}:${failure.errorCode}`);
+        assert.equal(
+          response.manager.errorCode,
+          failure.errorCode,
+          `${action}:${failure.errorCode}`,
+        );
+        assert.deepEqual(
+          commandCalls.map(({ args }) => args[0]),
+          ["/Query"],
+          `${action}:${failure.errorCode}`,
+        );
+        assert.deepEqual(calls, [], `${action}:${failure.errorCode}`);
+      } finally {
+        await manager.dispose();
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }
+  }
+});
+
+test("failed readiness leaves active unknown after every persistent start path", async () => {
+  for (const action of ["install", "repair", "start", "restart"]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-readiness-null-"));
+    const definition = fixtureDefinition(root);
+    const plan = createSupervisorPlan(definition, "win32", root, {
+      windowsUserId: "TEST\\Fixture",
+    });
+    if (action !== "install") {
+      fs.mkdirSync(path.dirname(plan.configPath), { recursive: true });
+      fs.writeFileSync(
+        plan.configPath,
+        action === "repair" ? "stale template fixture" : plan.template,
+        "utf8",
+      );
+    }
+    const { session } = createFakeSession();
+    const manager = createServiceManager({
+      platform: "win32",
+      homeDir: root,
+      windowsUserId: "TEST\\Fixture",
+      session,
+      runner: async (command) => commandResult(command),
+      probe: async () => false,
+    });
+
+    try {
+      const response = await manager.manage(definition, {
+        action,
+        mode: "persistent",
+        apply: true,
+      });
+      assert.equal(response.ok, false, action);
+      assert.equal(response.manager.state, "degraded", action);
+      assert.equal(response.manager.active, null, action);
+      assert.equal(response.manager.errorCode, "runtime-not-ready", action);
+      assert.equal(
+        response.manager.errorMessage,
+        "Persistent service did not become ready.",
+        action,
+      );
+    } finally {
+      await manager.dispose();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("persistent running fast no-op verifies and stops any session owner", async () => {
+  for (const action of ["start", "ensure-running"]) {
+    for (const stopSucceeds of [true, false]) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-noop-owner-"));
+      const definition = fixtureDefinition(root);
+      const plan = createSupervisorPlan(definition, "linux", root);
+      fs.mkdirSync(path.dirname(plan.configPath), { recursive: true });
+      fs.writeFileSync(plan.configPath, plan.template, "utf8");
+      const order = [];
+      const commandCalls = [];
+      const { calls, session } = createFakeSession({
+        log: order,
+        initial: sessionStatus({ active: true, state: "running", pid: 7341 }),
+        onStop: () => stopSucceeds
+          ? sessionStatus()
+          : sessionStatus({
+            active: true,
+            state: "failed",
+            pid: 7341,
+            errorCode: "runtime-not-ready",
+            errorMessage: "本地化 session stop failure",
+          }),
+      });
+      const manager = createServiceManager({
+        platform: "linux",
+        homeDir: root,
+        session,
+        runner: async (command) => {
+          const operation = command.args[1];
+          order.push(`command:${operation}`);
+          commandCalls.push(command);
+          if (operation === "is-active") {
+            return commandResult(command, { stdout: "active\n" });
+          }
+          if (operation === "is-enabled") {
+            return commandResult(command, { stdout: "enabled\n" });
+          }
+          return commandResult(command);
+        },
+        probe: async () => assert.fail("systemd active status must not probe"),
+      });
+
+      try {
+        const response = await manager.manage(definition, {
+          action,
+          mode: "persistent",
+          apply: true,
+        });
+        assert.equal(
+          response.ok,
+          stopSucceeds,
+          `${action}:${stopSucceeds ? "stop-ok" : "stop-failed"}`,
+        );
+        assert.deepEqual(
+          calls,
+          [["status", "model-gateway"], ["stop", "model-gateway"]],
+          `${action}:${stopSucceeds ? "stop-ok" : "stop-failed"}`,
+        );
+        assert.deepEqual(commandCalls.map(({ args }) => args[1]), [
+          "is-active",
+          "is-enabled",
+        ]);
+        assert.deepEqual(order, [
+          "command:is-active",
+          "command:is-enabled",
+          "session:status",
+          "session:stop",
+        ]);
+        if (stopSucceeds) {
+          assert.equal(response.manager.mode, "persistent");
+          assert.equal(response.manager.state, "running");
+        } else {
+          assert.equal(response.manager.mode, "session");
+          assert.equal(response.manager.active, true);
+          assert.equal(response.manager.errorCode, "runtime-not-ready");
+          assert.equal(response.manager.errorMessage, "Session owner did not stop.");
+        }
+      } finally {
+        await manager.dispose();
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }
+  }
+});
+
+test("template read failures return stable normalized manager responses", async () => {
+  for (const action of ["status", "preview"]) {
+    for (const failure of [
+      {
+        code: "EACCES",
+        errorCode: "permission-denied",
+        state: "unknown",
+        errorMessage: "Supervisor command permission denied.",
+      },
+      {
+        code: "EIO",
+        errorCode: "template-invalid",
+        state: "failed",
+        errorMessage: "Persistent service template is invalid.",
+      },
+    ]) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-read-fail-"));
+      const fileSystem = recordingFileSystem([]);
+      fileSystem.readFile = async () => {
+        const error = new Error("本地化 template read failure");
+        error.code = failure.code;
+        throw error;
+      };
+      const { calls, session } = createFakeSession();
+      const manager = createServiceManager({
+        platform: "win32",
+        homeDir: root,
+        windowsUserId: "TEST\\Fixture",
+        session,
+        fs: fileSystem,
+        runner: async () => assert.fail("failed template read must not run commands"),
+        probe: async () => assert.fail("failed template read must not probe"),
+      });
+
+      try {
+        const response = await manager.manage(fixtureDefinition(root), {
+          action,
+          mode: "persistent",
+          apply: true,
+        });
+        assert.equal(response.ok, false, `${action}:${failure.code}`);
+        assert.equal(response.manager.state, failure.state, `${action}:${failure.code}`);
+        assert.equal(
+          response.manager.errorCode,
+          failure.errorCode,
+          `${action}:${failure.code}`,
+        );
+        assert.equal(
+          response.manager.errorMessage,
+          failure.errorMessage,
+          `${action}:${failure.code}`,
+        );
+        assert.equal(response.manager.active, null, `${action}:${failure.code}`);
+        assert.equal(response.manager.enabled, null, `${action}:${failure.code}`);
+        assert.deepEqual(response.commands, [], `${action}:${failure.code}`);
+        assert.deepEqual(calls, [], `${action}:${failure.code}`);
+      } finally {
+        await manager.dispose();
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }
+  }
+});
+
+test("runner rejections become stable fixed-command failure evidence", async () => {
+  for (const scenario of [
+    { action: "status", template: "current", expectedState: "unknown", expectedCommand: "/Query" },
+    { action: "install", template: "missing", expectedState: "failed", expectedCommand: "/Create" },
+  ]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-runner-reject-"));
+    const definition = fixtureDefinition(root);
+    const plan = createSupervisorPlan(definition, "win32", root, {
+      windowsUserId: "TEST\\Fixture",
+    });
+    if (scenario.template === "current") {
+      fs.mkdirSync(path.dirname(plan.configPath), { recursive: true });
+      fs.writeFileSync(plan.configPath, plan.template, "utf8");
+    }
+    const { session } = createFakeSession();
+    const manager = createServiceManager({
+      platform: "win32",
+      homeDir: root,
+      windowsUserId: "TEST\\Fixture",
+      session,
+      runner: async () => {
+        throw new Error("本地化 injected runner rejection");
+      },
+      probe: async () => assert.fail("runner rejection must stop before probe"),
+    });
+
+    try {
+      const response = await manager.manage(definition, {
+        action: scenario.action,
+        mode: "persistent",
+        apply: true,
+      });
+      assert.equal(response.ok, false, scenario.action);
+      assert.equal(response.manager.state, scenario.expectedState, scenario.action);
+      assert.equal(response.manager.errorCode, "unknown", scenario.action);
+      assert.equal(
+        response.manager.errorMessage,
+        "Persistent supervisor operation failed.",
+        scenario.action,
+      );
+      assert.equal(response.commands.length, 1, scenario.action);
+      assert.equal(response.commands[0].args[0], scenario.expectedCommand, scenario.action);
+      assert.equal(response.commands[0].ok, false, scenario.action);
+      assert.equal(response.commands[0].errorCode, "unknown", scenario.action);
+      assert.equal(
+        response.commands[0].errorMessage,
+        "Persistent supervisor operation failed.",
+        scenario.action,
+      );
+      assert.doesNotMatch(JSON.stringify(response), /本地化 injected runner rejection/);
+    } finally {
+      await manager.dispose();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});

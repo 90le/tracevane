@@ -234,6 +234,31 @@ function normalizeManagerStatus(
   };
 }
 
+function hasUntrustedStatus(status: TracevaneServiceManagerStatus): boolean {
+  return status.state === "unknown" && status.errorCode !== null;
+}
+
+function templateReadFailure(
+  plan: SupervisorPlan,
+  error: unknown,
+): PersistentInspection {
+  const permissionDenied = (error as NodeJS.ErrnoException).code === "EACCES";
+  const errorCode = permissionDenied ? "permission-denied" : "template-invalid";
+  return {
+    manager: persistentManagerStatus(plan, {
+      installed: false,
+      enabled: null,
+      active: null,
+      state: permissionDenied ? "unknown" : "failed",
+      configCurrent: false,
+      errorCode,
+      errorMessage: stableErrorMessage(errorCode),
+    }),
+    commands: [],
+    templateExists: false,
+  };
+}
+
 export function createServiceManager(
   dependencies: CreateServiceManagerDependencies = {},
 ): ServiceManager {
@@ -293,24 +318,45 @@ export function createServiceManager(
     }
   }
 
+  async function executeCommand(
+    command: SupervisorCommand,
+    action: TracevaneServiceAction,
+  ): Promise<SupervisorCommandResult> {
+    let rawResult: SupervisorCommandResult;
+    try {
+      rawResult = await runner(command, {
+        timeoutMs: commandTimeoutMs,
+        platform,
+        action,
+        redact: secrets,
+      });
+    } catch {
+      rawResult = {
+        ...command,
+        ok: false,
+        exitCode: null,
+        stdout: "",
+        stderr: "",
+        errorCode: "unknown",
+        errorMessage: stableErrorMessage("unknown"),
+        durationMs: 0,
+      };
+    }
+    return normalizeCommandEvidence(
+      platform,
+      command,
+      rawResult,
+      secrets,
+    );
+  }
+
   async function runSequence(
     commands: SupervisorCommand[],
     action: TracevaneServiceAction,
   ): Promise<CommandSequenceResult> {
     const results: SupervisorCommandResult[] = [];
     for (const command of commands) {
-      const rawResult = await runner(command, {
-        timeoutMs: commandTimeoutMs,
-        platform,
-        action,
-        redact: secrets,
-      });
-      const result = normalizeCommandEvidence(
-        platform,
-        command,
-        rawResult,
-        secrets,
-      );
+      const result = await executeCommand(command, action);
       results.push(result);
       if (!result.ok) {
         return { ok: false, commands: results, failure: result };
@@ -326,7 +372,9 @@ export function createServiceManager(
     try {
       template = await fileSystem.readFile(plan.configPath, "utf8");
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        return templateReadFailure(plan, error);
+      }
       return {
         manager: persistentManagerStatus(plan, {}),
         commands: [],
@@ -341,18 +389,7 @@ export function createServiceManager(
       let enabled: boolean | null = null;
       let failed = false;
       for (const command of plan.commands.status ?? []) {
-        const rawResult = await runner(command, {
-          timeoutMs: commandTimeoutMs,
-          platform,
-          action: "status",
-          redact: secrets,
-        });
-        let result = normalizeCommandEvidence(
-          platform,
-          command,
-          rawResult,
-          secrets,
-        );
+        let result = await executeCommand(command, "status");
         const token = result.stdout.trim();
         const isActive = command.args.includes("is-active");
         const recognized = isActive
@@ -425,18 +462,7 @@ export function createServiceManager(
     }
 
     for (const command of plan.commands.status ?? []) {
-      const rawResult = await runner(command, {
-        timeoutMs: commandTimeoutMs,
-        platform,
-        action: "status",
-        redact: secrets,
-      });
-      let result = normalizeCommandEvidence(
-        platform,
-        command,
-        rawResult,
-        secrets,
-      );
+      let result = await executeCommand(command, "status");
       if (
         platform === "darwin" &&
         command.command === "launchctl" &&
@@ -521,20 +547,51 @@ export function createServiceManager(
           templateExists: false,
         };
       }
-      return {
-        manager: persistentManagerStatus(plan, {
-          installed: false,
-          enabled: null,
-          active: null,
-          state: "failed",
-          configCurrent: false,
-          errorCode: "template-invalid",
-          errorMessage: stableErrorMessage("template-invalid"),
-        }),
-        commands: [],
-        templateExists: false,
-      };
+      return templateReadFailure(plan, error);
     }
+  }
+
+  async function finishRunningNoOp(
+    definition: ServiceDefinition,
+    request: ManageServiceRequest,
+    plan: SupervisorPlan,
+    inspection: PersistentInspection,
+  ): Promise<ManageServiceResponse> {
+    let sessionStatus = await session.status(definition.id);
+    if (sessionStatus.active !== false || sessionStatus.state !== "stopped") {
+      sessionStatus = await session.stop(definition.id);
+      if (sessionStatus.active !== false || sessionStatus.state !== "stopped") {
+        return {
+          ok: false,
+          action: request.action,
+          manager: {
+            ...normalizeManagerStatus(sessionStatus),
+            errorCode: sessionStatus.errorCode ?? "runtime-not-ready",
+            errorMessage: "Session owner did not stop.",
+          },
+          commands: inspection.commands,
+          templateWritten: false,
+          configCurrent: true,
+        };
+      }
+    }
+
+    return {
+      ok: true,
+      action: request.action,
+      manager: persistentManagerStatus(plan, {
+        installed: true,
+        enabled: inspection.manager.enabled,
+        active: true,
+        state: "running",
+        configCurrent: true,
+        errorCode: null,
+        errorMessage: null,
+      }),
+      commands: inspection.commands,
+      templateWritten: false,
+      configCurrent: true,
+    };
   }
 
   async function manageService(
@@ -552,11 +609,7 @@ export function createServiceManager(
           });
           const inspection = await inspectPersistent(plan);
           transitionCommands = inspection.commands;
-          if (
-            inspection.manager.installed &&
-            inspection.manager.state === "unknown" &&
-            inspection.manager.errorCode !== null
-          ) {
+          if (inspection.manager.installed && hasUntrustedStatus(inspection.manager)) {
             return {
               ok: false,
               action: request.action,
@@ -603,11 +656,7 @@ export function createServiceManager(
             });
             const inspection = await inspectPersistent(plan);
             transitionCommands = inspection.commands;
-            if (
-              inspection.manager.installed &&
-              inspection.manager.state === "unknown" &&
-              inspection.manager.errorCode !== null
-            ) {
+            if (inspection.manager.installed && hasUntrustedStatus(inspection.manager)) {
               return {
                 ok: false,
                 action: request.action,
@@ -751,6 +800,21 @@ export function createServiceManager(
           configCurrent: inspection.manager.configCurrent,
         };
       }
+      if (
+        (request.action === "start" ||
+          request.action === "restart" ||
+          request.action === "stop") &&
+        hasUntrustedStatus(inspection.manager)
+      ) {
+        return {
+          ok: false,
+          action: request.action,
+          manager: inspection.manager,
+          commands: inspection.commands,
+          templateWritten: false,
+          configCurrent: inspection.manager.configCurrent,
+        };
+      }
       let effectiveAction = request.action;
       if (request.apply && request.action === "ensure-running") {
         if (!inspection.manager.installed) {
@@ -772,22 +836,7 @@ export function createServiceManager(
             running = await probeHealth(definition.healthUrl);
           }
           if (running) {
-            return {
-              ok: true,
-              action: request.action,
-              manager: persistentManagerStatus(plan, {
-                installed: true,
-                enabled: inspection.manager.enabled,
-                active: true,
-                state: "running",
-                configCurrent: true,
-                errorCode: null,
-                errorMessage: null,
-              }),
-              commands: inspection.commands,
-              templateWritten: false,
-              configCurrent: true,
-            };
+            return finishRunningNoOp(definition, request, plan, inspection);
           }
           effectiveAction = "start";
         }
@@ -804,22 +853,7 @@ export function createServiceManager(
           running = await probeHealth(definition.healthUrl);
         }
         if (running) {
-          return {
-            ok: true,
-            action: request.action,
-            manager: persistentManagerStatus(plan, {
-              installed: true,
-              enabled: inspection.manager.enabled,
-              active: true,
-              state: "running",
-              configCurrent: true,
-              errorCode: null,
-              errorMessage: null,
-            }),
-            commands: inspection.commands,
-            templateWritten: false,
-            configCurrent: true,
-          };
+          return finishRunningNoOp(definition, request, plan, inspection);
         }
       }
       const lifecycleAction =
@@ -895,7 +929,7 @@ export function createServiceManager(
         const manager = persistentManagerStatus(plan, {
           installed: true,
           enabled: true,
-          active: ready,
+          active: ready ? true : null,
           state: ready ? "running" : "degraded",
           configCurrent: true,
           errorCode: ready ? null : "runtime-not-ready",
@@ -987,7 +1021,7 @@ export function createServiceManager(
           manager: persistentManagerStatus(plan, {
             installed: true,
             enabled: inspection.manager.enabled,
-            active: ready,
+            active: ready ? true : null,
             state: ready ? "running" : "degraded",
             configCurrent: true,
             errorCode: ready ? null : "runtime-not-ready",
