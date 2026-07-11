@@ -7,6 +7,9 @@ import {
   createTracevaneServer,
   syncStandaloneTracevaneConfig,
 } from '../dist/apps/api/index.js';
+import {
+  disposeProcessSessionSupervisor,
+} from '../dist/apps/api/modules/supervisor/session-supervisor.js';
 
 function normalizePort(value, fallback) {
   const port = Number(value);
@@ -72,7 +75,18 @@ async function shutdown(signal) {
   }
 
   try {
-    await server.stop();
+    let shutdownError = null;
+    try {
+      await server.stop();
+    } catch (error) {
+      shutdownError = error;
+    }
+    try {
+      await disposeProcessSessionSupervisor();
+    } catch (error) {
+      shutdownError ||= error;
+    }
+    if (shutdownError) throw shutdownError;
     process.exit(0);
   } catch (error) {
     console.error(
