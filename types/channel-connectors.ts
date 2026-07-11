@@ -1,3 +1,8 @@
+import type {
+  TracevaneServiceManagerStatus,
+  TracevaneSupervisorKind,
+} from "./supervisor.js";
+
 export const CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME = "tracevane-channel-connectors.service";
 
 export type ChannelConnectorsPhase = "native-daemon-f1" | "native-config-f2";
@@ -847,12 +852,8 @@ export interface ChannelConnectorFeishuWebhookResponse {
 }
 
 export type ChannelConnectorsSupervisorKind =
-  | "systemd-user"
-  | "launchd-user"
-  | "windows-service"
-  | "scheduled-task"
-  | "none"
-  | "unknown";
+  | TracevaneSupervisorKind
+  | "windows-service";
 
 export type ChannelConnectorsDaemonAction =
   | "preview"
@@ -912,7 +913,10 @@ export interface ChannelConnectorsDaemonCommandResult extends ChannelConnectorsD
   error: string | null;
 }
 
-export interface ChannelConnectorsDaemonManagerStatus {
+export interface ChannelConnectorsDaemonManagerStatus
+  extends Partial<
+    Omit<TracevaneServiceManagerStatus, "active" | "enabled">
+  > {
   checked: boolean;
   reachable: boolean | null;
   active: boolean | null;

@@ -1,3 +1,8 @@
+import type {
+  TracevaneServiceManagerStatus,
+  TracevaneSupervisorKind,
+} from "./supervisor.js";
+
 export const MODEL_GATEWAY_DEFAULT_HOST = "127.0.0.1";
 export const MODEL_GATEWAY_DEFAULT_PORT = 18796;
 export const MODEL_GATEWAY_DAEMON_SERVICE_NAME = "tracevane-model-gateway.service";
@@ -584,12 +589,8 @@ export interface ModelGatewayRuntimeState {
 }
 
 export type ModelGatewaySupervisorKind =
-  | "systemd-user"
-  | "launchd-user"
-  | "windows-service"
-  | "scheduled-task"
-  | "none"
-  | "unknown";
+  | TracevaneSupervisorKind
+  | "windows-service";
 
 export type ModelGatewayLocalDaemonState =
   | "not-installed"
@@ -624,7 +625,10 @@ export interface ModelGatewayDaemonServiceCommandResult extends ModelGatewayDaem
   error: string | null;
 }
 
-export interface ModelGatewayDaemonServiceManagerStatus {
+export interface ModelGatewayDaemonServiceManagerStatus
+  extends Partial<
+    Omit<TracevaneServiceManagerStatus, "active" | "enabled">
+  > {
   checked: boolean;
   reachable: boolean | null;
   active: boolean | null;

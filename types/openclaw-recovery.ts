@@ -1,14 +1,14 @@
+import type {
+  TracevaneServiceManagerStatus,
+  TracevaneSupervisorKind,
+} from "./supervisor.js";
+
 export const OPENCLAW_RECOVERY_DEFAULT_HOST = "127.0.0.1";
 export const OPENCLAW_RECOVERY_DEFAULT_PORT = 18797;
 export const OPENCLAW_RECOVERY_DAEMON_SERVICE_NAME =
   "tracevane-recovery.service";
 
-export type OpenClawRecoverySupervisorKind =
-  | "systemd-user"
-  | "launchd-user"
-  | "scheduled-task"
-  | "none"
-  | "unknown";
+export type OpenClawRecoverySupervisorKind = TracevaneSupervisorKind;
 
 export type OpenClawRecoveryDaemonState =
   | "not-installed"
@@ -256,6 +256,7 @@ export interface OpenClawRecoveryDaemonServicePlan {
 }
 
 export interface OpenClawRecoveryDaemonServiceSnapshot {
+  manager?: TracevaneServiceManagerStatus;
   supervisor: OpenClawRecoverySupervisorKind;
   serviceName: string;
   configPath: string;
