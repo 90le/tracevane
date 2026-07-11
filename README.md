@@ -140,6 +140,58 @@ Default local endpoints:
 These are development endpoints. Customer standalone installs use the packaged
 runtime defaults documented in `DEPLOY.md` (currently port `3760`).
 
+### Daemon supervision
+
+Model Gateway, Channel Connectors, and OpenClaw Recovery share one lifecycle
+contract with two ownership modes:
+
+- **Session** is the development default. The Tracevane API process owns at
+  most one child for each service and may restart an unexpectedly exited child
+  up to three times. The standalone API's normal and handled-fatal shutdown
+  paths stop owned children; an abrupt process kill, host crash, or power loss
+  cannot guarantee that cleanup. Session mode never registers an OS service.
+- **Persistent** is an explicit current-user installation, not a machine-wide
+  service. `status`, `start`, `stop`, and `restart` inspect or control an
+  existing registration; `install` atomically writes the generated template,
+  registers/enables it, starts it, and checks readiness. Explicit `repair` is
+  available for an installed service and rewrites, re-registers, restarts, and
+  checks it; repair is the required recovery path for `stale-config` or a
+  runtime that is not ready. `uninstall` stops and unregisters/disables the
+  service and removes only the generated template—it does not delete business
+  configuration, runtime state, or logs.
+
+Switching ownership first stops and verifies the previous owner, so a session
+child and a persistent service are not intentionally run together. Moving the
+checkout, changing the Node executable, rebuilding to a different entrypoint,
+or moving the config path changes the template fingerprint and reports
+`stale-config`; use repair instead of continuing with the stale registration.
+Generated task/plist/unit templates also contain the native manager's trigger,
+identity, and recovery metadata. Their launch payload references only the fixed
+Node executable, tokenized entry/config arguments, configuration path, and
+working directory. Secrets and proxy credentials stay in the protected
+business configuration and are never copied into the service template or
+command evidence.
+
+Persistent supervision is platform-native and user-scoped:
+
+- Windows registers a current-user Task Scheduler task with a logon trigger,
+  `InteractiveToken`, and `LeastPrivilege`. A Tracevane watchdog performs the
+  one-second inner daemon restart; Task Scheduler retains the outer
+  `RestartOnFailure` recovery policy.
+- macOS writes a plist under `~/Library/LaunchAgents` and controls it in the
+  `gui/$UID` domain with `RunAtLoad` and `KeepAlive`.
+- Linux writes a user unit under `~/.config/systemd/user`, controls it through
+  `systemctl --user`, and uses `Restart=on-failure`. Tracevane does not enable
+  `loginctl enable-linger` automatically.
+
+These modes do not promise survival after user logout. In particular, a macOS
+LaunchAgent belongs to the logged-in GUI session, and a Linux user service
+needs an available user manager (linger remains the user's explicit policy).
+WSL is a separate Linux environment, not a Windows service-management bridge:
+do not share `node_modules`, build output, or supervisor registrations between
+native Windows and WSL/Linux. Install dependencies and build in the environment
+that will own the process.
+
 ## Release and Installation
 
 Tracevane is released as an OpenClaw UI extension. New customer installs should
@@ -176,6 +228,34 @@ and `scripts/`. Pick the smallest check that proves the touched surface:
 - Model Gateway: `npm run smoke:model-gateway:cli` or the narrower gateway smoke script
 - Channel Connectors: use the matching `smoke:channel-connectors:*` script
 - File Manager browser flows: use the matching `smoke:file-manager:*` script
+- Shared daemon lifecycle contracts: `npm run test:supervisor`
+
+The real OS lifecycle smokes are opt-in because they briefly create a
+PID-unique current-user task, LaunchAgent, or systemd user unit and then remove
+it. Build the API first, run only the command for the native host, and check the
+reported cleanup result. A non-matching platform, or an unset flag, reports
+`SKIP` rather than a successful live test.
+
+Windows PowerShell:
+
+```powershell
+npm run build:api
+$env:TRACEVANE_WINDOWS_SUPERVISOR_LIVE = "1"; npm run smoke:supervisor:windows
+```
+
+macOS:
+
+```bash
+npm run build:api
+TRACEVANE_MACOS_SUPERVISOR_LIVE=1 npm run smoke:supervisor:macos
+```
+
+Linux:
+
+```bash
+npm run build:api
+TRACEVANE_LINUX_SUPERVISOR_LIVE=1 npm run smoke:supervisor:linux
+```
 
 ## Engineering Rules
 
