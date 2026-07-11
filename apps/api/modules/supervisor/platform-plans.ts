@@ -256,7 +256,12 @@ function windowsCommands(
     ],
     repair: [register],
     uninstall: [command("Delete scheduled task", "schtasks.exe", ["/Delete", "/TN", definition.windowsTaskName, "/F"])],
-    status: [command("Query scheduled task", "schtasks.exe", ["/Query", "/TN", definition.windowsTaskName])],
+    status: [command("Query scheduled task", "schtasks.exe", [
+      "/Query",
+      "/TN",
+      definition.windowsTaskName,
+      "/HResult",
+    ])],
   };
 }
 

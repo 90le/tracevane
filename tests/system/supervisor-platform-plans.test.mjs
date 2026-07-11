@@ -191,6 +191,24 @@ test("windows tasks bind the logon trigger and principal to one current user", (
   );
 });
 
+test("windows status queries request stable HRESULT exit codes", () => {
+  const definition = fixtureDefinition();
+  const plan = createSupervisorPlan(
+    definition,
+    "win32",
+    "C:/Users/Test User",
+    { windowsUserId: "TESTDOMAIN\\Test User" },
+  );
+
+  assert.deepEqual(plan.commands.status, [
+    {
+      label: "Query scheduled task",
+      command: "schtasks.exe",
+      args: ["/Query", "/TN", definition.windowsTaskName, "/HResult"],
+    },
+  ]);
+});
+
 test("launchd lifecycle actions always rebuild a booted current-user agent", () => {
   const plan = createSupervisorPlan(
     fixtureDefinition("/opt/Trace vane/项目"),
