@@ -4,7 +4,10 @@ export type {
   SupervisorCommand,
   SupervisorPlan,
 } from "./contracts.js";
-export { createSupervisorPlan } from "./platform-plans.js";
+export {
+  createServiceLaunchArguments,
+  createSupervisorPlan,
+} from "./platform-plans.js";
 export {
   createServiceManager,
   type CreateServiceManagerDependencies,
@@ -16,6 +19,7 @@ export {
   createSessionSupervisor,
   disposeProcessSessionSupervisor,
   getProcessSessionSupervisor,
+  removeOwnedRuntimeMetadata,
   type CreateSessionSupervisorOptions,
   type SessionServiceStatus,
   type SessionSupervisor,

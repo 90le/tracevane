@@ -13,6 +13,7 @@ import {
 import { sendJson, sendNoContent, setCorsHeaders } from "../../core/http.js";
 import type { TracevaneApiContext } from "../../core/context.js";
 import { TracevaneRouter } from "../../core/router.js";
+import { removeOwnedRuntimeMetadata } from "../supervisor/index.js";
 import { handleModelGatewayRealtimeUnsupportedUpgrade } from "./realtime.js";
 import { registerModelGatewayRoutes } from "./routes.js";
 import {
@@ -197,7 +198,7 @@ export function createModelGatewayDaemon(
     }
 
     metadata = null;
-    removeFileIfPresent(paths.daemonRuntime);
+    removeOwnedRuntimeMetadata(paths.daemonRuntime, process.pid);
     removeFileIfPresent(paths.daemonPid);
     closePortLock(lock);
     lock = null;

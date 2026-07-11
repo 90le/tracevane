@@ -21,6 +21,8 @@ function fixtureDefinition(root, options = {}) {
       "if (mode === 'record') {",
       "  fs.writeFileSync(statePath + '.tmp', JSON.stringify(payload), 'utf8');",
       "  fs.renameSync(statePath + '.tmp', statePath);",
+      "} else if (mode === 'owned-runtime') {",
+      "  fs.writeFileSync(statePath, JSON.stringify({ pid: process.pid }), 'utf8');",
       "} else if (mode === 'crash-once') {",
       "  const count = fs.existsSync(statePath) ? Number(fs.readFileSync(statePath, 'utf8')) : 0;",
       "  fs.writeFileSync(statePath, String(count + 1), 'utf8');",
@@ -146,7 +148,7 @@ test("session supervisor owns one tokenized child and stops it", async () => {
     await waitFor(() => fs.existsSync(argsPath));
     assert.deepEqual(
       JSON.parse(fs.readFileSync(argsPath, "utf8")),
-      ["路径 含空格", "参数"],
+      ["路径 含空格", "参数", "--config", definition.configPath],
     );
 
     const pid = first.pid;
@@ -154,6 +156,50 @@ test("session supervisor owns one tokenized child and stops it", async () => {
     const stopped = await supervisor.stop("model-gateway");
     assert.equal(stopped.state, "stopped");
     await waitForProcessExit(pid);
+  } finally {
+    await supervisor.dispose();
+    await removeRoot(root);
+  }
+});
+
+test("owned child shutdown removes matching runtime metadata", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-runtime-"));
+  const supervisor = createSessionSupervisor({ stopGraceMs: 250 });
+  try {
+    const definition = fixtureDefinition(root, {
+      args: ["owned-runtime", path.join(root, "runtime.json")],
+    });
+    const started = await supervisor.start(definition);
+    await waitFor(() => fs.existsSync(definition.runtimePath));
+    assert.equal(
+      JSON.parse(fs.readFileSync(definition.runtimePath, "utf8")).pid,
+      started.pid,
+    );
+
+    await supervisor.stop("model-gateway");
+
+    assert.equal(fs.existsSync(definition.runtimePath), false);
+  } finally {
+    await supervisor.dispose();
+    await removeRoot(root);
+  }
+});
+
+test("owned child shutdown retains mismatched runtime metadata", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-runtime-mismatch-"));
+  const supervisor = createSessionSupervisor({ stopGraceMs: 250 });
+  try {
+    const definition = fixtureDefinition(root);
+    const started = await supervisor.start(definition);
+    fs.writeFileSync(
+      definition.runtimePath,
+      JSON.stringify({ pid: started.pid + 1 }),
+      "utf8",
+    );
+
+    await supervisor.stop("model-gateway");
+
+    assert.equal(fs.existsSync(definition.runtimePath), true);
   } finally {
     await supervisor.dispose();
     await removeRoot(root);

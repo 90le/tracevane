@@ -57,7 +57,9 @@ function quoteWindowsArgument(value: string): string {
   return `${result}${"\\".repeat(backslashes * 2)}"`;
 }
 
-function launchArguments(definition: ServiceDefinition): string[] {
+export function createServiceLaunchArguments(
+  definition: ServiceDefinition,
+): string[] {
   return [
     definition.entryPath,
     ...definition.args,
@@ -293,7 +295,7 @@ export function createSupervisorPlan(
   homeDir: string,
   options: CreateSupervisorPlanOptions = {},
 ): SupervisorPlan {
-  const args = launchArguments(definition);
+  const args = createServiceLaunchArguments(definition);
   let plan: Omit<SupervisorPlan, "fingerprint">;
 
   if (platform === "linux") {

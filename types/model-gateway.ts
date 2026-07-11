@@ -1,4 +1,5 @@
 import type {
+  TracevaneServiceMode,
   TracevaneServiceManagerStatus,
   TracevaneSupervisorKind,
 } from "./supervisor.js";
@@ -609,6 +610,8 @@ export type ModelGatewayDaemonServiceAction =
   | "start"
   | "stop"
   | "restart"
+  | "repair"
+  | "uninstall"
   | "status";
 
 export interface ModelGatewayDaemonServiceCommand {
@@ -622,22 +625,22 @@ export interface ModelGatewayDaemonServiceCommandResult extends ModelGatewayDaem
   exitCode: number | null;
   stdout: string;
   stderr: string;
+  errorCode: TracevaneServiceManagerStatus["errorCode"];
+  errorMessage: string | null;
+  durationMs: number;
   error: string | null;
 }
 
 export interface ModelGatewayDaemonServiceManagerStatus
-  extends Partial<
-    Omit<TracevaneServiceManagerStatus, "active" | "enabled">
-  > {
+  extends TracevaneServiceManagerStatus {
   checked: boolean;
   reachable: boolean | null;
-  active: boolean | null;
-  enabled: boolean | null;
   lastError: string | null;
 }
 
 export type ModelGatewayDaemonBootstrapMode =
   | "not-needed"
+  | "session"
   | "supervisor"
   | "detached"
   | "blocked";
@@ -681,10 +684,11 @@ export interface ModelGatewayDaemonServiceRequest {
   apply?: boolean;
   runCommands?: boolean;
   allowBootstrap?: boolean;
+  mode?: TracevaneServiceMode;
 }
 
 export interface ModelGatewayDaemonServiceResponse {
-  ok: true;
+  ok: boolean;
   checkedAt: string;
   action: ModelGatewayDaemonServiceAction;
   applied: boolean;
@@ -693,6 +697,7 @@ export interface ModelGatewayDaemonServiceResponse {
   installed: boolean;
   plan: ModelGatewayDaemonServicePlan;
   lifecycle: ModelGatewayLifecycleStatus;
+  manager: TracevaneServiceManagerStatus;
   commandsRun: ModelGatewayDaemonServiceCommandResult[];
   serviceManager: ModelGatewayDaemonServiceManagerStatus;
   bootstrap: ModelGatewayDaemonBootstrapStatus;

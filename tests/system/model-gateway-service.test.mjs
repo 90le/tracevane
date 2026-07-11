@@ -23,6 +23,11 @@ import {
   resolveModelGatewayPaths,
 } from "../../dist/apps/api/modules/model-gateway/service.js";
 import { createModelGatewayDaemon } from "../../dist/apps/api/modules/model-gateway/daemon.js";
+import * as modelGatewaySupervisor from "../../dist/apps/api/modules/model-gateway/supervisor.js";
+import {
+  createSupervisorPlan,
+  removeOwnedRuntimeMetadata,
+} from "../../dist/apps/api/modules/supervisor/index.js";
 import {
   MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS,
   MODEL_GATEWAY_UNSUPPORTED_HTTP_ROUTES,
@@ -67,6 +72,22 @@ function createLogger() {
     warn() {},
     error() {},
     debug() {},
+  };
+}
+
+function serviceManagerStatus(overrides = {}) {
+  return {
+    mode: "session",
+    supervisor: "session",
+    installed: false,
+    enabled: null,
+    active: false,
+    state: "stopped",
+    configCurrent: true,
+    checkedAt: "2026-07-11T00:00:00.000Z",
+    errorCode: null,
+    errorMessage: null,
+    ...overrides,
   };
 }
 
@@ -347,17 +368,22 @@ async function daemonReady(endpoint) {
   };
 }
 
-async function stopChild(child) {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const exited = new Promise((resolve) => child.once("exit", resolve));
-  child.kill("SIGTERM");
-  await Promise.race([
-    exited,
-    new Promise((resolve) => setTimeout(resolve, 2000)).then(() => {
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-      return exited;
-    }),
-  ]);
+async function stopChild(child, runtimePath) {
+  const ownedPid = child.pid;
+  if (child.exitCode === null && child.signalCode === null) {
+    const exited = new Promise((resolve) => child.once("exit", resolve));
+    child.kill("SIGTERM");
+    await Promise.race([
+      exited,
+      new Promise((resolve) => setTimeout(resolve, 2000)).then(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+        return exited;
+      }),
+    ]);
+  }
+  if (runtimePath && ownedPid) {
+    removeOwnedRuntimeMetadata(runtimePath, ownedPid);
+  }
 }
 
 test("model gateway registry stores provider secrets separately and masks views", () => {
@@ -759,20 +785,18 @@ test("model gateway starts Codex account login and creates an account-backed pro
   });
 
   const originalFetch = globalThis.fetch;
-  const previousProxyEnv = {
-    HTTPS_PROXY: process.env.HTTPS_PROXY,
-    HTTP_PROXY: process.env.HTTP_PROXY,
-    ALL_PROXY: process.env.ALL_PROXY,
-    https_proxy: process.env.https_proxy,
-    http_proxy: process.env.http_proxy,
-    all_proxy: process.env.all_proxy,
-  };
-  process.env.HTTPS_PROXY = "http://127.0.0.1:18080";
-  delete process.env.HTTP_PROXY;
-  delete process.env.ALL_PROXY;
-  delete process.env.https_proxy;
-  delete process.env.http_proxy;
-  delete process.env.all_proxy;
+  const proxyEnvironmentNames = new Set([
+    "https_proxy",
+    "http_proxy",
+    "all_proxy",
+  ]);
+  const previousProxyEnv = Object.entries(process.env).filter(
+    ([key]) => proxyEnvironmentNames.has(key.toLowerCase()),
+  );
+  for (const key of Object.keys(process.env)) {
+    if (proxyEnvironmentNames.has(key.toLowerCase())) delete process.env[key];
+  }
+  process.env.Https_Proxy = "http://127.0.0.1:18080";
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
     const target = new URL(String(url));
@@ -1233,10 +1257,10 @@ test("model gateway starts Codex account login and creates an account-backed pro
     });
   } finally {
     globalThis.fetch = originalFetch;
-    for (const [key, value] of Object.entries(previousProxyEnv)) {
-      if (typeof value === "string") process.env[key] = value;
-      else delete process.env[key];
+    for (const key of Object.keys(process.env)) {
+      if (proxyEnvironmentNames.has(key.toLowerCase())) delete process.env[key];
     }
+    for (const [key, value] of previousProxyEnv) process.env[key] = value;
   }
 
   assert.equal(upstreamCalls.length, 4);
@@ -8621,7 +8645,7 @@ test("model gateway status separates embedded fallback from daemon lifecycle", a
   const expectedSupervisor = process.platform === "darwin"
     ? "launchd-user"
     : process.platform === "win32"
-      ? "windows-service"
+      ? "scheduled-task"
       : "systemd-user";
 
   const embeddedStatus = service.getStatus();
@@ -8688,51 +8712,204 @@ test("model gateway status separates embedded fallback from daemon lifecycle", a
   }
 });
 
-test("model gateway daemon service status probes supervisor by default", async () => {
+test("model gateway daemon service defaults status to the API-owned session", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
-  const calls = [];
+  const managed = [];
+  let legacyRunnerCalled = false;
+  const daemonServiceManager = {
+    async manage(definition, request) {
+      managed.push({ definition, request });
+      const running = request.action === "start";
+      return {
+        ok: true,
+        action: request.action,
+        manager: serviceManagerStatus({
+          active: running,
+          state: running ? "running" : "stopped",
+        }),
+        commands: [],
+        templateWritten: false,
+        configCurrent: true,
+      };
+    },
+    async dispose() {
+      assert.fail("injected manager is caller-owned");
+    },
+  };
   const service = createModelGatewayService(config, {
-    daemonServiceCommandRunner: async (command) => {
-      calls.push(`${command.command} ${command.args.join(" ")}`);
-      if (command.args.includes("is-active")) {
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: "active\n",
-          stderr: "",
-          error: null,
-        };
-      }
-      if (command.args.includes("is-enabled")) {
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: "enabled\n",
-          stderr: "",
-          error: null,
-        };
-      }
-      return { ...command, ok: true, exitCode: 0, stdout: "ok\n", stderr: "", error: null };
+    daemonServiceManager,
+    daemonServiceCommandRunner: async () => {
+      legacyRunnerCalled = true;
+      throw new Error("legacy runner must stay behind the shared manager");
     },
   });
 
-  const result = await service.getDaemonService();
-  const statusCommands = result.plan.selectedTemplate.commands.status || [];
+  const status = await service.getDaemonService();
+  const started = await service.manageDaemonService(undefined, {
+    action: "start",
+    apply: true,
+    command: "browser-command",
+    args: ["browser-arg"],
+    cwd: "browser-cwd",
+    env: { SECRET: "browser-secret" },
+    configPath: "browser-config",
+    runtimePath: "browser-runtime",
+    serviceName: "browser-service",
+  });
 
-  assert.equal(result.action, "status");
-  assert.equal(result.applied, true);
-  assert.equal(result.serviceManager.checked, true);
-  assert.equal(result.serviceManager.active, true);
-  assert.equal(result.serviceManager.enabled, true);
-  assert.deepEqual(calls, statusCommands.map((command) => `${command.command} ${command.args.join(" ")}`));
+  assert.equal(legacyRunnerCalled, false);
+  assert.deepEqual(managed.map(({ request }) => request), [
+    { action: "status", mode: "session", apply: false },
+    { action: "start", mode: "session", apply: true },
+  ]);
+  assert.equal(status.action, "status");
+  assert.equal(status.applied, false);
+  assert.equal(status.manager.mode, "session");
+  assert.equal(status.commandsRun.length, 0);
+  assert.equal(started.manager.state, "running");
+  assert.equal(started.bootstrap.mode, "session");
+  assert.equal(started.bootstrap.started, true);
+  assert.equal(managed[1].definition.workingDirectory, config.projectRoot);
+  assert.equal(managed[1].definition.configPath, config.openclawConfigFile);
+  assert.equal(
+    managed[1].definition.runtimePath,
+    resolveModelGatewayPaths(config).daemonRuntime,
+  );
+  assert.doesNotMatch(JSON.stringify(managed[1].definition), /browser-/);
+
+  let localManagerCalls = 0;
+  const localService = createModelGatewayService(config, {
+    runtimeHost: "local-daemon",
+    daemonServiceManager: {
+      async manage() {
+        localManagerCalls += 1;
+        assert.fail("a local daemon must not create another session owner");
+      },
+      async dispose() {},
+    },
+  });
+  for (const action of ["start", "restart", "ensure-running"]) {
+    const recursive = await localService.manageDaemonService(undefined, {
+      action,
+      mode: "session",
+      apply: true,
+    });
+    assert.equal(recursive.ok, false, action);
+    assert.equal(recursive.manager.state, "degraded", action);
+    assert.equal(recursive.manager.errorCode, "runtime-not-ready", action);
+    assert.equal(recursive.manager.active, null, action);
+    assert.equal(recursive.commandsRun.length, 0, action);
+  }
+  assert.equal(localManagerCalls, 0);
 });
 
 test("model gateway daemon service management exposes templates and guarded install", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
+  const typeSource = fs.readFileSync(path.resolve("types/model-gateway.ts"), "utf8");
+  const serviceSource = fs.readFileSync(
+    path.resolve("apps/api/modules/model-gateway/service.ts"),
+    "utf8",
+  );
+  const daemonSource = fs.readFileSync(
+    path.resolve("apps/api/modules/model-gateway/daemon.ts"),
+    "utf8",
+  );
+  const cliSource = fs.readFileSync(
+    path.resolve("apps/api/model-gateway-daemon.ts"),
+    "utf8",
+  );
+  const managerType = typeSource.match(
+    /export interface ModelGatewayDaemonServiceManagerStatus[\s\S]*?\n}/,
+  )?.[0] || "";
+  const responseType = typeSource.match(
+    /export interface ModelGatewayDaemonServiceResponse[\s\S]*?\n}/,
+  )?.[0] || "";
+  assert.match(managerType, /extends TracevaneServiceManagerStatus/);
+  assert.doesNotMatch(managerType, /Partial/);
+  assert.match(responseType, /ok: boolean;/);
+  assert.match(responseType, /manager: TracevaneServiceManagerStatus;/);
+  assert.match(typeSource, /mode\?: TracevaneServiceMode;/);
+  assert.match(typeSource, /"repair"/);
+  assert.match(typeSource, /"uninstall"/);
+  assert.match(serviceSource, /export type ModelGatewayDaemonBootstrapRunner/);
+  assert.match(serviceSource, /daemonBootstrapRunner\?: ModelGatewayDaemonBootstrapRunner;/);
+  assert.doesNotMatch(serviceSource, /function runDefaultDaemonBootstrap/);
+  assert.match(serviceSource, /function readEnvironmentValueCaseInsensitive/);
+  assert.match(cliSource, /parseArgs/);
+  assert.match(cliSource, /"state-dir"/);
+  assert.match(cliSource, /"service-name"/);
+  assert.doesNotMatch(
+    cliSource.match(/const SUPERVISORS[\s\S]*?\]\);/)?.[0] || "",
+    /windows-service/,
+  );
+  assert.match(daemonSource, /removeOwnedRuntimeMetadata/);
+  assert.doesNotMatch(daemonSource, /removeFileIfPresent\(paths\.daemonRuntime\)/);
+  const paths = resolveModelGatewayPaths(config);
+  const definition = modelGatewaySupervisor.createModelGatewayServiceDefinition(
+    config,
+    { mode: "session", platform: "win32", port: 29123 },
+  );
+  assert.deepEqual(
+    {
+      id: definition.id,
+      displayName: definition.displayName,
+      serviceName: definition.serviceName,
+      windowsTaskName: definition.windowsTaskName,
+      launchdLabel: definition.launchdLabel,
+      entryPath: definition.entryPath,
+      workingDirectory: definition.workingDirectory,
+      configPath: definition.configPath,
+      runtimePath: definition.runtimePath,
+      logPath: definition.logPath,
+      healthUrl: definition.healthUrl,
+    },
+    {
+      id: "model-gateway",
+      displayName: "Tracevane Model Gateway",
+      serviceName: "tracevane-model-gateway.service",
+      windowsTaskName: "TracevaneModelGateway",
+      launchdLabel: "dev.openclaw.tracevane.model-gateway",
+      entryPath: path.join(
+        config.projectRoot,
+        "dist",
+        "apps",
+        "api",
+        "model-gateway-daemon.js",
+      ),
+      workingDirectory: config.projectRoot,
+      configPath: config.openclawConfigFile,
+      runtimePath: paths.daemonRuntime,
+      logPath: path.join(paths.logs, "daemon.log"),
+      healthUrl: "http://127.0.0.1:29123/api/model-gateway/status",
+    },
+  );
+  const supervisorFor = (mode, platform) => {
+    const item = modelGatewaySupervisor.createModelGatewayServiceDefinition(
+      config,
+      { mode, platform },
+    );
+    return item.args[item.args.indexOf("--supervisor") + 1];
+  };
+  assert.deepEqual(
+    [
+      supervisorFor("session", "linux"),
+      supervisorFor("session", "darwin"),
+      supervisorFor("session", "win32"),
+      supervisorFor("persistent", "linux"),
+      supervisorFor("persistent", "darwin"),
+      supervisorFor("persistent", "win32"),
+    ],
+    [
+      "session",
+      "session",
+      "session",
+      "systemd-user",
+      "launchd-user",
+      "scheduled-task",
+    ],
+  );
   const ctx = createTracevaneContext({ config, logger: createLogger() });
   const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
 
@@ -8740,22 +8917,64 @@ test("model gateway daemon service management exposes templates and guarded inst
     const status = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`);
     assert.equal(status.status, 200);
     assert.equal(status.body.action, "status");
-    assert.equal(status.body.applied, true);
+    assert.equal(status.body.applied, false);
     assert.equal(status.body.serviceManager.checked, true);
+    assert.equal(status.body.manager.mode, "session");
     assert.equal(status.body.installed, false);
-    assert.equal(status.body.plan.daemonEntry.endsWith("dist/apps/api/model-gateway-daemon.js"), true);
+    assert.equal(
+      path.normalize(status.body.plan.daemonEntry),
+      path.join(
+        config.projectRoot,
+        "dist",
+        "apps",
+        "api",
+        "model-gateway-daemon.js",
+      ),
+    );
     assert.deepEqual(
       status.body.plan.templates.map((item) => item.supervisor).sort(),
       ["launchd-user", "scheduled-task", "systemd-user"],
     );
-    assert.ok(status.body.plan.templates.find((item) => item.supervisor === "systemd-user").template.includes("Restart=always"));
-    assert.ok(status.body.plan.templates.find((item) => item.supervisor === "launchd-user").template.includes("<key>KeepAlive</key>"));
-    assert.ok(status.body.plan.templates.find((item) => item.supervisor === "scheduled-task").template.includes("<RestartOnFailure>"));
+    assert.match(
+      status.body.plan.templates.find((item) => item.supervisor === "systemd-user").template,
+      /^Restart=on-failure$/m,
+    );
+    assert.match(
+      status.body.plan.templates.find((item) => item.supervisor === "launchd-user").template,
+      /<key>KeepAlive<\/key>/,
+    );
+    assert.match(
+      status.body.plan.templates.find((item) => item.supervisor === "scheduled-task").template,
+      /<RestartOnFailure>/,
+    );
+
+    const homeDir = path.join(root, "用户 home");
+    const compatibility = modelGatewaySupervisor.createModelGatewayDaemonServicePlan(
+      config,
+      { homeDir },
+    );
+    for (const [platform, supervisor, platformName] of [
+      ["linux", "systemd-user", "linux"],
+      ["darwin", "launchd-user", "macos"],
+      ["win32", "scheduled-task", "windows"],
+    ]) {
+      const trusted = modelGatewaySupervisor.createModelGatewayServiceDefinition(
+        config,
+        { mode: "persistent", platform },
+      );
+      const shared = createSupervisorPlan(trusted, platform, homeDir);
+      const adapted = compatibility.templates.find(
+        (item) => item.platform === platformName && item.supervisor === supervisor,
+      );
+      assert.equal(adapted.template, shared.template);
+      assert.deepEqual(adapted.commands, shared.commands);
+    }
 
     const preview = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
       method: "POST",
       body: {
         action: "install",
+        mode: "persistent",
         apply: false,
       },
     });
@@ -8770,50 +8989,24 @@ test("model gateway daemon service management exposes templates and guarded inst
       method: "POST",
       body: {
         action: "install",
+        mode: "persistent",
         apply: true,
         runCommands: false,
       },
     });
     assert.equal(install.status, 200);
     assert.equal(install.body.action, "install");
-    assert.equal(install.body.applied, true);
-    assert.equal(install.body.templateWritten, true);
-    assert.equal(install.body.templateCurrent, true);
-    assert.equal(install.body.installed, true);
+    assert.equal(install.body.applied, false);
+    assert.equal(install.body.templateWritten, false);
+    assert.equal(install.body.installed, false);
     assert.equal(install.body.commandsRun.length, 0);
-    const serviceTemplate = fs.readFileSync(install.body.plan.selectedTemplate.configPath, "utf8");
-    assert.match(serviceTemplate, /model-gateway-daemon\.js/);
-    assert.match(serviceTemplate, new RegExp(config.openclawRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    assert.match(serviceTemplate, new RegExp(`^WorkingDirectory=${config.projectRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
-    assert.doesNotMatch(serviceTemplate, /^WorkingDirectory="/m);
-    assert.match(serviceTemplate, /^Environment="MODEL_GATEWAY_SUPERVISOR=systemd-user"$/m);
-
-    fs.writeFileSync(
-      install.body.plan.selectedTemplate.configPath,
-      serviceTemplate.replace(/^WorkingDirectory=(.+)$/m, 'WorkingDirectory="$1"'),
-      "utf8",
-    );
-    const reinstall = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
-      method: "POST",
-      body: {
-        action: "install",
-        apply: true,
-        runCommands: false,
-      },
-    });
-    assert.equal(reinstall.status, 200);
-    assert.equal(reinstall.body.action, "install");
-    assert.equal(reinstall.body.templateWritten, true);
-    assert.equal(reinstall.body.templateCurrent, true);
-    assert.doesNotMatch(
-      fs.readFileSync(reinstall.body.plan.selectedTemplate.configPath, "utf8"),
-      /^WorkingDirectory="/m,
-    );
+    assert.equal(fs.existsSync(install.body.plan.selectedTemplate.configPath), false);
 
     const startPreview = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`, {
       method: "POST",
       body: {
         action: "start",
+        mode: "persistent",
         apply: false,
       },
     });
@@ -8824,38 +9017,41 @@ test("model gateway daemon service management exposes templates and guarded inst
   });
 });
 
-test("model gateway daemon service templates inherit proxy environment for supervised daemons", async () => {
+test("model gateway daemon service templates never persist proxy environment", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
-  const previous = {
-    HTTPS_PROXY: process.env.HTTPS_PROXY,
-    NO_PROXY: process.env.NO_PROXY,
-    https_proxy: process.env.https_proxy,
-    no_proxy: process.env.no_proxy,
-  };
-  process.env.HTTPS_PROXY = "http://127.0.0.1:18080";
-  process.env.NO_PROXY = "localhost,127.0.0.1,::1";
-  delete process.env.https_proxy;
-  delete process.env.no_proxy;
+  const proxyNames = new Set([
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+  ]);
+  const previous = Object.entries(process.env).filter(
+    ([key]) => proxyNames.has(key.toLowerCase()),
+  );
+  for (const key of Object.keys(process.env)) {
+    if (proxyNames.has(key.toLowerCase())) delete process.env[key];
+  }
+  process.env.Https_Proxy =
+    "http://proxy-user:proxy-secret@127.0.0.1:18080";
+  process.env.No_Proxy = "localhost,127.0.0.1,::1";
   try {
     const service = createModelGatewayService(config);
     const plan = (await service.manageDaemonService(undefined, {
       action: "status",
-      runCommands: false,
     })).plan;
-    const systemd = plan.templates.find((item) => item.supervisor === "systemd-user");
-    const launchd = plan.templates.find((item) => item.supervisor === "launchd-user");
-    assert.ok(systemd);
-    assert.ok(launchd);
-    assert.match(systemd.template, /^Environment="HTTPS_PROXY=http:\/\/127\.0\.0\.1:18080"$/m);
-    assert.match(systemd.template, /^Environment="NO_PROXY=localhost,127\.0\.0\.1,::1"$/m);
-    assert.match(launchd.template, /<key>HTTPS_PROXY<\/key>\n    <string>http:\/\/127\.0\.0\.1:18080<\/string>/);
-    assert.match(launchd.template, /<key>NO_PROXY<\/key>\n    <string>localhost,127\.0\.0\.1,::1<\/string>/);
-  } finally {
-    for (const [key, value] of Object.entries(previous)) {
-      if (typeof value === "string") process.env[key] = value;
-      else delete process.env[key];
+    for (const template of plan.templates) {
+      assert.doesNotMatch(
+        template.template,
+        /HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|proxy-user|proxy-secret|EnvironmentVariables|^Environment=/im,
+        template.supervisor,
+      );
     }
+  } finally {
+    for (const key of Object.keys(process.env)) {
+      if (proxyNames.has(key.toLowerCase())) delete process.env[key];
+    }
+    for (const [key, value] of previous) process.env[key] = value;
   }
 });
 
@@ -8863,19 +9059,127 @@ test("model gateway daemon service management executes selected supervisor comma
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const calls = [];
-  const readinessCalls = [];
   const service = createModelGatewayService(config, {
-    daemonReadinessChecker: async (endpoint) => {
-      readinessCalls.push(endpoint);
-      return daemonReady(endpoint);
-    },
+    homeDir: path.join(root, "home"),
+    daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
-      calls.push(`${command.command} ${command.args.join(" ")}`);
-      let stdout = `ran ${command.label}`;
+      calls.push(command);
+      return {
+        ...command,
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        error: null,
+      };
+    },
+  });
+
+  const ensured = await service.manageDaemonService(undefined, {
+    action: "ensure-running",
+    mode: "persistent",
+    runCommands: true,
+  });
+  const expected = [
+    ...(ensured.plan.selectedTemplate.commands.install || []),
+    ...(ensured.plan.selectedTemplate.commands.start || []),
+  ];
+  assert.equal(ensured.ok, true);
+  assert.equal(ensured.manager.state, "running");
+  assert.equal(ensured.templateWritten, true);
+  assert.deepEqual(
+    calls.map(({ command, args }) => ({ command, args })),
+    expected.map(({ command, args }) => ({ command, args })),
+  );
+  assert.deepEqual(
+    ensured.commandsRun.map(({ command, args, errorCode }) => ({
+      command,
+      args,
+      errorCode,
+    })),
+    expected.map(({ command, args }) => ({ command, args, errorCode: null })),
+  );
+  assert.equal(
+    ensured.commandsRun.every(({ durationMs }) => Number.isInteger(durationMs)),
+    true,
+  );
+
+  const normalizedRequests = [];
+  const aliasService = createModelGatewayService(config, {
+    daemonServiceManager: {
+      async manage(_definition, request) {
+        normalizedRequests.push(request);
+        return {
+          ok: true,
+          action: request.action,
+          manager: serviceManagerStatus({
+            mode: request.mode,
+            supervisor: request.mode === "session"
+              ? "session"
+              : "scheduled-task",
+          }),
+          commands: [],
+          templateWritten: false,
+          configCurrent: true,
+        };
+      },
+      async dispose() {},
+    },
+  });
+  await aliasService.manageDaemonService(undefined, {
+    action: "install",
+    mode: "persistent",
+    apply: true,
+    runCommands: false,
+  });
+  await aliasService.manageDaemonService(undefined, {
+    action: "repair",
+    mode: "persistent",
+    runCommands: true,
+  });
+  assert.deepEqual(normalizedRequests, [
+    { action: "install", mode: "persistent", apply: false },
+    { action: "repair", mode: "persistent", apply: true },
+  ]);
+
+  const missingRoot = makeTempRoot();
+  const missingCalls = [];
+  const missing = createModelGatewayService(createTracevaneConfig(missingRoot), {
+    homeDir: path.join(missingRoot, "home"),
+    daemonServiceCommandRunner: async (command) => {
+      missingCalls.push(command);
+      return {
+        ...command,
+        ok: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        error: null,
+      };
+    },
+  });
+  const restarted = await missing.manageDaemonService(undefined, {
+    action: "restart",
+    mode: "persistent",
+    apply: true,
+  });
+  assert.equal(restarted.ok, false);
+  assert.equal(restarted.manager.errorCode, "task-not-found");
+  assert.equal(missingCalls.some(({ args }) => args.includes("/End")), false);
+});
+
+test("model gateway ensure-running keeps an installed persistent owner", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const calls = [];
+  const service = createModelGatewayService(config, {
+    homeDir: path.join(root, "home"),
+    daemonReadinessChecker: daemonReady,
+    daemonServiceCommandRunner: async (command) => {
+      calls.push(command);
+      let stdout = "";
       if (command.args.includes("is-active")) stdout = "active\n";
       if (command.args.includes("is-enabled")) stdout = "enabled\n";
-      if (command.command === "launchctl" && command.args.includes("print")) stdout = "state = running\ndisabled = false\n";
-      if (command.command.toLowerCase().includes("schtasks")) stdout = "Status: Running\n";
       return {
         ...command,
         ok: true,
@@ -8887,243 +9191,49 @@ test("model gateway daemon service management executes selected supervisor comma
     },
   });
 
-  const start = await service.manageDaemonService(undefined, {
-    action: "start",
-    apply: true,
-  });
-  const expectedInstall = start.plan.selectedTemplate.commands.install || [];
-  const expectedStart = start.plan.selectedTemplate.commands.start || [];
-  const expectedStartStatus = start.plan.selectedTemplate.commands.status || [];
-  const expectedStartCalls = [...expectedInstall, ...expectedStart, ...expectedStartStatus];
-  assert.equal(start.action, "start");
-  assert.equal(start.applied, true);
-  assert.equal(start.templateWritten, true);
-  assert.deepEqual(
-    calls.slice(0, expectedStartCalls.length),
-    expectedStartCalls.map((command) => `${command.command} ${command.args.join(" ")}`),
-  );
-  assert.deepEqual(start.commandsRun.map((result) => result.ok), expectedStartCalls.map(() => true));
-  assert.match(start.commandsRun[0]?.stdout || "", /^ran /);
-  assert.equal(start.bootstrap.mode, "supervisor");
-  assert.equal(start.bootstrap.started, true);
-
-  const restart = await service.manageDaemonService(undefined, {
-    action: "restart",
-    apply: true,
-  });
-  const expectedRestartInstall = restart.plan.selectedTemplate.commands.install || [];
-  const expectedRestart = restart.plan.selectedTemplate.commands.restart || [];
-  const expectedRestartStatus = restart.plan.selectedTemplate.commands.status || [];
-  const expectedRestartCalls = [...expectedRestartInstall, ...expectedRestart, ...expectedRestartStatus];
-  assert.equal(restart.action, "restart");
-  assert.equal(restart.applied, true);
-  assert.equal(restart.templateWritten, false);
-  assert.equal(restart.bootstrap.mode, "supervisor");
-  assert.equal(restart.bootstrap.started, true);
-  assert.deepEqual(
-    calls.slice(expectedStartCalls.length, expectedStartCalls.length + expectedRestartCalls.length),
-    expectedRestartCalls.map((command) => `${command.command} ${command.args.join(" ")}`),
-  );
-  assert.deepEqual(readinessCalls, [
-    "http://127.0.0.1:18796/api/model-gateway/status",
-    "http://127.0.0.1:18796/api/model-gateway/status",
-  ]);
-
-  const status = await service.manageDaemonService(undefined, {
-    action: "status",
-    runCommands: true,
-  });
-  const expectedStatus = status.plan.selectedTemplate.commands.status || [];
-  assert.equal(status.action, "status");
-  assert.equal(status.applied, expectedStatus.length > 0);
-  assert.deepEqual(
-    calls.slice(expectedStartCalls.length + expectedRestartCalls.length),
-    expectedStatus.map((command) => `${command.command} ${command.args.join(" ")}`),
-  );
-  assert.equal(status.commandsRun.length, expectedStatus.length);
-  assert.equal(status.serviceManager.checked, true);
-  assert.equal(status.serviceManager.reachable, true);
-  assert.equal(status.serviceManager.active, true);
-  assert.equal(status.serviceManager.enabled, true);
-  assert.equal(status.serviceManager.lastError, null);
-});
-
-test("model gateway ensure-running prefers installed supervisor over detached bootstrap", async () => {
-  const root = makeTempRoot();
-  const config = createTracevaneConfig(root);
-  const calls = [];
-  let startSeen = false;
-  const service = createModelGatewayService(config, {
-    daemonReadinessChecker: daemonReady,
-    daemonServiceCommandRunner: async (command) => {
-      calls.push(`${command.command} ${command.args.join(" ")}`);
-      const lowerLabel = command.label.toLowerCase();
-      if (lowerLabel.includes("start") || lowerLabel.includes("kickstart") || lowerLabel.includes("run scheduled task")) {
-        startSeen = true;
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: `ran ${command.label}`,
-          stderr: "",
-          error: null,
-        };
-      }
-      if (command.args.includes("is-active")) {
-        return {
-          ...command,
-          ok: startSeen,
-          exitCode: startSeen ? 0 : 3,
-          stdout: startSeen ? "active\n" : "inactive\n",
-          stderr: "",
-          error: startSeen ? null : "Command failed.",
-        };
-      }
-      if (command.args.includes("is-enabled")) {
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: "enabled\n",
-          stderr: "",
-          error: null,
-        };
-      }
-      if (command.command === "launchctl" && command.args.includes("print")) {
-        return {
-          ...command,
-          ok: startSeen,
-          exitCode: startSeen ? 0 : 3,
-          stdout: startSeen ? "state = running\ndisabled = false\n" : "",
-          stderr: "",
-          error: startSeen ? null : "launchd agent is not running",
-        };
-      }
-      if (command.command.toLowerCase().includes("schtasks")) {
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: startSeen ? "Status: Running\n" : "Status: Ready\n",
-          stderr: "",
-          error: null,
-        };
-      }
-      return {
-        ...command,
-        ok: true,
-        exitCode: 0,
-        stdout: `ran ${command.label}`,
-        stderr: "",
-        error: null,
-      };
-    },
-  });
-
   const install = await service.manageDaemonService(undefined, {
     action: "install",
+    mode: "persistent",
     apply: true,
-    runCommands: false,
   });
+  assert.equal(install.ok, true);
   assert.equal(install.installed, true);
-  assert.equal(calls.length, 0);
+  assert.equal(install.templateWritten, true);
 
+  calls.length = 0;
   const ensure = await service.manageDaemonService(undefined, {
     action: "ensure-running",
+    mode: "persistent",
     apply: true,
   });
-  const statusCommands = ensure.plan.selectedTemplate.commands.status || [];
-  const startCommands = ensure.plan.selectedTemplate.commands.start || [];
-  const expectedCalls = [
-    ...statusCommands,
-    ...startCommands,
-    ...statusCommands,
-  ].map((command) => `${command.command} ${command.args.join(" ")}`);
+  const expected = ensure.plan.selectedTemplate.commands.status || [];
+
+  assert.equal(ensure.ok, true);
   assert.equal(ensure.action, "ensure-running");
-  assert.equal(ensure.applied, true);
+  assert.equal(ensure.manager.mode, "persistent");
+  assert.equal(ensure.manager.state, "running");
   assert.equal(ensure.bootstrap.mode, "supervisor");
-  assert.equal(ensure.bootstrap.attempted, true);
   assert.equal(ensure.bootstrap.started, true);
   assert.equal(ensure.bootstrap.temporary, false);
   assert.equal(ensure.templateWritten, false);
   assert.equal(ensure.templateCurrent, true);
-  assert.deepEqual(calls, expectedCalls);
-  assert.equal(ensure.commandsRun.length, expectedCalls.length);
+  assert.deepEqual(
+    calls.map(({ command, args }) => ({ command, args })),
+    expected.map(({ command, args }) => ({ command, args })),
+  );
   assert.equal(ensure.commandsRun.some((command) => !command.ok), false);
-  assert.equal(ensure.serviceManager.checked, true);
-  assert.equal(ensure.serviceManager.active, true);
   assert.equal(ensure.serviceManager.lastError, null);
 });
-
-test("model gateway stop treats inactive supervised service as expected", async () => {
+test("model gateway stop returns structured persistent stopped state", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
-  let stopped = false;
+  const calls = [];
   const service = createModelGatewayService(config, {
+    homeDir: path.join(root, "home"),
     daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
-      const lowerLabel = command.label.toLowerCase();
-      if (lowerLabel.includes("stop") || lowerLabel.includes("bootout") || lowerLabel.includes("end")) {
-        stopped = true;
-      }
-      if (command.args.includes("is-active")) {
-        return {
-          ...command,
-          ok: !stopped,
-          exitCode: stopped ? 3 : 0,
-          stdout: stopped ? "inactive\n" : "active\n",
-          stderr: "",
-          error: stopped ? "Command failed." : null,
-        };
-      }
-      if (command.args.includes("is-enabled")) {
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: "enabled\n",
-          stderr: "",
-          error: null,
-        };
-      }
-      return {
-        ...command,
-        ok: true,
-        exitCode: 0,
-        stdout: `ran ${command.label}`,
-        stderr: "",
-        error: null,
-      };
-    },
-  });
-
-  const stoppedResult = await service.manageDaemonService(undefined, {
-    action: "stop",
-    runCommands: true,
-  });
-
-  assert.equal(stoppedResult.action, "stop");
-  assert.equal(stoppedResult.applied, true);
-  assert.equal(stoppedResult.serviceManager.checked, true);
-  assert.equal(stoppedResult.serviceManager.reachable, true);
-  assert.equal(stoppedResult.serviceManager.active, false);
-  assert.equal(stoppedResult.serviceManager.enabled, true);
-  assert.equal(stoppedResult.serviceManager.lastError, null);
-  assert.equal(stoppedResult.commandsRun.some((command) => !command.ok), false);
-});
-
-test("model gateway start reports bootstrap failure until daemon HTTP is ready", async () => {
-  const root = makeTempRoot();
-  const config = createTracevaneConfig(root);
-  const service = createModelGatewayService(config, {
-    daemonReadinessChecker: async (endpoint) => ({
-      endpoint,
-      ready: false,
-      statusCode: null,
-      error: "connection refused",
-    }),
-    daemonServiceCommandRunner: async (command) => {
-      let stdout = `ran ${command.label}`;
+      calls.push(command);
+      let stdout = "";
       if (command.args.includes("is-active")) stdout = "active\n";
       if (command.args.includes("is-enabled")) stdout = "enabled\n";
       return {
@@ -9137,227 +9247,221 @@ test("model gateway start reports bootstrap failure until daemon HTTP is ready",
     },
   });
 
+  await service.manageDaemonService(undefined, {
+    action: "install",
+    mode: "persistent",
+    apply: true,
+  });
+  calls.length = 0;
+
+  const stopped = await service.manageDaemonService(undefined, {
+    action: "stop",
+    mode: "persistent",
+    runCommands: true,
+  });
+  const expected = [
+    ...(stopped.plan.selectedTemplate.commands.status || []),
+    ...(stopped.plan.selectedTemplate.commands.stop || []),
+  ];
+
+  assert.equal(stopped.ok, true);
+  assert.equal(stopped.action, "stop");
+  assert.equal(stopped.applied, true);
+  assert.equal(stopped.manager.mode, "persistent");
+  assert.equal(stopped.manager.state, "stopped");
+  assert.equal(stopped.manager.active, false);
+  assert.equal(stopped.serviceManager.checked, true);
+  assert.equal(stopped.serviceManager.reachable, true);
+  assert.equal(stopped.serviceManager.lastError, null);
+  assert.deepEqual(
+    calls.map(({ command, args }) => ({ command, args })),
+    expected.map(({ command, args }) => ({ command, args })),
+  );
+  assert.equal(stopped.commandsRun.some((command) => !command.ok), false);
+});
+test("model gateway start reports degraded until daemon HTTP is ready", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config, {
+    homeDir: path.join(root, "home"),
+    daemonReadinessChecker: async () => false,
+    daemonServiceCommandRunner: async (command) => ({
+      ...command,
+      ok: true,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      error: null,
+    }),
+  });
+
   const result = await service.manageDaemonService(undefined, {
-    action: "start",
+    action: "install",
+    mode: "persistent",
     apply: true,
   });
 
-  assert.equal(result.action, "start");
-  assert.equal(result.serviceManager.active, true);
-  assert.equal(result.serviceManager.enabled, true);
-  assert.equal(result.serviceManager.lastError, null);
+  assert.equal(result.ok, false);
+  assert.equal(result.action, "install");
+  assert.equal(result.manager.mode, "persistent");
+  assert.equal(result.manager.state, "degraded");
+  assert.equal(result.manager.errorCode, "runtime-not-ready");
+  assert.equal(result.manager.active, null);
+  assert.equal(result.serviceManager.active, null);
+  assert.equal(result.serviceManager.lastError, "Persistent service did not become ready.");
   assert.equal(result.bootstrap.mode, "supervisor");
   assert.equal(result.bootstrap.started, false);
-  assert.equal(result.bootstrap.error, "connection refused");
+  assert.equal(result.bootstrap.error, "Persistent service did not become ready.");
 });
-
-test("model gateway ensure-running repairs stale installed supervisor templates", async () => {
+test("model gateway ensure-running repairs a platform-neutral stale template", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const calls = [];
-  let startSeen = false;
   const service = createModelGatewayService(config, {
+    homeDir: path.join(root, "home"),
     daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
-      calls.push(`${command.command} ${command.args.join(" ")}`);
-      const lowerLabel = command.label.toLowerCase();
-      if (lowerLabel.includes("start") || lowerLabel.includes("kickstart") || lowerLabel.includes("run scheduled task")) {
-        startSeen = true;
-      }
-      if (command.args.includes("is-active")) {
-        return {
-          ...command,
-          ok: startSeen,
-          exitCode: startSeen ? 0 : 3,
-          stdout: startSeen ? "active\n" : "inactive\n",
-          stderr: "",
-          error: startSeen ? null : "Command failed.",
-        };
-      }
-      if (command.args.includes("is-enabled")) {
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: "enabled\n",
-          stderr: "",
-          error: null,
-        };
-      }
+      calls.push(command);
+      let stdout = "";
+      if (command.args.includes("is-active")) stdout = "inactive\n";
+      if (command.args.includes("is-enabled")) stdout = "enabled\n";
       return {
         ...command,
         ok: true,
         exitCode: 0,
-        stdout: `ran ${command.label}`,
+        stdout,
         stderr: "",
         error: null,
       };
     },
   });
 
-  const install = await service.manageDaemonService(undefined, {
-    action: "install",
-    apply: true,
-    runCommands: false,
+  const preview = await service.manageDaemonService(undefined, {
+    action: "status",
+    mode: "persistent",
   });
-  const configPath = install.plan.selectedTemplate.configPath;
+  const configPath = preview.plan.selectedTemplate.configPath;
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(
     configPath,
-    fs.readFileSync(configPath, "utf8").replace(/^WorkingDirectory=(.+)$/m, 'WorkingDirectory="$1"'),
+    preview.plan.selectedTemplate.template + "\nTRACEVANE_STALE_MARKER\n",
     "utf8",
   );
 
   const ensure = await service.manageDaemonService(undefined, {
     action: "ensure-running",
+    mode: "persistent",
     apply: true,
   });
-  const installCommands = ensure.plan.selectedTemplate.commands.install || [];
-  const statusCommands = ensure.plan.selectedTemplate.commands.status || [];
-  const startCommands = ensure.plan.selectedTemplate.commands.start || [];
-  const expectedCalls = [
-    ...installCommands,
-    ...statusCommands,
-    ...startCommands,
-    ...statusCommands,
-  ].map((command) => `${command.command} ${command.args.join(" ")}`);
+  const selected = ensure.plan.selectedTemplate;
+  const expectedLifecycle = selected.supervisor === "launchd-user"
+    ? selected.commands.repair || []
+    : [
+      ...(selected.commands.repair || []),
+      ...(selected.commands.restart || []),
+    ];
+  const expected = [
+    ...(selected.commands.status || []),
+    ...expectedLifecycle,
+  ];
 
-  assert.equal(ensure.action, "ensure-running");
-  assert.equal(ensure.applied, true);
+  assert.equal(ensure.ok, true);
+  assert.equal(ensure.manager.state, "running");
   assert.equal(ensure.templateWritten, true);
   assert.equal(ensure.templateCurrent, true);
   assert.equal(ensure.bootstrap.mode, "supervisor");
   assert.equal(ensure.bootstrap.started, true);
   assert.equal(ensure.serviceManager.lastError, null);
-  assert.deepEqual(calls, expectedCalls);
-  const repairedTemplate = fs.readFileSync(configPath, "utf8");
-  assert.doesNotMatch(repairedTemplate, /^WorkingDirectory="/m);
+  assert.deepEqual(
+    calls.map(({ command, args }) => ({ command, args })),
+    expected.map(({ command, args }) => ({ command, args })),
+  );
+  assert.equal(
+    fs.readFileSync(configPath, "utf8"),
+    ensure.plan.selectedTemplate.template,
+  );
 });
-
-test("model gateway ensure-running restarts active supervisor after template repair", async () => {
+test("model gateway ensure-running executes one repair and restart sequence for active stale config", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
-  const paths = resolveModelGatewayPaths(config);
   const calls = [];
   const service = createModelGatewayService(config, {
+    homeDir: path.join(root, "home"),
     daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
-      calls.push(`${command.command} ${command.args.join(" ")}`);
-      if (command.args.includes("is-active")) {
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: "active\n",
-          stderr: "",
-          error: null,
-        };
-      }
-      if (command.args.includes("is-enabled")) {
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: "enabled\n",
-          stderr: "",
-          error: null,
-        };
-      }
+      calls.push(command);
+      let stdout = "";
+      if (command.args.includes("is-active")) stdout = "active\n";
+      if (command.args.includes("is-enabled")) stdout = "enabled\n";
       return {
         ...command,
         ok: true,
         exitCode: 0,
-        stdout: `ran ${command.label}`,
+        stdout,
         stderr: "",
         error: null,
       };
     },
   });
 
-  const install = await service.manageDaemonService(undefined, {
-    action: "install",
-    apply: true,
-    runCommands: false,
+  const preview = await service.manageDaemonService(undefined, {
+    action: "status",
+    mode: "persistent",
   });
-  const configPath = install.plan.selectedTemplate.configPath;
+  const configPath = preview.plan.selectedTemplate.configPath;
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(
     configPath,
-    fs.readFileSync(configPath, "utf8").replace(/^Environment="MODEL_GATEWAY_SUPERVISOR=systemd-user"$/m, ""),
+    preview.plan.selectedTemplate.template + "\nTRACEVANE_ACTIVE_STALE_MARKER\n",
     "utf8",
   );
-  fs.mkdirSync(path.dirname(paths.daemonRuntime), { recursive: true });
-  fs.writeFileSync(paths.daemonRuntime, `${JSON.stringify({
-    version: 1,
-    updatedAt: "2026-06-04T00:00:00.000Z",
-    pid: process.pid,
-    startedAt: "2026-06-04T00:00:00.000Z",
-    host: "127.0.0.1",
-    port: 18796,
-    endpoint: "http://127.0.0.1:18796/v1",
-    supervisor: "systemd-user",
-    serviceName: "tracevane-model-gateway.service",
-    lockFile: paths.portLock,
-  }, null, 2)}\n`);
 
   const ensure = await service.manageDaemonService(undefined, {
     action: "ensure-running",
+    mode: "persistent",
     apply: true,
   });
-  const installCommands = ensure.plan.selectedTemplate.commands.install || [];
-  const statusCommands = ensure.plan.selectedTemplate.commands.status || [];
-  const restartCommands = ensure.plan.selectedTemplate.commands.restart || [];
-  const expectedCalls = [
-    ...installCommands,
-    ...statusCommands,
-    ...restartCommands,
-    ...statusCommands,
-  ].map((command) => `${command.command} ${command.args.join(" ")}`);
+  const selected = ensure.plan.selectedTemplate;
+  const expectedLifecycle = selected.supervisor === "launchd-user"
+    ? selected.commands.repair || []
+    : [
+      ...(selected.commands.repair || []),
+      ...(selected.commands.restart || []),
+    ];
+  const expected = [
+    ...(selected.commands.status || []),
+    ...expectedLifecycle,
+  ];
 
+  assert.equal(ensure.ok, true);
+  assert.equal(ensure.manager.state, "running");
   assert.equal(ensure.templateWritten, true);
   assert.equal(ensure.templateCurrent, true);
   assert.equal(ensure.bootstrap.started, true);
-  assert.equal(ensure.serviceManager.lastError, null);
-  assert.deepEqual(calls, expectedCalls);
-  assert.match(fs.readFileSync(configPath, "utf8"), /^Environment="MODEL_GATEWAY_SUPERVISOR=systemd-user"$/m);
+  assert.deepEqual(
+    calls.map(({ command, args }) => ({ command, args })),
+    expected.map(({ command, args }) => ({ command, args })),
+  );
+  assert.equal(calls.length, expected.length);
+  assert.equal(
+    fs.readFileSync(configPath, "utf8"),
+    ensure.plan.selectedTemplate.template,
+  );
 });
-
-test("model gateway ensure-running installs supervisor template before starting when missing", async () => {
+test("model gateway ensure-running installs then starts a missing persistent service", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const calls = [];
-  let startSeen = false;
   const service = createModelGatewayService(config, {
+    homeDir: path.join(root, "home"),
     daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
-      calls.push(`${command.command} ${command.args.join(" ")}`);
-      const lowerLabel = command.label.toLowerCase();
-      if (lowerLabel.includes("start") || lowerLabel.includes("kickstart") || lowerLabel.includes("run scheduled task")) {
-        startSeen = true;
-      }
-      if (command.args.includes("is-active")) {
-        return {
-          ...command,
-          ok: startSeen,
-          exitCode: startSeen ? 0 : 3,
-          stdout: startSeen ? "active\n" : "inactive\n",
-          stderr: "",
-          error: startSeen ? null : "Command failed.",
-        };
-      }
-      if (command.args.includes("is-enabled")) {
-        return {
-          ...command,
-          ok: true,
-          exitCode: 0,
-          stdout: "enabled\n",
-          stderr: "",
-          error: null,
-        };
-      }
+      calls.push(command);
       return {
         ...command,
         ok: true,
         exitCode: 0,
-        stdout: `ran ${command.label}`,
+        stdout: "",
         stderr: "",
         error: null,
       };
@@ -9366,73 +9470,87 @@ test("model gateway ensure-running installs supervisor template before starting 
 
   const preview = await service.manageDaemonService(undefined, {
     action: "ensure-running",
+    mode: "persistent",
   });
   assert.equal(preview.action, "ensure-running");
   assert.equal(preview.applied, false);
   assert.equal(preview.installed, false);
-  assert.equal(preview.bootstrap.mode, "blocked");
+  assert.equal(preview.manager.errorCode, "task-not-found");
+  assert.equal(preview.commandsRun.length, 0);
 
   const ensure = await service.manageDaemonService(undefined, {
     action: "ensure-running",
+    mode: "persistent",
     apply: true,
   });
-  const installCommands = ensure.plan.selectedTemplate.commands.install || [];
-  const statusCommands = ensure.plan.selectedTemplate.commands.status || [];
-  const startCommands = ensure.plan.selectedTemplate.commands.start || [];
-  const expectedCalls = [
-    ...installCommands,
-    ...statusCommands,
-    ...startCommands,
-    ...statusCommands,
-  ].map((command) => `${command.command} ${command.args.join(" ")}`);
+  const selected = ensure.plan.selectedTemplate;
+  const expected = selected.supervisor === "launchd-user"
+    ? selected.commands.start || []
+    : [
+      ...(selected.commands.install || []),
+      ...(selected.commands.start || []),
+    ];
 
+  assert.equal(ensure.ok, true);
   assert.equal(ensure.action, "ensure-running");
   assert.equal(ensure.applied, true);
   assert.equal(ensure.templateWritten, true);
   assert.equal(ensure.templateCurrent, true);
   assert.equal(ensure.installed, true);
+  assert.equal(ensure.manager.state, "running");
   assert.equal(ensure.bootstrap.mode, "supervisor");
   assert.equal(ensure.bootstrap.started, true);
   assert.equal(ensure.serviceManager.lastError, null);
-  assert.deepEqual(calls, expectedCalls);
+  assert.deepEqual(
+    calls.map(({ command, args }) => ({ command, args })),
+    expected.map(({ command, args }) => ({ command, args })),
+  );
 });
-
-test("model gateway daemon service status summarizes supervisor command failures", async () => {
+test("model gateway daemon service ignores localized text for generic exit failures", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config, {
-    daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
-      if (command.args.includes("is-active")) {
-        return {
-          ...command,
-          ok: false,
-          exitCode: 3,
-          stdout: "inactive\n",
-          stderr: "",
-          error: "Command failed.",
-        };
-      }
       return {
         ...command,
         ok: false,
-        exitCode: null,
-        stdout: "",
+        exitCode: 1,
+        stdout: "系统找不到指定的任务。\n",
         stderr: "",
-        error: `spawn ${command.command} ENOENT`,
+        error: "系统找不到指定的文件。",
       };
     },
   });
 
+  const preview = await service.manageDaemonService(undefined, {
+    action: "status",
+    mode: "persistent",
+  });
+  fs.mkdirSync(path.dirname(preview.plan.selectedTemplate.configPath), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    preview.plan.selectedTemplate.configPath,
+    preview.plan.selectedTemplate.template,
+    "utf8",
+  );
   const status = await service.manageDaemonService(undefined, {
     action: "status",
+    mode: "persistent",
     runCommands: true,
   });
   assert.equal(status.action, "status");
+  assert.equal(status.ok, false);
+  assert.equal(status.manager.errorCode, "unknown");
+  assert.equal(status.manager.state, "unknown");
   assert.equal(status.serviceManager.checked, true);
-  assert.equal(status.serviceManager.reachable, false);
-  assert.notEqual(status.serviceManager.active, true);
-  assert.match(status.serviceManager.lastError || "", /daemon|launchd|scheduled/i);
+  assert.equal(status.serviceManager.reachable, true);
+  assert.equal(status.commandsRun[0].errorCode, "unknown");
+  assert.equal(
+    status.commandsRun[0].error,
+    "Persistent supervisor operation failed.",
+  );
+  assert.doesNotMatch(status.commandsRun[0].error, /找不到/);
 });
 
 test("model gateway daemon writes runtime metadata and serves cli routes", async () => {
@@ -9493,6 +9611,11 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
     assert.equal(metadata.lockFile, paths.portLock);
     assert.equal(fs.readFileSync(paths.daemonPid, "utf8").trim(), String(process.pid));
     assert.equal(JSON.parse(fs.readFileSync(paths.daemonRuntime, "utf8")).pid, process.pid);
+    assert.equal(
+      removeOwnedRuntimeMetadata(paths.daemonRuntime, process.pid + 1),
+      false,
+    );
+    assert.equal(fs.existsSync(paths.daemonRuntime), true);
     assert.equal(JSON.parse(fs.readFileSync(paths.portLock, "utf8")).port, metadata.port);
 
     const status = await requestJson(`${daemon.getBaseUrl()}/gateway/status`);
@@ -9645,12 +9768,22 @@ test("model gateway child daemon keeps serving after Tracevane API listener shut
   const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const api = await startHttpServer(handler);
   let apiClosed = false;
-  const child = spawn(process.execPath, [path.join(process.cwd(), "dist/apps/api/model-gateway-daemon.js")], {
+  const child = spawn(process.execPath, [
+    path.join(process.cwd(), "dist/apps/api/model-gateway-daemon.js"),
+    "--config",
+    config.openclawConfigFile,
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--supervisor",
+    "session",
+    "--service-name",
+    "tracevane-model-gateway.service",
+  ], {
     env: {
       ...process.env,
-      OPENCLAW_STATE_DIR: config.openclawRoot,
-      MODEL_GATEWAY_PORT: "0",
-      MODEL_GATEWAY_SUPERVISOR: "none",
+      OPENCLAW_STATE_DIR: path.join(root, "decoy-state"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -9674,6 +9807,8 @@ test("model gateway child daemon keeps serving after Tracevane API listener shut
     assert.equal(metadata.pid, child.pid);
     assert.equal(metadata.host, "127.0.0.1");
     assert.ok(metadata.port > 0);
+    assert.equal(metadata.supervisor, "session");
+    assert.equal(metadata.serviceName, "tracevane-model-gateway.service");
 
     const apiStatus = await requestJson(`${api.baseUrl}/api/model-gateway/status`);
     assert.equal(apiStatus.status, 200);
@@ -9705,7 +9840,7 @@ test("model gateway child daemon keeps serving after Tracevane API listener shut
     assert.equal(chat.body.choices[0].message.content, "child daemon ok");
   } finally {
     if (!apiClosed) await api.close().catch(() => {});
-    await stopChild(child);
+    await stopChild(child, paths.daemonRuntime);
     await upstream.close();
   }
 
@@ -9764,12 +9899,24 @@ test("model gateway direct daemon endpoint survives OpenClaw single-port mount s
   const mountHandler = createTracevaneRequestHandler(ctx, { stripBasePath: "/tracevane" });
   const mount = await startHttpServer(mountHandler);
   let mountClosed = false;
-  const child = spawn(process.execPath, [path.join(process.cwd(), "dist/apps/api/model-gateway-daemon.js")], {
+  const child = spawn(process.execPath, [
+    path.join(process.cwd(), "dist/apps/api/model-gateway-daemon.js"),
+    "--state-dir",
+    config.openclawRoot,
+    "--config",
+    config.openclawConfigFile,
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--supervisor",
+    "session",
+    "--service-name",
+    "tracevane-model-gateway.service",
+  ], {
     env: {
       ...process.env,
-      OPENCLAW_STATE_DIR: config.openclawRoot,
-      MODEL_GATEWAY_PORT: "0",
-      MODEL_GATEWAY_SUPERVISOR: "none",
+      OPENCLAW_STATE_DIR: path.join(root, "decoy-state"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -9823,7 +9970,7 @@ test("model gateway direct daemon endpoint survives OpenClaw single-port mount s
     assert.equal(chat.body.choices[0].message.content, "mount fallback ok");
   } finally {
     if (!mountClosed) await mount.close().catch(() => {});
-    await stopChild(child);
+    await stopChild(child, paths.daemonRuntime);
     await upstream.close();
   }
 

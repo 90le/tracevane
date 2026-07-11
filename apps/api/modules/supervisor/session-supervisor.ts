@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import process from "node:process";
 import type {
   TracevaneServiceManagerStatus,
@@ -6,6 +7,7 @@ import type {
 } from "../../../../types/supervisor.js";
 import type { ServiceDefinition } from "./contracts.js";
 import { runSupervisorCommand } from "./command-runner.js";
+import { createServiceLaunchArguments } from "./platform-plans.js";
 
 type ServiceId = ServiceDefinition["id"];
 
@@ -43,6 +45,22 @@ interface SessionEntry {
   stopping: boolean;
   lastErrorCode: TracevaneSupervisorErrorCode | null;
   lastErrorMessage: string | null;
+}
+
+export function removeOwnedRuntimeMetadata(
+  runtimePath: string,
+  ownedPid: number,
+): boolean {
+  try {
+    const metadata = JSON.parse(fs.readFileSync(runtimePath, "utf8")) as {
+      pid?: unknown;
+    };
+    if (metadata?.pid !== ownedPid) return false;
+    fs.unlinkSync(runtimePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function waitForClose(child: ChildProcess, timeoutMs: number): Promise<boolean> {
@@ -175,6 +193,9 @@ export function createSessionSupervisor(
     signal: NodeJS.Signals | null,
   ) => {
     if (entry.child !== child) return;
+    if (typeof child.pid === "number") {
+      removeOwnedRuntimeMetadata(entry.definition.runtimePath, child.pid);
+    }
     entry.child = null;
     if (disposed || entry.stopping) {
       entry.state = "stopped";
@@ -210,7 +231,7 @@ export function createSessionSupervisor(
     try {
       child = spawn(
         process.execPath,
-        [entry.definition.entryPath, ...entry.definition.args],
+        createServiceLaunchArguments(entry.definition),
         {
           cwd: entry.definition.workingDirectory,
           shell: false,
@@ -341,6 +362,9 @@ export function createSessionSupervisor(
       entry.lastErrorMessage =
         `Owned session process ${child.pid ?? "unknown"} did not exit.`;
       return false;
+    }
+    if (typeof child.pid === "number") {
+      removeOwnedRuntimeMetadata(entry.definition.runtimePath, child.pid);
     }
     entry.child = null;
     entry.state = "stopped";

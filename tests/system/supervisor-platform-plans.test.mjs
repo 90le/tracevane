@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 
 import {
+  createServiceLaunchArguments,
   createSupervisorPlan,
 } from "../../dist/apps/api/modules/supervisor/index.js";
 
@@ -58,6 +59,12 @@ function validateWindowsTaskXml(template) {
 
 test("platform plans are user-scoped and pass config as an argument", () => {
   const definition = fixtureDefinition();
+  assert.deepEqual(createServiceLaunchArguments(definition), [
+    definition.entryPath,
+    ...definition.args,
+    "--config",
+    definition.configPath,
+  ]);
   const previousHttpProxy = process.env.HTTP_PROXY;
   const previousStateDir = process.env.OPENCLAW_STATE_DIR;
   process.env.HTTP_PROXY = "http://proxy-user:proxy-secret@127.0.0.1:18080";
