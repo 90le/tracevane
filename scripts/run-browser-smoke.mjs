@@ -37,7 +37,10 @@ function parsePort(value, optionName) {
   return port;
 }
 
-export function parseBrowserSmokeArgs(argv = process.argv.slice(2)) {
+export function parseBrowserSmokeArgs(
+  argv = process.argv.slice(2),
+  env = process.env,
+) {
   const separatorIndex = argv.indexOf("--");
   if (separatorIndex < 0) {
     throw usageError("A smoke command is required after --");
@@ -53,10 +56,18 @@ export function parseBrowserSmokeArgs(argv = process.argv.slice(2)) {
       allowPositionals: false,
       args: argv.slice(0, separatorIndex),
       options: {
-        "api-port": { default: String(DEFAULT_API_PORT), type: "string" },
+        "api-port": { type: "string" },
+        "api-port-fallback": {
+          default: String(DEFAULT_API_PORT),
+          type: "string",
+        },
         "external-api": { default: false, type: "boolean" },
         "force-optimize": { default: false, type: "boolean" },
-        "web-port": { default: String(DEFAULT_WEB_PORT), type: "string" },
+        "web-port": { type: "string" },
+        "web-port-fallback": {
+          default: String(DEFAULT_WEB_PORT),
+          type: "string",
+        },
       },
       strict: true,
     }));
@@ -64,9 +75,25 @@ export function parseBrowserSmokeArgs(argv = process.argv.slice(2)) {
     throw usageError(error instanceof Error ? error.message : String(error), error);
   }
 
-  const webPort = parsePort(values["web-port"], "--web-port");
-  const apiPort = parsePort(values["api-port"], "--api-port");
+  const webPortFallback = parsePort(
+    values["web-port-fallback"],
+    "--web-port-fallback",
+  );
+  const apiPortFallback = parsePort(
+    values["api-port-fallback"],
+    "--api-port-fallback",
+  );
   const externalApi = values["external-api"];
+  const webPort = values["web-port"] !== undefined
+    ? parsePort(values["web-port"], "--web-port")
+    : env.TRACEVANE_WEB_PORT !== undefined
+      ? parsePort(env.TRACEVANE_WEB_PORT, "TRACEVANE_WEB_PORT")
+      : webPortFallback;
+  const apiPort = values["api-port"] !== undefined
+    ? parsePort(values["api-port"], "--api-port")
+    : externalApi && env.TRACEVANE_API_PORT !== undefined
+      ? parsePort(env.TRACEVANE_API_PORT, "TRACEVANE_API_PORT")
+      : apiPortFallback;
   if (externalApi && webPort === apiPort) {
     throw usageError("--web-port and --api-port must differ with --external-api");
   }
