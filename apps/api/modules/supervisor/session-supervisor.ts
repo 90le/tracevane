@@ -37,6 +37,7 @@ interface SessionEntry {
   state: SessionServiceStatus["state"];
   restartCount: number;
   restartTimer: NodeJS.Timeout | null;
+  stopPromise: Promise<void> | null;
   stopping: boolean;
   lastErrorCode: TracevaneSupervisorErrorCode | null;
   lastErrorMessage: string | null;
@@ -302,6 +303,13 @@ export function createSessionSupervisor(
     entry.lastErrorMessage = null;
   }
 
+  function stopEntryOnce(entry: SessionEntry): Promise<void> {
+    entry.stopPromise ??= stopEntry(entry).finally(() => {
+      entry.stopPromise = null;
+    });
+    return entry.stopPromise;
+  }
+
   return {
     async start(definition) {
       if (disposed) {
@@ -309,6 +317,10 @@ export function createSessionSupervisor(
       }
       let entry = entries.get(definition.id);
       if (entry) {
+        if (entry.stopPromise) await entry.stopPromise;
+        if (disposed) {
+          throw new Error("Session supervisor has been disposed.");
+        }
         entry.definition = definition;
         entry.stopping = false;
         if (
@@ -327,6 +339,7 @@ export function createSessionSupervisor(
           state: "stopped",
           restartCount: 0,
           restartTimer: null,
+          stopPromise: null,
           stopping: false,
           lastErrorCode: null,
           lastErrorMessage: null,
@@ -345,14 +358,16 @@ export function createSessionSupervisor(
     async stop(serviceId) {
       const entry = entries.get(serviceId);
       if (!entry) return stoppedStatus();
-      await stopEntry(entry);
+      await stopEntryOnce(entry);
       return entryStatus(entry);
     },
 
     async dispose() {
       if (disposed) return;
       disposed = true;
-      await Promise.all([...entries.values()].map((entry) => stopEntry(entry)));
+      await Promise.all(
+        [...entries.values()].map((entry) => stopEntryOnce(entry)),
+      );
       for (const [serviceId, entry] of entries) {
         if (!entry.child) entries.delete(serviceId);
       }

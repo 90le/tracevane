@@ -248,6 +248,29 @@ test("explicit stop during restart backoff prevents another spawn", async () => 
   }
 });
 
+test("start waits for an in-flight stop instead of returning the dying child", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-race-"));
+  const supervisor = createSessionSupervisor({ stopGraceMs: 100 });
+  try {
+    const definition = fixtureDefinition(root);
+    const first = await supervisor.start(definition);
+    const stopping = supervisor.stop("model-gateway");
+    const starting = supervisor.start(definition);
+    await stopping;
+    const restarted = await starting;
+    assert.equal(restarted.state, "running");
+    assert.notEqual(restarted.pid, first.pid);
+    assert.equal(
+      (await supervisor.status("model-gateway")).pid,
+      restarted.pid,
+    );
+    await waitForProcessExit(first.pid);
+  } finally {
+    await supervisor.dispose();
+    await removeRoot(root);
+  }
+});
+
 test("restart budget exhaustion reaches failed without an infinite timer", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-failed-"));
   const counterPath = path.join(root, "count.txt");
