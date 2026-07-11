@@ -410,6 +410,20 @@ test("concurrent dispose callers await the same cleanup", async () => {
   }
 });
 
+test("dispose racing spawn readiness prevents start from returning a dying pid", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-start-dispose-"));
+  const supervisor = createSessionSupervisor({ stopGraceMs: 100 });
+  try {
+    const starting = supervisor.start(fixtureDefinition(root));
+    const disposing = supervisor.dispose();
+    await assert.rejects(starting, /disposed/);
+    await disposing;
+  } finally {
+    await supervisor.dispose();
+    await removeRoot(root);
+  }
+});
+
 test("dispose rejects when owned cleanup cannot terminate the child", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-dispose-failure-"));
   const supervisor = createSessionSupervisor({
@@ -424,7 +438,11 @@ test("dispose rejects when owned cleanup cannot terminate the child", async () =
       supervisor.dispose(),
       /did not exit/,
     );
+    const failed = await supervisor.status("model-gateway");
     assert.equal(processIsAlive(pid), true);
+    assert.equal(failed.state, "failed");
+    assert.equal(failed.active, true);
+    assert.equal(failed.pid, pid);
   } finally {
     if (pid && processIsAlive(pid)) {
       process.kill(pid, "SIGKILL");

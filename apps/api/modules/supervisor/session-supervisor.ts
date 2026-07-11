@@ -102,7 +102,7 @@ function entryStatus(entry: SessionEntry): SessionServiceStatus {
     supervisor: "session",
     installed: false,
     enabled: null,
-    active: state === "starting" ? null : state === "running" && live,
+    active: state === "starting" ? null : live,
     state,
     configCurrent: true,
     checkedAt: new Date().toISOString(),
@@ -146,8 +146,10 @@ export function createSessionSupervisor(
     }
     if (entry.restartCount >= maxRestarts) {
       entry.state = "failed";
-      entry.lastErrorCode = "runtime-not-ready";
-      entry.lastErrorMessage = `Session process exited after ${maxRestarts} restart attempts.`;
+      entry.lastErrorCode ??= "runtime-not-ready";
+      entry.lastErrorMessage = entry.lastErrorMessage
+        ? `${entry.lastErrorMessage} Restart budget exhausted after ${maxRestarts} attempts.`
+        : `Session process exited after ${maxRestarts} restart attempts.`;
       return;
     }
     entry.restartCount += 1;
@@ -354,6 +356,19 @@ export function createSessionSupervisor(
     return entry.stopPromise;
   }
 
+  async function finishStartTransition(entry: SessionEntry): Promise<void> {
+    if (entry.stopPromise) await entry.stopPromise;
+    if (!disposed) return;
+    await disposePromise?.catch(() => undefined);
+    throw new Error("Session supervisor has been disposed.");
+  }
+
+  function assertStartAllowed(): void {
+    if (disposed) {
+      throw new Error("Session supervisor has been disposed.");
+    }
+  }
+
   return {
     async start(definition) {
       if (disposed) {
@@ -362,9 +377,8 @@ export function createSessionSupervisor(
       let entry = entries.get(definition.id);
       if (entry) {
         if (entry.stopPromise) await entry.stopPromise;
-        if (disposed) {
-          throw new Error("Session supervisor has been disposed.");
-        }
+        await finishStartTransition(entry);
+        assertStartAllowed();
         entry.stopping = false;
         if (
           entry.child &&
@@ -372,6 +386,8 @@ export function createSessionSupervisor(
           entry.child.signalCode === null
         ) {
           if (entry.spawnPromise) await entry.spawnPromise;
+          await finishStartTransition(entry);
+          assertStartAllowed();
           return entryStatus(entry);
         }
         entry.definition = definition;
@@ -393,6 +409,8 @@ export function createSessionSupervisor(
         entries.set(definition.id, entry);
       }
       await spawnEntry(entry);
+      await finishStartTransition(entry);
+      assertStartAllowed();
       return entryStatus(entry);
     },
 
