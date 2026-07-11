@@ -85,6 +85,43 @@ Run the development environment:
 npm run dev:restart
 ```
 
+The Node-based development launcher is supported on Windows, macOS, and Linux;
+it starts the API and web server in the background, records structured
+ownership metadata and logs under `.tmp/dev-runtime`, and restarts either
+worker if it exits. `dev:restart` requests API port `3761` with a safe upward
+free-port fallback and requires Web port `5176` to be free. It never stops an
+unrelated listener merely because it occupies a requested port.
+
+`npm run dev:fresh` performs a full build, starts the standalone API on
+`3761`, and starts the proxying frontend on `5177`. Both launch modes prove
+the API health endpoint through the frontend proxy before publishing their
+`ports.env` or `runtime.env` file. Stop launcher-owned process trees with:
+
+```bash
+node scripts/dev-runtime.mjs stop
+```
+
+The checkout requires a single native Node/npm environment. Do not share a
+`node_modules` directory between Windows and WSL/Linux because optional native
+dependencies are platform-specific. If you change environments, remove
+`node_modules` and `apps/web/node_modules`, then run `npm ci` in the selected
+environment.
+
+If the default web port is occupied, select another port without stopping an
+unrelated process:
+
+```powershell
+$env:TRACEVANE_WEB_PORT = "5180"; npm run dev:restart
+```
+
+```bash
+TRACEVANE_WEB_PORT=5180 npm run dev:restart
+```
+
+Use `TRACEVANE_API_PORT` in the same platform-specific form to request a
+different API port. Invalid or occupied fixed ports fail explicitly; the
+launcher never discovers and kills a port owner.
+
 Useful focused commands:
 
 ```bash
