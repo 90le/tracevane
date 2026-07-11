@@ -112,6 +112,7 @@ test("platform plans are user-scoped and pass config as an argument", () => {
     assert.match(windows.template, /<AllowStartOnDemand>true<\/AllowStartOnDemand>/);
     assert.match(windows.template, /<RestartOnFailure>/);
     assert.match(windows.template, /<Interval>PT1M<\/Interval>/);
+    assert.match(windows.template, /<Count>255<\/Count>/);
     assert.match(windows.template, /<ExecutionTimeLimit>PT0S<\/ExecutionTimeLimit>/);
     assert.match(windows.template, /<StartWhenAvailable>true<\/StartWhenAvailable>/);
     assert.match(windows.template, /<DisallowStartIfOnBatteries>false<\/DisallowStartIfOnBatteries>/);
@@ -120,6 +121,12 @@ test("platform plans are user-scoped and pass config as an argument", () => {
     assert.match(windows.template, /项目/);
     assert.match(windows.template, /&amp;/);
     assert.match(windows.template, /&quot;/);
+    assert.match(windows.template, /windows-service-watchdog\.js/);
+    const watchdogIndex = windows.template.indexOf("windows-service-watchdog.js");
+    const delimiterIndex = windows.template.indexOf(" -- ", watchdogIndex);
+    const daemonIndex = windows.template.indexOf("daemon worker.js", delimiterIndex);
+    assert.ok(watchdogIndex >= 0 && watchdogIndex < delimiterIndex);
+    assert.ok(delimiterIndex < daemonIndex);
     assert.doesNotMatch(windows.template, /OPENCLAW_STATE_DIR=/);
     assert.doesNotMatch(windows.template, /HTTP_PROXY|HTTPS_PROXY|proxy-secret/i);
     assert.deepEqual(windows.commands.install?.[0], {

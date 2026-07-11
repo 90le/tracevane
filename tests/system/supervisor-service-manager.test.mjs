@@ -826,6 +826,151 @@ test("persistent running + uninstall stops, unregisters, removes, and returns se
   }
 });
 
+test("systemd uninstall reloads only after the unit file is removed", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-systemd-uninstall-"));
+  const definition = fixtureDefinition(root);
+  const plan = createSupervisorPlan(definition, "linux", root);
+  fs.mkdirSync(path.dirname(plan.configPath), { recursive: true });
+  fs.writeFileSync(plan.configPath, plan.template, "utf8");
+  const order = [];
+  const fileSystem = recordingFileSystem([]);
+  const originalUnlink = fileSystem.unlink;
+  fileSystem.unlink = async (...args) => {
+    order.push("unlink");
+    return originalUnlink(...args);
+  };
+  const { session } = createFakeSession();
+  const manager = createServiceManager({
+    platform: "linux",
+    homeDir: root,
+    session,
+    fs: fileSystem,
+    runner: async (command) => {
+      order.push(`command:${command.label}`);
+      if (command.args.includes("is-active")) {
+        return commandResult(command, { stdout: "active\n" });
+      }
+      if (command.args.includes("is-enabled")) {
+        return commandResult(command, { stdout: "enabled\n" });
+      }
+      return commandResult(command);
+    },
+    probe: async () => true,
+  });
+
+  try {
+    const response = await manager.manage(definition, {
+      action: "uninstall",
+      mode: "persistent",
+      apply: true,
+    });
+
+    assert.equal(response.ok, true);
+    assert.deepEqual(order, [
+      "command:Check user service active state",
+      "command:Check user service enabled state",
+      "command:Stop user service",
+      "command:Disable user service",
+      "unlink",
+      "command:Reload user systemd units",
+    ]);
+    assert.deepEqual(response.commands.map(({ label }) => label), [
+      "Check user service active state",
+      "Check user service enabled state",
+      "Stop user service",
+      "Disable user service",
+      "Reload user systemd units",
+    ]);
+    assert.equal(fs.existsSync(plan.configPath), false);
+  } finally {
+    await manager.dispose();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("systemd post-unlink reload failure is reported and retry reloads successfully", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-systemd-reload-fail-"));
+  const definition = fixtureDefinition(root);
+  const plan = createSupervisorPlan(definition, "linux", root);
+  fs.mkdirSync(path.dirname(plan.configPath), { recursive: true });
+  fs.writeFileSync(plan.configPath, plan.template, "utf8");
+  const order = [];
+  const fileSystem = recordingFileSystem([]);
+  const originalUnlink = fileSystem.unlink;
+  fileSystem.unlink = async (...args) => {
+    order.push("unlink");
+    return originalUnlink(...args);
+  };
+  const { session } = createFakeSession();
+  let reloadAttempts = 0;
+  const manager = createServiceManager({
+    platform: "linux",
+    homeDir: root,
+    session,
+    fs: fileSystem,
+    runner: async (command) => {
+      order.push(`command:${command.label}`);
+      if (command.args.includes("is-active")) {
+        return commandResult(command, { stdout: "active\n" });
+      }
+      if (command.args.includes("is-enabled")) {
+        return commandResult(command, { stdout: "enabled\n" });
+      }
+      if (command.args.includes("daemon-reload")) {
+        reloadAttempts += 1;
+        if (reloadAttempts === 1) {
+          return commandResult(command, {
+            errorCode: "command-timeout",
+            errorMessage: "Supervisor command timed out.",
+            exitCode: null,
+            ok: false,
+          });
+        }
+      }
+      return commandResult(command);
+    },
+    probe: async () => true,
+  });
+
+  try {
+    const response = await manager.manage(definition, {
+      action: "uninstall",
+      mode: "persistent",
+      apply: true,
+    });
+
+    assert.equal(response.ok, false);
+    assert.equal(response.manager.installed, true);
+    assert.equal(response.manager.enabled, false);
+    assert.equal(response.manager.active, false);
+    assert.equal(response.manager.state, "failed");
+    assert.equal(response.manager.errorCode, "command-timeout");
+    assert.equal(response.manager.configCurrent, false);
+    assert.equal(response.configCurrent, false);
+    assert.equal(response.commands.at(-1).label, "Reload user systemd units");
+    assert.equal(response.commands.at(-1).errorCode, "command-timeout");
+    assert.ok(
+      order.indexOf("unlink") <
+        order.indexOf("command:Reload user systemd units"),
+    );
+    assert.equal(fs.existsSync(plan.configPath), false);
+
+    const retry = await manager.manage(definition, {
+      action: "uninstall",
+      mode: "persistent",
+      apply: true,
+    });
+    assert.equal(retry.ok, true);
+    assert.equal(reloadAttempts, 2);
+    assert.deepEqual(retry.commands.map(({ label }) => label), [
+      "Reload user systemd units",
+    ]);
+  } finally {
+    await manager.dispose();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("session start refuses to create an owner when persistent stop fails", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-to-session-"));
   const definition = fixtureDefinition(root);

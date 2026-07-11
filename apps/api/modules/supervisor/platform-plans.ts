@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   CreateSupervisorPlanOptions,
   ServiceDefinition,
@@ -130,7 +131,12 @@ function buildWindowsTaskTemplate(
   args: string[],
   windowsUserId: string,
 ): string {
-  const argumentLine = args.map(quoteWindowsArgument).join(" ");
+  const watchdogPath = fileURLToPath(
+    new URL("./windows-service-watchdog.js", import.meta.url),
+  );
+  const argumentLine = [watchdogPath, "--", ...args]
+    .map(quoteWindowsArgument)
+    .join(" ");
   const escapedUserId = escapeXml(windowsUserId);
   return [
     '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">',
@@ -158,7 +164,7 @@ function buildWindowsTaskTemplate(
     "    <StartWhenAvailable>true</StartWhenAvailable>",
     "    <RestartOnFailure>",
     "      <Interval>PT1M</Interval>",
-    "      <Count>999</Count>",
+    "      <Count>255</Count>",
     "    </RestartOnFailure>",
     "    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
     "  </Settings>",

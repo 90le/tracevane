@@ -111,13 +111,26 @@ function lifecycleCommands(
   ];
 }
 
+function systemdPostUnlinkCommands(plan: SupervisorPlan): SupervisorCommand[] {
+  if (plan.supervisor !== "systemd-user") return [];
+  return (plan.commands.uninstall ?? []).filter((command) =>
+    command.command === "systemctl" &&
+    command.args.length === 2 &&
+    command.args[0] === "--user" &&
+    command.args[1] === "daemon-reload"
+  );
+}
+
 function uninstallCommands(plan: SupervisorPlan): SupervisorCommand[] {
   if (plan.supervisor === "launchd-user") {
     return [...(plan.commands.uninstall ?? [])];
   }
+  const postUnlinkCommands = systemdPostUnlinkCommands(plan);
   return [
     ...(plan.commands.stop ?? []),
-    ...(plan.commands.uninstall ?? []),
+    ...(plan.commands.uninstall ?? []).filter((command) =>
+      !postUnlinkCommands.includes(command)
+    ),
   ];
 }
 
@@ -910,11 +923,42 @@ export function createServiceManager(
             };
           }
         }
+        const postUnlinkSequence = await runSequence(
+          systemdPostUnlinkCommands(plan),
+          request.action,
+        );
+        if (!postUnlinkSequence.ok) {
+          const errorCode = classifySupervisorFailure(
+            postUnlinkSequence.failure!,
+          );
+          return {
+            ok: false,
+            action: request.action,
+            manager: persistentManagerStatus(plan, {
+              installed: true,
+              enabled: false,
+              active: false,
+              state: "failed",
+              configCurrent: false,
+              errorCode,
+              errorMessage: stableErrorMessage(errorCode),
+            }),
+            commands: [
+              ...inspection.commands,
+              ...postUnlinkSequence.commands,
+            ],
+            templateWritten: false,
+            configCurrent: false,
+          };
+        }
         return {
           ok: true,
           action: request.action,
           manager: sessionReadyStatus(),
-          commands: inspection.commands,
+          commands: [
+            ...inspection.commands,
+            ...postUnlinkSequence.commands,
+          ],
           templateWritten: false,
           configCurrent: true,
         };
@@ -1244,11 +1288,44 @@ export function createServiceManager(
             };
           }
         }
+        const postUnlinkSequence = await runSequence(
+          systemdPostUnlinkCommands(plan),
+          request.action,
+        );
+        if (!postUnlinkSequence.ok) {
+          const errorCode = classifySupervisorFailure(
+            postUnlinkSequence.failure!,
+          );
+          return {
+            ok: false,
+            action: request.action,
+            manager: persistentManagerStatus(plan, {
+              installed: true,
+              enabled: false,
+              active: false,
+              state: "failed",
+              configCurrent: false,
+              errorCode,
+              errorMessage: stableErrorMessage(errorCode),
+            }),
+            commands: [
+              ...inspection.commands,
+              ...sequence.commands,
+              ...postUnlinkSequence.commands,
+            ],
+            templateWritten: false,
+            configCurrent: false,
+          };
+        }
         return {
           ok: true,
           action: request.action,
           manager: sessionReadyStatus(),
-          commands: [...inspection.commands, ...sequence.commands],
+          commands: [
+            ...inspection.commands,
+            ...sequence.commands,
+            ...postUnlinkSequence.commands,
+          ],
           templateWritten: false,
           configCurrent: true,
         };
