@@ -14,10 +14,12 @@ function read(relativePath) {
 
 test("Channel Connectors daemon panel refreshes real supervisor status", () => {
   const panel = read(`${VIEWS_DIR}/DaemonServicePanel.tsx`);
-  assert.match(panel, /runCommands: true/);
+  assert.match(panel, /const manager = data\?\.serviceManager/);
+  assert.match(panel, /\{ action, mode, apply: true \}/);
+  assert.doesNotMatch(panel, /runCommands/);
   assert.match(panel, /激活/);
   assert.match(panel, /开机自启/);
-  assert.match(panel, /停止守护服务会让所有 IM 渠道下线/);
+  assert.match(panel, /IM 接收与回复会暂时不可用/);
 });
 
 test("Channel Connectors page exposes only the v3 object model", () => {

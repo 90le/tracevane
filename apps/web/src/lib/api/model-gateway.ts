@@ -402,9 +402,11 @@ export function getModelGatewayDaemonService(
 /** POST /api/model-gateway/daemon-service — preview/install/lifecycle actions. */
 export function manageModelGatewayDaemonService(
   payload: ModelGatewayDaemonServiceRequest = {},
+  signal?: AbortSignal,
 ): Promise<ModelGatewayDaemonServiceResponse> {
   return apiRequest<ModelGatewayDaemonServiceResponse>(`${BASE}/daemon-service`, {
     method: "POST",
     body: jsonBody(payload),
+    signal,
   });
 }

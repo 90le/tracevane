@@ -118,7 +118,7 @@ export function V3RuntimeView({ goToView, selectedAccount }: ChannelConnectorsVi
         <div className="divide-y divide-line">{runtime?.replyOutbox.recentDeadLetters.map((record) => <Row key={record.id} icon={<MessageSquare />} iconClass="bg-amber-soft text-amber" title={`${record.platform} · ${record.accountId}`} subtitle={`${record.lastError || "投递失败"} · ${formatTime(record.updatedAt)}`} trailing={<Badge variant="warn">{record.attempts} 次</Badge>} />)}</div>
       </Panel>}
 
-      <DaemonServicePanel onMutated={() => { void statusQuery.refetch(); void daemonConfigQuery.refetch(); }} />
+      <DaemonServicePanel />
 
       <Panel>
         <PanelHead title="运行时映射证据" sub="运行期映射由渠道账号、分发策略与 Agent 工作区生成，不是独立的用户配置对象。" action={<Button variant="ghost" size="sm" onClick={() => setShowRuntimeConfig((value) => !value)}>{showRuntimeConfig ? "收起" : "展开"}</Button>} />

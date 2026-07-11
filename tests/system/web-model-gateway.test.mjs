@@ -235,8 +235,9 @@ test("Overview view exposes a route cockpit for route and client readiness", () 
 
 test("Daemon service panel refreshes real supervisor status", () => {
   const panel = read(`${VIEWS_DIR}/DaemonServicePanel.tsx`);
-  assert.match(panel, /runCommands: true/);
-  assert.doesNotMatch(panel, /runCommands: action !== "status"/);
+  assert.match(panel, /const manager = data\?\.manager/);
+  assert.match(panel, /\{ action, mode, apply: true \}/);
+  assert.doesNotMatch(panel, /runCommands/);
   assert.match(panel, /激活/);
   assert.match(panel, /开机自启/);
 });

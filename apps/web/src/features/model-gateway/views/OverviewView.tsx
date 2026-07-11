@@ -995,9 +995,6 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
       <DaemonServicePanel
         enabled={serviceEnabled}
         onEnable={() => setServiceEnabled(true)}
-        onMutated={() => {
-          void statusQuery.refetch();
-        }}
       />
 
       <GatewayKeyDialog
