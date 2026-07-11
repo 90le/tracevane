@@ -70,7 +70,7 @@ export interface ServiceManager {
 interface PersistentInspection {
   manager: TracevaneServiceManagerStatus;
   commands: SupervisorCommandResult[];
-  templateExists: boolean;
+  templateExists: boolean | null;
 }
 
 interface CommandSequenceResult {
@@ -255,8 +255,12 @@ function templateReadFailure(
       errorMessage: stableErrorMessage(errorCode),
     }),
     commands: [],
-    templateExists: false,
+    templateExists: null,
   };
+}
+
+function hasUntrustedInspection(inspection: PersistentInspection): boolean {
+  return inspection.templateExists === null || hasUntrustedStatus(inspection.manager);
 }
 
 export function createServiceManager(
@@ -556,10 +560,12 @@ export function createServiceManager(
     request: ManageServiceRequest,
     plan: SupervisorPlan,
     inspection: PersistentInspection,
-  ): Promise<ManageServiceResponse> {
+  ): Promise<ManageServiceResponse | null> {
     let sessionStatus = await session.status(definition.id);
+    let stoppedSessionOwner = false;
     if (sessionStatus.active !== false || sessionStatus.state !== "stopped") {
       sessionStatus = await session.stop(definition.id);
+      stoppedSessionOwner = true;
       if (sessionStatus.active !== false || sessionStatus.state !== "stopped") {
         return {
           ok: false,
@@ -574,6 +580,14 @@ export function createServiceManager(
           configCurrent: true,
         };
       }
+    }
+
+    if (
+      stoppedSessionOwner &&
+      inspection.manager.active === null &&
+      !(await probeHealth(definition.healthUrl))
+    ) {
+      return null;
     }
 
     return {
@@ -609,7 +623,7 @@ export function createServiceManager(
           });
           const inspection = await inspectPersistent(plan);
           transitionCommands = inspection.commands;
-          if (inspection.manager.installed && hasUntrustedStatus(inspection.manager)) {
+          if (hasUntrustedInspection(inspection)) {
             return {
               ok: false,
               action: request.action,
@@ -649,14 +663,24 @@ export function createServiceManager(
         } else if (request.action === "stop") {
           manager = await session.stop(definition.id);
         } else if (request.action === "restart") {
+          const plan = createSupervisorPlan(definition, platform, homeDir, {
+            windowsUserId: dependencies.windowsUserId,
+          });
+          const inspection = await inspectPersistent(plan);
+          transitionCommands = inspection.commands;
+          if (inspection.templateExists === null) {
+            return {
+              ok: false,
+              action: request.action,
+              manager: inspection.manager,
+              commands: transitionCommands,
+              templateWritten: false,
+              configCurrent: inspection.manager.configCurrent,
+            };
+          }
           manager = await session.stop(definition.id);
           if (manager.active === false && manager.state === "stopped") {
-            const plan = createSupervisorPlan(definition, platform, homeDir, {
-              windowsUserId: dependencies.windowsUserId,
-            });
-            const inspection = await inspectPersistent(plan);
-            transitionCommands = inspection.commands;
-            if (inspection.manager.installed && hasUntrustedStatus(inspection.manager)) {
+            if (hasUntrustedInspection(inspection)) {
               return {
                 ok: false,
                 action: request.action,
@@ -723,6 +747,19 @@ export function createServiceManager(
         };
       }
       const inspection = await inspectPersistent(plan);
+      if (
+        (request.action === "ensure-running" || request.action === "uninstall") &&
+        hasUntrustedInspection(inspection)
+      ) {
+        return {
+          ok: false,
+          action: request.action,
+          manager: inspection.manager,
+          commands: inspection.commands,
+          templateWritten: false,
+          configCurrent: inspection.manager.configCurrent,
+        };
+      }
       if (
         request.action === "status" &&
         inspection.manager.installed &&
@@ -816,6 +853,7 @@ export function createServiceManager(
         };
       }
       let effectiveAction = request.action;
+      let sessionOwnerVerifiedStopped = false;
       if (request.apply && request.action === "ensure-running") {
         if (!inspection.manager.installed) {
           effectiveAction = "install";
@@ -836,7 +874,16 @@ export function createServiceManager(
             running = await probeHealth(definition.healthUrl);
           }
           if (running) {
-            return finishRunningNoOp(definition, request, plan, inspection);
+            const response = await finishRunningNoOp(
+              definition,
+              request,
+              plan,
+              inspection,
+            );
+            if (response) {
+              return response;
+            }
+            sessionOwnerVerifiedStopped = true;
           }
           effectiveAction = "start";
         }
@@ -853,7 +900,16 @@ export function createServiceManager(
           running = await probeHealth(definition.healthUrl);
         }
         if (running) {
-          return finishRunningNoOp(definition, request, plan, inspection);
+          const response = await finishRunningNoOp(
+            definition,
+            request,
+            plan,
+            inspection,
+          );
+          if (response) {
+            return response;
+          }
+          sessionOwnerVerifiedStopped = true;
         }
       }
       const lifecycleAction =
@@ -952,7 +1008,10 @@ export function createServiceManager(
         inspection.manager.installed &&
         (effectiveAction === "stop" || inspection.manager.configCurrent)
       ) {
-        if (effectiveAction === "start" || effectiveAction === "restart") {
+        if (
+          (effectiveAction === "start" || effectiveAction === "restart") &&
+          !sessionOwnerVerifiedStopped
+        ) {
           const stopped = await session.stop(definition.id);
           if (stopped.active !== false || stopped.state !== "stopped") {
             const manager: TracevaneServiceManagerStatus = {
