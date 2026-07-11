@@ -6,6 +6,8 @@ import type {
 import type { SupervisorCommand } from "./contracts.js";
 
 const MAX_STREAM_BYTES = 16 * 1024;
+const TERMINATION_GRACE_MS = 100;
+const FINAL_SETTLE_GRACE_MS = 100;
 const REDACTED = "[REDACTED]";
 const SCHEDULED_TASK_NOT_FOUND = 0x80070002;
 const SCHEDULED_TASK_PERMISSION_DENIED = 0x80070005;
@@ -54,27 +56,32 @@ function boundUtf8(value: string): string {
   const encoded = Buffer.from(value, "utf8");
   if (encoded.byteLength <= MAX_STREAM_BYTES) return value;
 
-  for (let end = MAX_STREAM_BYTES; end > 0; end -= 1) {
+  return decodeUtf8(encoded.subarray(0, MAX_STREAM_BYTES), 3) ?? "";
+}
+
+function decodeUtf8(bytes: Buffer, maxTailBytes: number): string | null {
+  const tailBytes = Math.min(3, maxTailBytes, bytes.byteLength);
+  for (let omitted = 0; omitted <= tailBytes; omitted += 1) {
     try {
-      return new TextDecoder("utf-8", { fatal: true }).decode(
-        encoded.subarray(0, end),
+      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(
+        bytes.subarray(0, bytes.byteLength - omitted),
       );
+      return decoded.includes("\uFFFD") ? null : decoded;
     } catch {
       // Back up only far enough to avoid splitting a UTF-8 code point.
     }
   }
-  return "";
+  return null;
 }
 
 function decodeStream(stream: BoundedStream, secrets: string[]): string {
   const bytes = Buffer.concat(stream.chunks, stream.retainedBytes);
-  try {
-    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    if (decoded.includes("\uFFFD")) throw new TypeError("replacement character");
-    return boundUtf8(redact(decoded, secrets));
-  } catch {
+  const maxTailBytes = stream.totalBytes > stream.retainedBytes ? 3 : 0;
+  const decoded = decodeUtf8(bytes, maxTailBytes);
+  if (decoded === null) {
     return `[diagnostic output omitted: ${stream.totalBytes} bytes are not valid UTF-8]`;
   }
+  return boundUtf8(redact(decoded, secrets));
 }
 
 function isScheduledTaskQuery(result: SupervisorCommandResult): boolean {
@@ -140,7 +147,9 @@ export async function runSupervisorCommand(
     let spawnError: NodeJS.ErrnoException | null = null;
     let timedOut = false;
     let settled = false;
-    let timer: NodeJS.Timeout | undefined;
+    let deadlineTimer: NodeJS.Timeout | undefined;
+    let forceKillTimer: NodeJS.Timeout | undefined;
+    let finalSettleTimer: NodeJS.Timeout | undefined;
     const child = spawn(command.command, command.args, {
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
@@ -153,7 +162,9 @@ export async function runSupervisorCommand(
     const finish = (exitCode: number | null): void => {
       if (settled) return;
       settled = true;
-      if (timer) clearTimeout(timer);
+      if (deadlineTimer) clearTimeout(deadlineTimer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      if (finalSettleTimer) clearTimeout(finalSettleTimer);
 
       const initialErrorCode: TracevaneSupervisorErrorCode | null = timedOut
         ? "command-timeout"
@@ -188,9 +199,20 @@ export async function runSupervisorCommand(
     });
     child.once("close", (exitCode) => finish(exitCode));
 
-    timer = setTimeout(() => {
+    deadlineTimer = setTimeout(() => {
+      if (settled) return;
       timedOut = true;
-      child.kill();
+      if (process.platform === "win32") child.kill();
+      else child.kill("SIGTERM");
+      forceKillTimer = setTimeout(() => {
+        if (settled) return;
+        if (process.platform === "win32") child.kill();
+        else child.kill("SIGKILL");
+        finalSettleTimer = setTimeout(
+          () => finish(child.exitCode),
+          FINAL_SETTLE_GRACE_MS,
+        );
+      }, TERMINATION_GRACE_MS);
     }, Math.max(0, options.timeoutMs));
   });
 }
