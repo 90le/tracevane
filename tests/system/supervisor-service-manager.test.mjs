@@ -207,12 +207,289 @@ test("not installed + start/session starts one API-owned child", async () => {
     assert.equal(response.ok, true);
     assert.equal(response.manager.mode, "session");
     assert.equal(response.manager.state, "running");
-    assert.deepEqual(calls, [["start", "model-gateway"]]);
+    assert.deepEqual(calls, [
+      ["start", "model-gateway"],
+      ["status", "model-gateway"],
+    ]);
     assert.deepEqual(commandCalls, []);
     assert.deepEqual(fs.readdirSync(root), []);
   } finally {
     await manager.dispose();
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("session start ensure-running and restart require the shared health readiness probe", async () => {
+  for (const action of ["start", "ensure-running", "restart"]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-session-ready-"));
+    const definition = fixtureDefinition(root);
+    const { calls, session } = createFakeSession();
+    const probedUrls = [];
+    const manager = createServiceManager({
+      platform: "win32",
+      homeDir: root,
+      session,
+      runner: async () => assert.fail("missing persistent target must not run commands"),
+      probe: async (url, expectedPid) => {
+        probedUrls.push([url, expectedPid]);
+        return false;
+      },
+    });
+
+    try {
+      const response = await manager.manage(definition, {
+        action,
+        mode: "session",
+        apply: true,
+      });
+
+      assert.equal(response.ok, false, action);
+      assert.equal(response.manager.mode, "session", action);
+      assert.equal(response.manager.state, "degraded", action);
+      assert.equal(response.manager.active, null, action);
+      assert.equal(response.manager.errorCode, "runtime-not-ready", action);
+      assert.deepEqual(probedUrls, [[definition.healthUrl, 1234]], action);
+      assert.deepEqual(
+        calls,
+        action === "restart"
+          ? [
+              ["stop", "model-gateway"],
+              ["start", "model-gateway"],
+              ["stop", "model-gateway"],
+            ]
+          : [["start", "model-gateway"], ["stop", "model-gateway"]],
+        action,
+      );
+    } finally {
+      await manager.dispose();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("explicit session status inspection reports degraded runtime readiness", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-session-inspect-"));
+  const { calls, session } = createFakeSession({
+    initial: sessionStatus({ active: true, state: "running", pid: 4567 }),
+  });
+  const probes = [];
+  const manager = createServiceManager({
+    platform: "win32",
+    homeDir: root,
+    session,
+    runner: async () => assert.fail("session status must not run native commands"),
+    probe: async (url, expectedPid) => {
+      probes.push([url, expectedPid]);
+      return false;
+    },
+  });
+  try {
+    const response = await manager.manage(fixtureDefinition(root), {
+      action: "status",
+      mode: "session",
+      apply: true,
+    });
+    assert.equal(response.ok, false);
+    assert.equal(response.manager.active, null);
+    assert.equal(response.manager.state, "degraded");
+    assert.equal(response.manager.errorCode, "runtime-not-ready");
+    assert.deepEqual(probes, [["http://127.0.0.1:1/status", 4567]]);
+    assert.deepEqual(calls, [["status", "model-gateway"]]);
+  } finally {
+    await manager.dispose();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("session preview status dry-run and stop never probe readiness", async () => {
+  for (const request of [
+    { action: "preview", mode: "session", apply: true },
+    { action: "status", mode: "session", apply: false },
+    { action: "stop", mode: "session", apply: true },
+  ]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-session-readonly-"));
+    const { calls, session } = createFakeSession({
+      initial: sessionStatus({ active: true, state: "running", pid: 5678 }),
+    });
+    const manager = createServiceManager({
+      platform: "win32",
+      homeDir: root,
+      session,
+      runner: async () => assert.fail("session read/stop must not run native commands"),
+      probe: async () => assert.fail(`${request.action} must not probe`),
+    });
+    try {
+      await manager.manage(fixtureDefinition(root), request);
+    } finally {
+      await manager.dispose();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("session readiness cannot promote a nonviable owner from an unrelated healthy port", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-session-owner-"));
+  const { calls, session } = createFakeSession({
+    onStart: () => sessionStatus({
+      active: false,
+      state: "stopped",
+      pid: null,
+      errorCode: null,
+      errorMessage: null,
+    }),
+  });
+  let probes = 0;
+  const manager = createServiceManager({
+    platform: "win32",
+    homeDir: root,
+    session,
+    runner: async () => assert.fail("missing persistent target must not run commands"),
+    probe: async () => {
+      probes += 1;
+      return true;
+    },
+  });
+
+  try {
+    const response = await manager.manage(fixtureDefinition(root), {
+      action: "start",
+      mode: "session",
+      apply: true,
+    });
+    assert.equal(response.ok, false);
+    assert.equal(response.manager.active, null);
+    assert.equal(response.manager.state, "degraded");
+    assert.equal(response.manager.errorCode, "runtime-not-ready");
+    assert.equal(probes, 0);
+    assert.deepEqual(calls, [
+      ["start", "model-gateway"],
+      ["stop", "model-gateway"],
+    ]);
+  } finally {
+    await manager.dispose();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("session readiness requires a positive owned pid before probing", async () => {
+  for (const pid of [null, 0]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-session-pid-"));
+    const { calls, session } = createFakeSession({
+      onStart: () => sessionStatus({ active: true, state: "running", pid }),
+    });
+    let probes = 0;
+    const manager = createServiceManager({
+      platform: "win32",
+      homeDir: root,
+      session,
+      runner: async () => assert.fail("missing persistent target must not run commands"),
+      probe: async () => {
+        probes += 1;
+        return true;
+      },
+    });
+    try {
+      const response = await manager.manage(fixtureDefinition(root), {
+        action: "start",
+        mode: "session",
+        apply: true,
+      });
+      assert.equal(response.ok, false, String(pid));
+      assert.equal(response.manager.active, null, String(pid));
+      assert.equal(response.manager.state, "degraded", String(pid));
+      assert.equal(response.manager.errorCode, "runtime-not-ready", String(pid));
+      assert.equal(probes, 0, String(pid));
+      assert.deepEqual(calls, [
+        ["start", "model-gateway"],
+        ["stop", "model-gateway"],
+      ]);
+    } finally {
+      await manager.dispose();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("session readiness revalidates ownership after a successful health probe", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-session-revalidate-"));
+  const { calls, session } = createFakeSession({
+    onStatus: () => sessionStatus({ active: false, state: "stopped", pid: null }),
+  });
+  const manager = createServiceManager({
+    platform: "win32",
+    homeDir: root,
+    session,
+    runner: async () => assert.fail("missing persistent target must not run commands"),
+    probe: async () => true,
+  });
+
+  try {
+    const response = await manager.manage(fixtureDefinition(root), {
+      action: "start",
+      mode: "session",
+      apply: true,
+    });
+    assert.equal(response.ok, false);
+    assert.equal(response.manager.active, null);
+    assert.equal(response.manager.state, "degraded");
+    assert.equal(response.manager.errorCode, "runtime-not-ready");
+    assert.deepEqual(calls, [
+      ["start", "model-gateway"],
+      ["status", "model-gateway"],
+      ["stop", "model-gateway"],
+    ]);
+  } finally {
+    await manager.dispose();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("session readiness reports unconfirmed cleanup without hiding residual ownership", async () => {
+  for (const cleanupKind of ["residual", "throw"]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-session-cleanup-"));
+    const { calls, session } = createFakeSession({
+      onStop: () => {
+        if (cleanupKind === "throw") throw new Error("fixture cleanup exploded");
+        return sessionStatus({
+          active: true,
+          state: "failed",
+          pid: 1234,
+          errorCode: null,
+          errorMessage: null,
+        });
+      },
+    });
+    const manager = createServiceManager({
+      platform: "win32",
+      homeDir: root,
+      session,
+      runner: async () => assert.fail("missing persistent target must not run commands"),
+      probe: async () => false,
+    });
+    try {
+      const response = await manager.manage(fixtureDefinition(root), {
+        action: "start",
+        mode: "session",
+        apply: true,
+      });
+      assert.equal(response.ok, false, cleanupKind);
+      assert.equal(response.manager.errorCode, "runtime-not-ready", cleanupKind);
+      assert.match(response.manager.errorMessage, /cleanup (?:was not confirmed|threw)/, cleanupKind);
+      if (cleanupKind === "residual") {
+        assert.equal(response.manager.active, true);
+        assert.equal(response.manager.state, "failed");
+      } else {
+        assert.equal(response.manager.active, null);
+        assert.equal(response.manager.state, "degraded");
+      }
+      assert.deepEqual(calls, [
+        ["start", "model-gateway"],
+        ["stop", "model-gateway"],
+      ]);
+    } finally {
+      await manager.dispose().catch(() => undefined);
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   }
 });
 
@@ -1584,7 +1861,7 @@ test("restart session refuses persistent stop when persistent status is not trus
     assert.equal(response.manager.errorCode, "permission-denied");
     assert.equal(response.manager.errorMessage, "Supervisor command permission denied.");
     assert.deepEqual(commandCalls.map(({ args }) => args[0]), ["/Query"]);
-    assert.deepEqual(calls, [["stop", "model-gateway"]]);
+    assert.deepEqual(calls, []);
   } finally {
     await manager.dispose();
     fs.rmSync(root, { recursive: true, force: true });
@@ -1628,6 +1905,57 @@ test("successful health probe establishes running when native status is indeterm
   } finally {
     await manager.dispose();
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("persistent status only probes health when the session owner is exactly stopped", async () => {
+  const fixtures = [
+    sessionStatus({ active: true, state: "running", pid: 9912 }),
+    sessionStatus({
+      active: false,
+      state: "failed",
+      pid: null,
+      errorCode: "runtime-not-ready",
+      errorMessage: "Session process failed.",
+    }),
+    sessionStatus({ active: null, state: "starting", pid: null }),
+  ];
+
+  for (const sessionOwner of fixtures) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-status-owner-"));
+    const definition = fixtureDefinition(root);
+    const plan = createSupervisorPlan(definition, "win32", root, {
+      windowsUserId: "TEST\\Fixture",
+    });
+    fs.mkdirSync(path.dirname(plan.configPath), { recursive: true });
+    fs.writeFileSync(plan.configPath, plan.template, "utf8");
+    const { calls, session } = createFakeSession({ initial: sessionOwner });
+    const manager = createServiceManager({
+      platform: "win32",
+      homeDir: root,
+      windowsUserId: "TEST\\Fixture",
+      session,
+      runner: async (command) => commandResult(command, {
+        stdout: "localized indeterminate task status",
+      }),
+      probe: async () => assert.fail(`${sessionOwner.state} session health must not prove persistent status`),
+    });
+    try {
+      const response = await manager.manage(definition, {
+        action: "status",
+        mode: "persistent",
+        apply: true,
+      });
+      assert.equal(response.ok, true, sessionOwner.state);
+      assert.equal(response.manager.mode, "persistent", sessionOwner.state);
+      assert.equal(response.manager.active, null, sessionOwner.state);
+      assert.equal(response.manager.state, "unknown", sessionOwner.state);
+      assert.equal(response.manager.errorCode, null, sessionOwner.state);
+      assert.deepEqual(calls, [["status", "model-gateway"]], sessionOwner.state);
+    } finally {
+      await manager.dispose();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   }
 });
 

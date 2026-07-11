@@ -1,11 +1,16 @@
 import fs from "node:fs";
+import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { promisify } from "node:util";
 import { registerApp } from "@larksuiteoapi/node-sdk";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
+import type {
+  TracevaneServiceAction,
+  TracevaneServiceManagerStatus,
+  TracevaneServiceMode,
+} from "../../../../types/supervisor.js";
+import { isTracevaneTrustedManagementRequest } from "../../gateway-http-auth.js";
 import {
   CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME,
   CHANNEL_CONNECTOR_DEFAULT_FEISHU_API_URL,
@@ -192,12 +197,20 @@ import {
 } from "./config-v3.js";
 import { resolveChannelConnectorDelivery } from "./delivery-resolver.js";
 import { channelConnectorRuntimeRouteRefs } from "./runtime-account-routing.js";
+import {
+  createServiceManager,
+  createSupervisorPlan,
+  type ManageServiceResponse,
+  type ServiceDefinition,
+  type ServiceManager,
+  type SupervisorPlan,
+} from "../supervisor/index.js";
+import type { SupervisorCommandResult } from "../supervisor/command-runner.js";
 
 const DEFAULT_FEISHU_STALE_EVENT_MAX_AGE_MS = 2 * 60_000;
 const MIN_FEISHU_STALE_EVENT_MAX_AGE_MS = 10_000;
 const MAX_FEISHU_STALE_EVENT_MAX_AGE_MS = 24 * 60 * 60_000;
 
-const execFileAsync = promisify(execFile);
 const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
   "preview",
   "install",
@@ -205,6 +218,8 @@ const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
   "start",
   "stop",
   "restart",
+  "repair",
+  "uninstall",
   "reload",
   "status",
 ];
@@ -231,9 +246,24 @@ export type ChannelConnectorsDaemonCommandRunner = (
 ) => Promise<ChannelConnectorsDaemonCommandResult>;
 export type ChannelConnectorFeishuRegisterAppRunner = typeof registerApp;
 
+export class ChannelConnectorsServiceError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = "ChannelConnectorsServiceError";
+  }
+}
+
 export interface ChannelConnectorsServiceOptions {
   homeDir?: string;
+  platform?: NodeJS.Platform;
+  windowsUserId?: string;
+  manager?: ServiceManager;
   managementEndpoint?: string;
+  managementToken?: string;
   commandRunner?: ChannelConnectorsDaemonCommandRunner;
   feishuRegisterApp?: ChannelConnectorFeishuRegisterAppRunner;
   now?: () => Date;
@@ -245,7 +275,7 @@ export interface ChannelConnectorsService {
   getV3Config(): ChannelConnectorsV3ConfigResponse;
   planV3Config(payload?: ChannelConnectorsV3ConfigPlanRequest): ChannelConnectorsV3ConfigPlanResponse;
   saveV3Config(config: ChannelConnectorsV3Config): ChannelConnectorsV3ConfigResponse;
-  applyV3Config(payload?: ChannelConnectorsV3ConfigApplyRequest): Promise<ChannelConnectorsV3ConfigApplyResponse>;
+  applyV3Config(payload?: ChannelConnectorsV3ConfigApplyRequest, req?: http.IncomingMessage): Promise<ChannelConnectorsV3ConfigApplyResponse>;
   upsertV3Account(account: ChannelConnectorAccount): ChannelConnectorsV3ConfigResponse;
   deleteV3Account(accountId: string): ChannelConnectorsV3ConfigResponse;
   upsertV3Target(target: ChannelConnectorDeliveryTarget): ChannelConnectorsV3ConfigResponse;
@@ -265,9 +295,9 @@ export interface ChannelConnectorsService {
   runOctoTransportSmoke(payload?: ChannelConnectorOctoTransportSmokeRequest): Promise<ChannelConnectorOctoTransportSmokeResponse>;
   getDaemonConfig(): ChannelConnectorsDaemonConfigResponse;
   getDaemonService(): Promise<ChannelConnectorsDaemonResponse>;
-  manageDaemonService(payload?: ChannelConnectorsDaemonRequest): Promise<ChannelConnectorsDaemonResponse>;
+  manageDaemonService(payload?: ChannelConnectorsDaemonRequest, req?: http.IncomingMessage): Promise<ChannelConnectorsDaemonResponse>;
   getAgentSessions(): Promise<ChannelConnectorAgentSessionDriverStatusResponse>;
-  manageAgentSessions(payload?: ChannelConnectorAgentSessionActionRequest): Promise<ChannelConnectorAgentSessionDriverStatusResponse>;
+  manageAgentSessions(payload?: ChannelConnectorAgentSessionActionRequest, req?: http.IncomingMessage): Promise<ChannelConnectorAgentSessionDriverStatusResponse>;
   getDaemonLogs(limit?: number): ChannelConnectorsLogsResponse;
 }
 
@@ -325,6 +355,9 @@ function resolveChannelConnectorsWorkspaceDir(
   config: TracevaneServerConfig,
   homeDir?: string,
 ): string {
+  if (String(homeDir || "").trim()) {
+    return path.join(defaultTracevaneHomeDir(config, homeDir), ".config", "tracevane", "channel-connectors");
+  }
   const explicitWorkspace = normalizeEnvDir(process.env.TRACEVANE_CHANNEL_CONNECTORS_DIR);
   if (explicitWorkspace) return explicitWorkspace;
   const explicitDataRoot = normalizeEnvDir(process.env.TRACEVANE_DATA_DIR);
@@ -367,13 +400,6 @@ function ensureParentDir(filePath: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
-function writeTextAtomic(filePath: string, content: string): void {
-  ensureParentDir(filePath);
-  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tempPath, content, "utf8");
-  fs.renameSync(tempPath, filePath);
-}
-
 function writeSecretTextAtomic(filePath: string, content: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
@@ -386,22 +412,6 @@ function normalizeAction(value: unknown): ChannelConnectorsDaemonAction {
   return DAEMON_ACTIONS.includes(value as ChannelConnectorsDaemonAction)
     ? value as ChannelConnectorsDaemonAction
     : "preview";
-}
-
-function quoteSystemdArg(value: string): string {
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-function escapeSystemdPath(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/\s/g, "\\x20");
-}
-
-function quoteLaunchdString(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function gatewayEndpoint(): string {
@@ -768,6 +778,23 @@ function managementEndpoint(override?: string): string {
     override || process.env.TRACEVANE_CHANNEL_CONNECTORS_MANAGEMENT_ENDPOINT,
   ).replace(/\/+$/, "");
   return configured || `http://127.0.0.1:${MANAGEMENT_PORT}`;
+}
+
+function managementBinding(override?: string): { host: string; port: number } {
+  try {
+    const parsed = new URL(managementEndpoint(override));
+    const port = parsed.port
+      ? Number(parsed.port)
+      : parsed.protocol === "https:"
+        ? 443
+        : 80;
+    if (Number.isInteger(port) && port >= 0 && port <= 65535) {
+      return { host: parsed.hostname, port };
+    }
+  } catch {
+    // Fall through to the trusted default binding.
+  }
+  return { host: "127.0.0.1", port: MANAGEMENT_PORT };
 }
 
 function runtimeStatusError(checkedAt: string, error: unknown): ChannelConnectorsDaemonRuntimeStatus {
@@ -1213,13 +1240,14 @@ async function requestDaemonReload(
   payload: { mode: ChannelConnectorsDaemonReloadMode },
   fetchImpl: typeof fetch = fetch,
   endpoint = managementEndpoint(),
+  managementToken: string | null = null,
 ): Promise<ChannelConnectorsDaemonReloadResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
     const response = await fetchImpl(`${endpoint}/reload`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: channelManagementHeaders(managementToken, true),
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
@@ -1257,11 +1285,12 @@ async function requestDaemonAgentSessions(
   payload?: ChannelConnectorAgentSessionActionRequest | null,
   fetchImpl: typeof fetch = fetch,
   endpoint = managementEndpoint(),
+  managementToken: string | null = null,
 ): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
   const method = payload ? "POST" : "GET";
   const response = await fetchImpl(`${endpoint}/agent-sessions`, {
     method,
-    headers: payload ? { "content-type": "application/json" } : {},
+    headers: channelManagementHeaders(managementToken, Boolean(payload)),
     body: payload ? JSON.stringify(payload) : undefined,
   });
   const text = await response.text();
@@ -1286,13 +1315,18 @@ async function requestDaemonAgentSessions(
 function buildRuntimeConfig(
   deliveryConfig: ChannelConnectorsV3Config,
   paths: ChannelConnectorsPaths,
+  managementEndpointOverride?: string,
+  managementToken?: string | null,
 ): ChannelConnectorsDaemonRuntimeConfig {
+  const management = managementBinding(managementEndpointOverride);
+  const token = normalizeString(managementToken);
   const runtime: ChannelConnectorsDaemonRuntimeConfig = {
     version: 1,
     deliveryConfig,
     management: {
-      host: "127.0.0.1",
-      port: MANAGEMENT_PORT,
+      host: management.host,
+      port: management.port,
+      ...(token ? { token } : {}),
     },
     paths: {
       root: paths.rootDir,
@@ -1539,6 +1573,11 @@ function extractBindingSecrets(
 function redactRuntimeConfig(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): ChannelConnectorsDaemonRuntimeConfig {
   return {
     ...runtimeConfig,
+    management: {
+      host: runtimeConfig.management.host,
+      port: runtimeConfig.management.port,
+      ...(runtimeConfig.management.token ? { token: "[redacted]" } : {}),
+    },
     deliveryConfig: redactV3Config(runtimeConfig.deliveryConfig),
     projects: runtimeConfig.projects.map((project) => ({
       ...project,
@@ -1564,11 +1603,17 @@ function buildConfigResponse(
   paths: ChannelConnectorsPaths,
   now: Date,
   managementEndpointOverride?: string,
+  managementToken?: string | null,
 ): ChannelConnectorsDaemonConfigResponse {
   const v3Snapshot = readV3Snapshot(config, paths, now);
   const validationIssues = validateChannelConnectorsV3Config(v3Snapshot.config);
   if (validationIssues.length > 0) throw new Error("Channel Connectors v3 config is invalid.");
-  const runtimeConfig = buildRuntimeConfig(v3Snapshot.config, paths);
+  const runtimeConfig = buildRuntimeConfig(
+    v3Snapshot.config,
+    paths,
+    managementEndpointOverride,
+    managementToken,
+  );
   const preview = `${JSON.stringify(runtimeConfig, null, 2)}\n`;
   return {
     ok: true,
@@ -1584,52 +1629,43 @@ function buildConfigResponse(
   };
 }
 
-function buildSystemdTemplate(serviceName: string, paths: ChannelConnectorsPaths, nodePath: string, daemonEntry: string): string {
-  return [
-    "[Unit]",
-    "Description=Tracevane Channel Connectors",
-    "After=network-online.target",
-    "Wants=network-online.target",
-    "",
-    "[Service]",
-    "Type=simple",
-    `WorkingDirectory=${escapeSystemdPath(paths.rootDir)}`,
-    `ExecStart=${quoteSystemdArg(nodePath)} ${quoteSystemdArg(daemonEntry)} --config ${quoteSystemdArg(paths.configPath)}`,
-    "Restart=on-failure",
-    "RestartSec=10",
-    "",
-    "[Install]",
-    "WantedBy=default.target",
-    "",
-  ].join("\n");
+export function createChannelConnectorsServiceDefinition(
+  config: TracevaneServerConfig,
+  options: ChannelConnectorsServiceOptions = {},
+): ServiceDefinition {
+  const paths = resolveChannelConnectorsPaths(config, options.homeDir);
+  return {
+    id: "channel-connectors",
+    displayName: "Tracevane Channel Connectors",
+    serviceName: CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME,
+    windowsTaskName: "TracevaneChannelConnectors",
+    launchdLabel: "tracevane-channel-connectors",
+    entryPath: daemonEntryPath(config),
+    workingDirectory: paths.rootDir,
+    configPath: paths.configPath,
+    runtimePath: paths.runtimeFile,
+    logPath: paths.logFile,
+    healthUrl: `${managementEndpoint(options.managementEndpoint)}/status`,
+    args: [],
+  };
 }
 
-function buildLaunchdTemplate(serviceName: string, paths: ChannelConnectorsPaths, nodePath: string, daemonEntry: string): string {
-  const label = serviceName.replace(/\.service$/, "");
-  return [
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
-    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
-    "<plist version=\"1.0\">",
-    "<dict>",
-    "  <key>Label</key>",
-    `  <string>${quoteLaunchdString(label)}</string>`,
-    "  <key>ProgramArguments</key>",
-    "  <array>",
-    `    <string>${quoteLaunchdString(nodePath)}</string>`,
-    `    <string>${quoteLaunchdString(daemonEntry)}</string>`,
-    "    <string>--config</string>",
-    `    <string>${quoteLaunchdString(paths.configPath)}</string>`,
-    "  </array>",
-    "  <key>WorkingDirectory</key>",
-    `  <string>${quoteLaunchdString(paths.rootDir)}</string>`,
-    "  <key>RunAtLoad</key>",
-    "  <true/>",
-    "  <key>KeepAlive</key>",
-    "  <true/>",
-    "</dict>",
-    "</plist>",
-    "",
-  ].join("\n");
+function compatibilityTemplate(plan: SupervisorPlan): ChannelConnectorsDaemonTemplate {
+  const platform = plan.platform === "darwin"
+    ? "macos"
+    : plan.platform === "win32"
+      ? "windows"
+      : plan.platform === "linux"
+        ? "linux"
+        : "unknown";
+  return {
+    supervisor: plan.supervisor,
+    platform,
+    serviceName: plan.serviceName,
+    servicePath: plan.configPath,
+    template: plan.template,
+    commands: plan.commands,
+  };
 }
 
 export function createChannelConnectorsDaemonPlan(
@@ -1638,116 +1674,38 @@ export function createChannelConnectorsDaemonPlan(
 ): ChannelConnectorsDaemonPlan {
   const paths = resolveChannelConnectorsPaths(config, options.homeDir);
   const homeDir = defaultTracevaneHomeDir(config, options.homeDir);
-  const serviceName = CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME;
+  const definition = createChannelConnectorsServiceDefinition(config, options);
   const nodePath = process.execPath;
-  const daemonEntry = daemonEntryPath(config);
-  const platform = process.platform === "linux"
-    ? "linux"
-    : process.platform === "darwin"
-      ? "macos"
-      : process.platform === "win32"
-        ? "windows"
-        : "unknown";
-  const supervisor = platform === "linux"
-    ? "systemd-user"
-    : platform === "macos"
-      ? "launchd-user"
-      : platform === "windows"
-        ? "scheduled-task"
-        : "none";
-
-  const linuxServicePath = path.join(homeDir, ".config", "systemd", "user", serviceName);
-  const launchdServicePath = path.join(homeDir, "Library", "LaunchAgents", serviceName.replace(/\.service$/, ".plist"));
-  const unsupportedServicePath = path.join(paths.rootDir, serviceName);
-  const launchdDomain = typeof process.getuid === "function" ? `gui/${process.getuid()}` : "gui/501";
-  const launchdLabel = serviceName.replace(/\.service$/, "");
-
-  const linuxTemplate: ChannelConnectorsDaemonTemplate = {
-    supervisor: "systemd-user",
-    platform: "linux",
-    serviceName,
-    servicePath: linuxServicePath,
-    template: buildSystemdTemplate(serviceName, paths, nodePath, daemonEntry),
-    commands: {
-      install: [
-        { label: "Reload user systemd", command: "systemctl", args: ["--user", "daemon-reload"] },
-        { label: "Enable Channel Connectors service", command: "systemctl", args: ["--user", "enable", serviceName] },
-      ],
-      start: [
-        { label: "Start Channel Connectors service", command: "systemctl", args: ["--user", "start", serviceName] },
-      ],
-      stop: [
-        { label: "Stop Channel Connectors service", command: "systemctl", args: ["--user", "stop", serviceName] },
-      ],
-      restart: [
-        { label: "Restart Channel Connectors service", command: "systemctl", args: ["--user", "restart", serviceName] },
-      ],
-      status: [
-        { label: "Check Channel Connectors active state", command: "systemctl", args: ["--user", "is-active", serviceName] },
-        { label: "Check Channel Connectors enabled state", command: "systemctl", args: ["--user", "is-enabled", serviceName] },
-      ],
-      "ensure-running": [
-        { label: "Reload user systemd", command: "systemctl", args: ["--user", "daemon-reload"] },
-        { label: "Enable Channel Connectors service", command: "systemctl", args: ["--user", "enable", serviceName] },
-        { label: "Start Channel Connectors service", command: "systemctl", args: ["--user", "start", serviceName] },
-      ],
-    },
-  };
-
-  const launchdTemplate: ChannelConnectorsDaemonTemplate = {
-    supervisor: "launchd-user",
-    platform: "macos",
-    serviceName,
-    servicePath: launchdServicePath,
-    template: buildLaunchdTemplate(serviceName, paths, nodePath, daemonEntry),
-    commands: {
-      install: [
-        { label: "Bootstrap LaunchAgent", command: "launchctl", args: ["bootstrap", launchdDomain, launchdServicePath] },
-      ],
-      start: [
-        { label: "Start LaunchAgent", command: "launchctl", args: ["kickstart", "-k", `${launchdDomain}/${launchdLabel}`] },
-      ],
-      stop: [
-        { label: "Stop LaunchAgent", command: "launchctl", args: ["bootout", launchdDomain, launchdServicePath] },
-      ],
-      restart: [
-        { label: "Restart LaunchAgent", command: "launchctl", args: ["kickstart", "-k", `${launchdDomain}/${launchdLabel}`] },
-      ],
-      status: [
-        { label: "Print LaunchAgent", command: "launchctl", args: ["print", `${launchdDomain}/${launchdLabel}`] },
-      ],
-    },
-  };
-
-  const unsupportedTemplate: ChannelConnectorsDaemonTemplate = {
-    supervisor,
-    platform,
-    serviceName,
-    servicePath: unsupportedServicePath,
-    template: "# Unsupported platform for Tracevane native Channel Connectors service.\n",
-    commands: {},
-  };
-
-  const templates = [linuxTemplate, launchdTemplate, unsupportedTemplate];
-  const selectedTemplate = platform === "linux"
-    ? linuxTemplate
-    : platform === "macos"
-      ? launchdTemplate
-      : unsupportedTemplate;
+  const platform = options.platform ?? process.platform;
+  const sharedPlans = (["linux", "darwin", "win32"] as const).map((candidate) =>
+    createSupervisorPlan(definition, candidate, homeDir, {
+      windowsUserId: options.windowsUserId,
+    }));
+  const selectedSharedPlan = sharedPlans.find((candidate) => candidate.platform === platform);
+  const selectedTemplate = selectedSharedPlan
+    ? compatibilityTemplate(selectedSharedPlan)
+    : {
+        supervisor: "none" as const,
+        platform: "unknown" as const,
+        serviceName: definition.serviceName,
+        servicePath: path.join(paths.rootDir, definition.serviceName),
+        template: "# Unsupported platform for Tracevane native Channel Connectors service.\n",
+        commands: {},
+      };
+  const templates = sharedPlans.map(compatibilityTemplate);
   const notes = [
     "Channel Connectors is a Tracevane-native daemon.",
     "CC and OpenClaw implementations are reference sources only.",
     "Tracevane and OpenClaw are not runtime dependencies after the native daemon is supervised.",
   ];
-  if (platform === "windows") notes.push("Windows scheduled-task support remains a native-daemon follow-up.");
 
   return {
-    platform: process.platform,
-    supported: platform === "linux" || platform === "macos",
-    supervisor,
-    serviceName,
+    platform,
+    supported: selectedSharedPlan !== undefined,
+    supervisor: selectedTemplate.supervisor,
+    serviceName: selectedTemplate.serviceName,
     nodePath,
-    daemonEntry,
+    daemonEntry: definition.entryPath,
     rootDir: paths.rootDir,
     configPath: paths.configPath,
     stateDir: paths.stateDir,
@@ -1760,96 +1718,154 @@ export function createChannelConnectorsDaemonPlan(
   };
 }
 
-async function runDefaultCommand(command: ChannelConnectorsDaemonCommand): Promise<ChannelConnectorsDaemonCommandResult> {
-  try {
-    const result = await execFileAsync(command.command, command.args, {
-      timeout: 30_000,
-      encoding: "utf8",
-    });
-    return {
-      ...command,
-      ok: true,
-      exitCode: 0,
-      stdout: result.stdout || "",
-      stderr: result.stderr || "",
-      error: null,
-    };
-  } catch (error) {
-    const shaped = error as Error & {
-      code?: string | number;
-      stdout?: string;
-      stderr?: string;
-    };
-    return {
-      ...command,
-      ok: false,
-      exitCode: typeof shaped.code === "number" ? shaped.code : null,
-      stdout: shaped.stdout || "",
-      stderr: shaped.stderr || "",
-      error: shaped.message || "Command failed.",
-    };
-  }
-}
-
-function summarizeManager(
-  plan: ChannelConnectorsDaemonPlan,
-  commandsRun: ChannelConnectorsDaemonCommandResult[],
-): ChannelConnectorsDaemonManagerStatus {
-  if (!plan.supported) {
-    return {
-      checked: true,
-      reachable: false,
-      active: null,
-      enabled: null,
-      lastError: "Supervisor is not supported on this platform yet.",
-    };
-  }
-  const statusCommands = commandsRun.filter((result) => {
-    const args = result.args.join(" ");
-    return args.includes("is-active")
-      || args.includes("is-enabled")
-      || result.label.toLowerCase().includes("active")
-      || result.label.toLowerCase().includes("enabled")
-      || result.command === "launchctl";
-  });
-  if (!statusCommands.length) {
-    return {
-      checked: false,
-      reachable: null,
-      active: null,
-      enabled: null,
-      lastError: null,
-    };
-  }
-  const activeResult = statusCommands.find((result) => result.args.includes("is-active"));
-  const enabledResult = statusCommands.find((result) => result.args.includes("is-enabled"));
-  const lastFailed = [...statusCommands].reverse().find((result) => !result.ok);
-  return {
-    checked: true,
-    reachable: statusCommands.some((result) => result.ok),
-    active: activeResult ? activeResult.ok && activeResult.stdout.trim() === "active" : null,
-    enabled: enabledResult ? enabledResult.ok && enabledResult.stdout.trim() === "enabled" : null,
-    lastError: lastFailed?.stderr || lastFailed?.error || null,
-  };
-}
-
-function isTemplateCurrent(plan: ChannelConnectorsDaemonPlan): boolean {
-  return readTextIfExists(plan.selectedTemplate.servicePath) === plan.selectedTemplate.template;
-}
-
 function isConfigCurrent(configPreview: ChannelConnectorsDaemonConfigResponse): boolean {
   return readTextIfExists(configPreview.configPath) === configPreview.preview;
 }
 
-function actionWritesFiles(action: ChannelConnectorsDaemonAction): boolean {
-  return action === "install" || action === "ensure-running" || action === "start" || action === "restart" || action === "reload";
+function normalizeDaemonServiceMode(value: unknown): TracevaneServiceMode {
+  return value === "persistent" ? "persistent" : "session";
 }
 
-function blockingReason(plan: ChannelConnectorsDaemonPlan, action: ChannelConnectorsDaemonAction): string | null {
-  if (action === "preview" || action === "status" || action === "stop" || action === "reload") return null;
-  if (!plan.supported) return "unsupported_supervisor";
-  if (!fs.existsSync(plan.daemonEntry)) return "native_daemon_entry_missing";
-  return null;
+function normalizeDaemonServiceApply(
+  payload: ChannelConnectorsDaemonRequest,
+): boolean {
+  return payload.apply === true || payload.runCommands === true;
+}
+
+function commonDaemonAction(
+  action: ChannelConnectorsDaemonAction,
+): TracevaneServiceAction | null {
+  return action === "reload" ? null : action;
+}
+
+function shouldPreparePrivateConfig(
+  action: ChannelConnectorsDaemonAction,
+  apply: boolean,
+): boolean {
+  return apply && action !== "preview" && action !== "status" &&
+    action !== "stop" && action !== "uninstall";
+}
+
+function mutatesSessionOwner(
+  action: TracevaneServiceAction,
+): boolean {
+  return action !== "preview" && action !== "status";
+}
+
+function assertTrustedManagementRequest(
+  config: TracevaneServerConfig,
+  req?: http.IncomingMessage,
+): void {
+  if (!req || isTracevaneTrustedManagementRequest(config, req)) return;
+  throw new ChannelConnectorsServiceError(
+    "channel_connectors_management_locked",
+    "Channel Connectors management requires a trusted loopback request or configured authentication.",
+    403,
+  );
+}
+
+function compatibilityCommandResult(
+  result: SupervisorCommandResult,
+): ChannelConnectorsDaemonCommandResult {
+  return {
+    label: result.label,
+    command: result.command,
+    args: [...result.args],
+    ok: result.ok,
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    errorCode: result.errorCode,
+    errorMessage: result.errorMessage,
+    durationMs: result.durationMs,
+    error: result.errorMessage,
+  };
+}
+
+function compatibilityServiceManager(
+  manager: TracevaneServiceManagerStatus,
+): ChannelConnectorsDaemonManagerStatus {
+  const unreachable = manager.errorCode === "command-not-found" ||
+    manager.errorCode === "command-timeout" ||
+    manager.errorCode === "permission-denied" ||
+    manager.errorCode === "unsupported-platform";
+  return {
+    ...manager,
+    checked: true,
+    reachable: unreachable ? false : true,
+    lastError: manager.errorMessage,
+  };
+}
+
+function channelManagementToken(options: ChannelConnectorsServiceOptions): string | null {
+  return normalizeString(
+    options.managementToken || process.env.TRACEVANE_DAEMON_MANAGEMENT_TOKEN,
+  ) || null;
+}
+
+function channelManagementHeaders(
+  token: string | null,
+  json = false,
+): Record<string, string> {
+  return {
+    ...(json ? { "content-type": "application/json" } : {}),
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+function createChannelConnectorsReadinessProbe(
+  fetchImpl: typeof fetch,
+): (url: string, expectedPid?: number | null) => Promise<boolean> {
+  return async (url, expectedPid) => {
+    const sessionOwned = expectedPid !== undefined && expectedPid !== null;
+    if (sessionOwned && (!Number.isInteger(expectedPid) || Number(expectedPid) <= 0)) {
+      return false;
+    }
+    const deadline = Date.now() + 3_000;
+    let consecutive = 0;
+    let stablePid: number | null = null;
+    while (Date.now() < deadline) {
+      try {
+        const response = await fetchImpl(url, {
+          signal: AbortSignal.timeout(500),
+        });
+        const body = response.ok
+          ? await response.json() as unknown
+          : null;
+        const responsePid = isRecord(body) && Number.isInteger(body.pid) && Number(body.pid) > 0
+          ? Number(body.pid)
+          : null;
+        if (
+          sessionOwned &&
+          isRecord(body) &&
+          body.implementation === "tracevane-native" &&
+          responsePid !== null &&
+          responsePid !== expectedPid
+        ) {
+          return false;
+        }
+        const matches = isRecord(body) &&
+          body.implementation === "tracevane-native" &&
+          responsePid !== null &&
+          (!sessionOwned || responsePid === expectedPid);
+        if (matches && responsePid === stablePid) {
+          consecutive += 1;
+        } else if (matches) {
+          stablePid = responsePid;
+          consecutive = 1;
+        } else {
+          stablePid = null;
+          consecutive = 0;
+        }
+        if (consecutive >= 2) return true;
+      } catch {
+        stablePid = null;
+        consecutive = 0;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 75));
+    }
+    return false;
+  };
 }
 
 function tailLines(filePath: string, limit: number): { exists: boolean; lines: string[] } {
@@ -2844,14 +2860,44 @@ export function createChannelConnectorsService(
 ): ChannelConnectorsService {
   const now = () => (options.now ? options.now() : new Date());
   const paths = () => resolveChannelConnectorsPaths(config, options.homeDir);
-  const runCommand = (command: ChannelConnectorsDaemonCommand) =>
-    options.commandRunner ? options.commandRunner(command) : runDefaultCommand(command);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const managementToken = channelManagementToken(options);
+  const daemonServiceManager = options.manager ?? createServiceManager({
+    platform: options.platform ?? process.platform,
+    homeDir: defaultTracevaneHomeDir(config, options.homeDir),
+    windowsUserId: options.windowsUserId,
+    probe: createChannelConnectorsReadinessProbe(fetchImpl),
+    redact: managementToken ? [managementToken] : [],
+    runner: options.commandRunner
+      ? async (command) => {
+          const result = await options.commandRunner!(command);
+          return {
+            label: command.label,
+            command: command.command,
+            args: [...command.args],
+            ok: result.ok,
+            exitCode: result.exitCode,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            errorCode: result.errorCode,
+            errorMessage: result.errorMessage ?? result.error,
+            durationMs: result.durationMs,
+          };
+        }
+      : undefined,
+  });
   const registerFeishuApp = options.feishuRegisterApp ?? registerApp;
   const feishuAppRegistrationSessions = new Map<string, FeishuAppRegistrationSession>();
   const v3ConfigPlans = new Map<string, ChannelConnectorsV3PlanEntry>();
 
   function currentConfigFull(): ChannelConnectorsDaemonConfigResponse {
-    return buildConfigResponse(config, paths(), now(), options.managementEndpoint);
+    return buildConfigResponse(
+      config,
+      paths(),
+      now(),
+      options.managementEndpoint,
+      managementToken,
+    );
   }
 
   function currentConfig(): ChannelConnectorsDaemonConfigResponse {
@@ -2945,7 +2991,9 @@ export function createChannelConnectorsService(
 
   async function applyV3Config(
     payload: ChannelConnectorsV3ConfigApplyRequest = {},
+    req?: http.IncomingMessage,
   ): Promise<ChannelConnectorsV3ConfigApplyResponse> {
+    assertTrustedManagementRequest(config, req);
     if (!payload.config || !normalizeString(payload.planId)) {
       throw new Error("A valid Channel Connectors v3 planId and config are required.");
     }
@@ -2967,41 +3015,102 @@ export function createChannelConnectorsService(
       throw new Error("Channel Connectors v3 config differs from the planned candidate. Run plan again.");
     }
     v3ConfigPlans.delete(planId);
+    let ownerMode: TracevaneServiceMode;
+    if (payload.mode === "session" || payload.mode === "persistent") {
+      ownerMode = payload.mode;
+    } else {
+      const definition = createChannelConnectorsServiceDefinition(config, options);
+      const sessionStatus = await daemonServiceManager.manage(definition, {
+        action: "status",
+        mode: "session",
+        apply: true,
+      });
+      if (sessionStatus.manager.state === "running") {
+        ownerMode = "session";
+      } else {
+        const persistentStatus = await daemonServiceManager.manage(definition, {
+          action: "status",
+          mode: "persistent",
+          apply: true,
+        });
+        ownerMode = persistentStatus.manager.state === "running"
+          ? "persistent"
+          : "session";
+      }
+    }
     const previousRaw = readTextIfExists(resolvedPaths.nativeConfigPath);
-    const fetchImpl = options.fetchImpl ?? fetch;
-    const runtimeBefore = await requestDaemonRuntimeStatus(now().toISOString(), fetchImpl);
+    const previousDaemonRaw = readTextIfExists(resolvedPaths.configPath);
+    const runtimeBefore = await requestDaemonRuntimeStatus(
+      now().toISOString(),
+      fetchImpl,
+      managementEndpoint(options.managementEndpoint),
+    );
     const saved = writeV3Config(config, resolvedPaths, candidate, now());
-    const applyResult = await manageDaemonService({
-      action: "reload",
-      apply: true,
-      reloadMode: payload.reloadMode || "when-idle",
-    });
-    const reload = applyResult.reload ?? {
+    const failedReload = (
+      mode: ChannelConnectorsDaemonReloadMode,
+      error: unknown,
+    ): ChannelConnectorsDaemonReloadResponse => ({
       ok: false,
       checkedAt: now().toISOString(),
-      status: "failed" as const,
-      mode: payload.reloadMode || "when-idle",
+      status: "failed",
+      mode,
       activeRuns: 0,
       activeTurns: 0,
       configUpdatedAt: saved.updatedAt,
       appliedAt: null,
       restartRequiredReason: null,
-      error: "Channel daemon reload returned no status.",
-    };
+      error: error instanceof Error ? error.message : String(error),
+    });
+    let applyResult: ChannelConnectorsDaemonResponse | null = null;
+    let applyError: unknown = null;
+    try {
+      applyResult = await manageDaemonService({
+        action: "reload",
+        mode: ownerMode,
+        apply: true,
+        reloadMode: payload.reloadMode || "when-idle",
+      }, req);
+    } catch (error) {
+      applyError = error;
+    }
+    const reload = applyError
+      ? failedReload(payload.reloadMode || "when-idle", applyError)
+      : applyResult?.reload ?? failedReload(
+          payload.reloadMode || "when-idle",
+          "Channel daemon reload returned no status.",
+        );
     const accepted = reload.status === "applied"
       || reload.status === "pending"
       || reload.status === "restart-required";
     let rolledBack = false;
     let rollbackReload: ChannelConnectorsDaemonReloadResponse | null = null;
-    if (!accepted && runtimeBefore.reachable && payload.rollbackOnFailure !== false) {
+    if (
+      !accepted &&
+      payload.rollbackOnFailure !== false &&
+      (runtimeBefore.reachable || applyError !== null)
+    ) {
       if (previousRaw === null) fs.rmSync(resolvedPaths.nativeConfigPath, { force: true });
       else writeSecretTextAtomic(resolvedPaths.nativeConfigPath, previousRaw);
-      const rollbackResult = await manageDaemonService({
-        action: "reload",
-        apply: true,
-        reloadMode: "immediate",
-      });
-      rollbackReload = rollbackResult.reload;
+      if (previousDaemonRaw === null) fs.rmSync(resolvedPaths.configPath, { force: true });
+      else writeSecretTextAtomic(resolvedPaths.configPath, previousDaemonRaw);
+      if (runtimeBefore.reachable) {
+        try {
+          const rollbackResult = await manageDaemonService({
+            action: "reload",
+            mode: ownerMode,
+            apply: true,
+            reloadMode: "immediate",
+          }, req);
+          rollbackReload = rollbackResult.reload ?? failedReload(
+            "immediate",
+            "Channel daemon rollback reload returned no status.",
+          );
+        } catch (error) {
+          rollbackReload = failedReload("immediate", error);
+        }
+      }
+      if (previousDaemonRaw === null) fs.rmSync(resolvedPaths.configPath, { force: true });
+      else writeSecretTextAtomic(resolvedPaths.configPath, previousDaemonRaw);
       rolledBack = true;
     }
     const effective = readV3Snapshot(config, resolvedPaths, now()).config;
@@ -3015,7 +3124,14 @@ export function createChannelConnectorsService(
       revision: v3ConfigRevision(effective),
       reload,
       rollbackReload,
-      error: accepted ? null : reload.error || "Channel daemon reload failed.",
+      error: accepted
+        ? null
+        : [
+            reload.error || "Channel daemon reload failed.",
+            rollbackReload && !rollbackReload.ok
+              ? `Rollback reload failed: ${rollbackReload.error || "unknown error"}`
+              : null,
+          ].filter(Boolean).join(" "),
     };
   }
 
@@ -4439,10 +4555,9 @@ export function createChannelConnectorsService(
   async function response(
     input: {
       action: ChannelConnectorsDaemonAction;
+      managed: ManageServiceResponse;
       applied?: boolean;
-      templateWritten?: boolean;
       configWritten?: boolean;
-      commandsRun?: ChannelConnectorsDaemonCommandResult[];
       reload?: ChannelConnectorsDaemonReloadResponse | null;
       skippedReason?: string | null;
       diagnostics?: string[];
@@ -4450,74 +4565,81 @@ export function createChannelConnectorsService(
   ): Promise<ChannelConnectorsDaemonResponse> {
     const plan = createChannelConnectorsDaemonPlan(config, options);
     const configPreview = currentConfigFull();
-    const commandsRun = input.commandsRun || [];
+    const manager = input.managed.manager;
+    const commandsRun = input.managed.commands.map(compatibilityCommandResult);
     const reload = input.reload || null;
-    const installed = fs.existsSync(plan.selectedTemplate.servicePath);
-    const serviceManager = summarizeManager(plan, commandsRun);
+    const serviceManager = compatibilityServiceManager(manager);
     return {
-      ok: input.skippedReason ? false : commandsRun.every((result) => result.ok) && (reload ? reload.ok : true),
+      ok: !input.skippedReason && input.managed.ok && (reload?.ok ?? true),
       checkedAt: now().toISOString(),
       action: input.action,
       applied: input.applied === true,
-      templateWritten: input.templateWritten === true,
+      templateWritten: input.managed.templateWritten,
       configWritten: input.configWritten === true,
-      templateCurrent: isTemplateCurrent(plan),
+      templateCurrent: input.managed.configCurrent,
       configCurrent: isConfigCurrent(configPreview),
-      installed,
+      installed: manager.installed,
       skippedReason: input.skippedReason || null,
       plan,
       config: redactConfigResponse(configPreview),
       commandsRun,
+      manager,
       serviceManager,
       reload,
       diagnostics: input.diagnostics || [],
     };
   }
 
-  async function runStatusCommands(plan: ChannelConnectorsDaemonPlan): Promise<ChannelConnectorsDaemonCommandResult[]> {
-    const commands = plan.selectedTemplate.commands.status || [];
-    const results: ChannelConnectorsDaemonCommandResult[] = [];
-    for (const command of commands) results.push(await runCommand(command));
-    return results;
-  }
-
   async function getDaemonService(): Promise<ChannelConnectorsDaemonResponse> {
-    const plan = createChannelConnectorsDaemonPlan(config, options);
-    const commandsRun = plan.supported ? await runStatusCommands(plan) : [];
+    const definition = createChannelConnectorsServiceDefinition(config, options);
+    const managed = await daemonServiceManager.manage(definition, {
+      action: "status",
+      mode: "session",
+      apply: true,
+    });
     return response({
       action: "status",
-      commandsRun,
+      managed,
     });
   }
 
-  async function manageDaemonService(payload: ChannelConnectorsDaemonRequest = {}): Promise<ChannelConnectorsDaemonResponse> {
+  async function manageDaemonService(
+    payload: ChannelConnectorsDaemonRequest = {},
+    req?: http.IncomingMessage,
+  ): Promise<ChannelConnectorsDaemonResponse> {
+    assertTrustedManagementRequest(config, req);
     const action = normalizeAction(payload.action);
+    const mode = normalizeDaemonServiceMode(payload.mode);
+    const apply = action === "status" && payload.apply === undefined && payload.runCommands === undefined
+      ? true
+      : normalizeDaemonServiceApply(payload);
     const plan = createChannelConnectorsDaemonPlan(config, options);
-    const guard = blockingReason(plan, action);
+    const definition = createChannelConnectorsServiceDefinition(config, options);
+    const commonAction = commonDaemonAction(action);
     const diagnostics: string[] = [];
-    if (guard === "native_daemon_entry_missing") {
+    const requiresEntry = commonAction !== null &&
+      commonAction !== "preview" &&
+      commonAction !== "status" &&
+      commonAction !== "stop" &&
+      commonAction !== "uninstall";
+    if (requiresEntry && !fs.existsSync(plan.daemonEntry)) {
       diagnostics.push("Run npm run build:api before installing or starting the native Channel Connectors daemon.");
-    }
-    if (guard === "unsupported_supervisor") {
-      diagnostics.push("The current OS supervisor is not supported by Tracevane native Channel Connectors F1.");
-    }
-    if (guard) {
+      const managed = await daemonServiceManager.manage(definition, {
+        action: "status",
+        mode,
+        apply: false,
+      });
       return response({
         action,
-        skippedReason: guard,
+        managed: { ...managed, ok: false, action: commonAction },
+        skippedReason: "native_daemon_entry_missing",
         diagnostics,
       });
     }
 
-    const apply = payload.apply === true;
-    const commandsRun: ChannelConnectorsDaemonCommandResult[] = [];
-    const shouldRunCommands = payload.runCommands === true
-      || (payload.runCommands !== false && apply && action !== "preview" && action !== "status");
     const configPreview = currentConfigFull();
-    let templateWritten = false;
     let configWritten = false;
-    const shouldPrepareRuntimeConfig = actionWritesFiles(action) && (apply || shouldRunCommands);
-    if (shouldPrepareRuntimeConfig) {
+    if (shouldPreparePrivateConfig(action, apply)) {
       fs.mkdirSync(plan.rootDir, { recursive: true });
       fs.mkdirSync(plan.stateDir, { recursive: true });
       fs.mkdirSync(path.dirname(plan.logFile), { recursive: true });
@@ -4526,36 +4648,57 @@ export function createChannelConnectorsService(
         configWritten = true;
       }
     }
-    if (apply && actionWritesFiles(action)) {
-      if (!isTemplateCurrent(plan)) {
-        writeTextAtomic(plan.selectedTemplate.servicePath, plan.selectedTemplate.template);
-        templateWritten = true;
+
+    if (action === "reload") {
+      const status = await daemonServiceManager.manage(definition, {
+        action: "status",
+        mode,
+        apply,
+      });
+      if (!apply) {
+        return response({
+          action,
+          managed: status,
+          configWritten,
+          diagnostics,
+        });
       }
-    }
-
-    if (action === "status") {
-      commandsRun.push(...await runStatusCommands(plan));
-    } else if (shouldRunCommands) {
-      const commands = plan.selectedTemplate.commands[action] || [];
-      for (const command of commands) commandsRun.push(await runCommand(command));
-      if (action !== "stop") commandsRun.push(...await runStatusCommands(plan));
-    }
-
-    const reload = action === "reload"
-      ? await requestDaemonReload(
+      if (status.manager.state !== "running") {
+        return response({
+          action,
+          managed: { ...status, ok: false },
+          configWritten,
+          skippedReason: "daemon_not_running",
+          diagnostics,
+        });
+      }
+      const reload = await requestDaemonReload(
         { mode: payload.reloadMode || "when-idle" },
-        options.fetchImpl ?? fetch,
+        fetchImpl,
         managementEndpoint(options.managementEndpoint),
-      )
-      : null;
+        managementToken,
+      );
+      return response({
+        action,
+        managed: status,
+        applied: configWritten || reload.status === "applied" || reload.status === "pending",
+        configWritten,
+        reload,
+        diagnostics,
+      });
+    }
 
+    const managed = await daemonServiceManager.manage(definition, {
+      action: commonAction!,
+      mode,
+      apply,
+    });
     return response({
       action,
-      applied: templateWritten || configWritten || commandsRun.length > 0 || reload?.status === "applied" || reload?.status === "pending",
-      templateWritten,
+      managed,
+      applied: configWritten || managed.templateWritten || managed.commands.length > 0 ||
+        (mode === "session" && apply && mutatesSessionOwner(commonAction!)),
       configWritten,
-      commandsRun,
-      reload,
       diagnostics,
     });
   }
@@ -4563,18 +4706,22 @@ export function createChannelConnectorsService(
   async function getAgentSessions(): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
     return requestDaemonAgentSessions(
       null,
-      options.fetchImpl ?? fetch,
+      fetchImpl,
       managementEndpoint(options.managementEndpoint),
+      managementToken,
     );
   }
 
   async function manageAgentSessions(
     payload: ChannelConnectorAgentSessionActionRequest = {},
+    req?: http.IncomingMessage,
   ): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
+    assertTrustedManagementRequest(config, req);
     return requestDaemonAgentSessions(
       payload,
-      options.fetchImpl ?? fetch,
+      fetchImpl,
       managementEndpoint(options.managementEndpoint),
+      managementToken,
     );
   }
 

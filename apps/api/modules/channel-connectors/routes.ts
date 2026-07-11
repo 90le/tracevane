@@ -21,14 +21,18 @@ import type {
 
 function sendChannelConnectorsError(res: Parameters<typeof sendJson>[0], error: unknown): void {
   const message = error instanceof Error ? error.message : "Unexpected Channel Connectors service failure";
+  const explicitStatus = typeof error === "object" && error !== null &&
+    typeof (error as { statusCode?: unknown }).statusCode === "number"
+    ? (error as { statusCode: number }).statusCode
+    : null;
   const issues = typeof error === "object" && error !== null && Array.isArray((error as { issues?: unknown }).issues)
     ? (error as { issues: unknown[] }).issues
     : undefined;
-  const status = issues ? 400
+  const status = explicitStatus ?? (issues ? 400
     : /changed since|changed after planning|differs from the planned/i.test(message) ? 409
       : /not found/i.test(message) ? 404
         : /required|invalid|expired|disabled/i.test(message) ? 400
-          : 500;
+          : 500);
   sendJson(res, status, {
     error: "channel_connectors_service_failed",
     message,
@@ -75,7 +79,7 @@ export function registerChannelConnectorsRoutes(router: TracevaneRouter): void {
   router.put("/api/channel-connectors/config/v3/apply", async (req, res, routeCtx) => {
     try {
       const payload = await parseJsonBody<ChannelConnectorsV3ConfigApplyRequest>(req);
-      sendJson(res, 200, await routeCtx.services.channelConnectors.applyV3Config(payload));
+      sendJson(res, 200, await routeCtx.services.channelConnectors.applyV3Config(payload, req));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }
@@ -290,7 +294,7 @@ export function registerChannelConnectorsRoutes(router: TracevaneRouter): void {
   router.post("/api/channel-connectors/daemon/service", async (req, res, routeCtx) => {
     try {
       const payload = await parseJsonBody<ChannelConnectorsDaemonRequest>(req);
-      sendJson(res, 200, await routeCtx.services.channelConnectors.manageDaemonService(payload));
+      sendJson(res, 200, await routeCtx.services.channelConnectors.manageDaemonService(payload, req));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }
@@ -315,7 +319,7 @@ export function registerChannelConnectorsRoutes(router: TracevaneRouter): void {
   router.post("/api/channel-connectors/agent-sessions", async (req, res, routeCtx) => {
     try {
       const payload = await parseJsonBody<ChannelConnectorAgentSessionActionRequest>(req);
-      sendJson(res, 200, await routeCtx.services.channelConnectors.manageAgentSessions(payload));
+      sendJson(res, 200, await routeCtx.services.channelConnectors.manageAgentSessions(payload, req));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

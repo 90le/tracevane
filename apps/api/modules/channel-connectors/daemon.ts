@@ -3,6 +3,8 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import {
   EventDispatcher,
   LoggerLevel,
@@ -129,6 +131,7 @@ import {
   type ChannelConnectorOctoAccountRouteGroup,
   type ChannelConnectorRuntimeRouteRef,
 } from "./runtime-account-routing.js";
+import { removeOwnedRuntimeMetadata } from "../supervisor/index.js";
 import { createChannelConnectorTargetExecutionCoordinator } from "./target-execution-coordinator.js";
 import {
   createChannelConnectorIngressQueue,
@@ -997,12 +1000,24 @@ interface ChannelConnectorProgressDefaults {
   toolMessages: boolean;
 }
 
-function configPathFromArgv(argv: string[]): string {
-  const index = argv.findIndex((item) => item === "--config");
-  if (index >= 0 && argv[index + 1]) return argv[index + 1];
-  const inline = argv.find((item) => item.startsWith("--config="));
-  if (inline) return inline.slice("--config=".length);
-  throw new Error("Missing --config <path>");
+export function parseChannelConnectorsDaemonConfigPath(argv: string[]): string {
+  const occurrences = argv.filter(
+    (item) => item === "--config" || item.startsWith("--config="),
+  ).length;
+  if (occurrences !== 1) {
+    throw new TypeError("Exactly one --config <path> is required.");
+  }
+  const { values } = parseArgs({
+    args: argv,
+    allowPositionals: false,
+    strict: true,
+    options: {
+      config: { type: "string" },
+    },
+  });
+  const configPath = values.config?.trim();
+  if (!configPath) throw new TypeError("Exactly one --config <path> is required.");
+  return path.resolve(configPath);
 }
 
 function readConfig(filePath: string): ChannelConnectorsDaemonRuntimeConfig {
@@ -1481,6 +1496,13 @@ function flushRuntime(config: ChannelConnectorsDaemonRuntimeConfig, state: Chann
   fs.writeFileSync(config.paths.runtime, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
+export function cleanupChannelConnectorsRuntimeMetadata(
+  runtimePath: string,
+  ownedPid = process.pid,
+): boolean {
+  return removeOwnedRuntimeMetadata(runtimePath, ownedPid);
+}
+
 function octoHistoryCutoffKey(bindingId: string, sessionKey: string): string {
   return `${bindingId}\u0000${sessionKey}`;
 }
@@ -1590,6 +1612,15 @@ function daemonRuntimeProjectSummaries(
   return [...projects.values()];
 }
 
+function publicDaemonManagementState(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+): ChannelConnectorsDaemonRuntimeConfig["management"] {
+  return {
+    host: config.management.host,
+    port: config.management.port,
+  };
+}
+
 function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): ChannelDaemonState {
   const now = new Date().toISOString();
   return {
@@ -1597,7 +1628,7 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
     pid: process.pid,
     startedAt: now,
     updatedAt: now,
-    management: config.management,
+    management: publicDaemonManagementState(config),
     projects: daemonRuntimeProjectSummaries(config),
     octoConnections: {},
     feishuConnections: {},
@@ -1793,7 +1824,7 @@ function sendDaemonJson(res: http.ServerResponse, statusCode: number, body: unkn
 }
 
 function daemonManagementToken(config: ChannelConnectorsDaemonRuntimeConfig): string | null {
-  return normalizeString((config.management as { token?: string }).token)
+  return normalizeString(config.management.token)
     || normalizeString(process.env.TRACEVANE_DAEMON_MANAGEMENT_TOKEN)
     || null;
 }
@@ -2418,13 +2449,13 @@ async function acquireChannelSessionAgentRun(
   };
 }
 
-function startHttp(
+async function startHttp(
   config: ChannelConnectorsDaemonRuntimeConfig,
   state: ChannelDaemonState,
   handlers: {
     reload: (payload: { mode?: ChannelConnectorsDaemonReloadMode | null }) => Promise<ChannelConnectorsDaemonReloadResponse>;
   },
-): http.Server {
+): Promise<http.Server> {
   const server = http.createServer((req, res) => {
     if (req.url === "/health") {
       const feishuStates = Object.values(state.feishuConnections);
@@ -2517,7 +2548,25 @@ function startHttp(
     res.statusCode = 404;
     res.end("not found");
   });
-  server.listen(config.management.port, config.management.host);
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => {
+      server.off("listening", onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    try {
+      server.listen(config.management.port, config.management.host);
+    } catch (error) {
+      server.off("error", onError);
+      server.off("listening", onListening);
+      reject(error);
+    }
+  });
   return server;
 }
 
@@ -13925,7 +13974,7 @@ function updateReloadedDaemonState(
   state: ChannelDaemonState,
   config: ChannelConnectorsDaemonRuntimeConfig,
 ): void {
-  state.management = config.management;
+  state.management = publicDaemonManagementState(config);
   state.projects = daemonRuntimeProjectSummaries(config);
   state.agentSessionDriver = buildAgentSessionDriverState(config);
 }
@@ -13968,8 +14017,10 @@ function daemonReloadResponse(
   };
 }
 
-async function main(): Promise<void> {
-  const configPath = configPathFromArgv(process.argv.slice(2));
+export async function runChannelConnectorsDaemon(
+  args: string[] = process.argv.slice(2),
+): Promise<void> {
+  const configPath = parseChannelConnectorsDaemonConfigPath(args);
   const config = readConfig(configPath);
   channelAgentSessionDriverPool.configurePolicy({
     idleTimeoutMs: optionalPositiveIntegerEnv("TRACEVANE_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS")
@@ -13982,13 +14033,8 @@ async function main(): Promise<void> {
   });
   ensureDir(config.paths.root);
   ensureDir(config.paths.state);
-  channelIngressQueue = createChannelConnectorIngressQueue(ingressQueuePath(config), {
-    queueLimit: Math.max(1, config.agentSessionPolicy?.queueMaxRecords || 100),
-    maxConcurrentPerAccount: Math.max(2, config.agentSessionPolicy?.maxConcurrentTurns || 4),
-  });
+  channelIngressQueue = null;
   const state = createDaemonState(config);
-  flushRuntime(config, state);
-  appendLog(config.paths.log, "Tracevane native Channel Connectors daemon started");
   const sockets: OctoWukongSocket[] = [];
   const octoRestHeartbeatTimers: NodeJS.Timeout[] = [];
   const octoConnectionHandles = new Map<string, ChannelDaemonOctoConnectionHandle>();
@@ -14000,7 +14046,7 @@ async function main(): Promise<void> {
   const seenMessages = loadFeishuSeenMessages(config);
   const octoTimelines: ChannelDaemonOctoTimelineRegistry = new Map();
   const feishuTimelines: ChannelDaemonFeishuTimelineRegistry = new Map();
-  const agentSessionReaper = startAgentSessionDriverReaper(config, state);
+  let agentSessionReaper: NodeJS.Timeout | null = null;
   let feishuWatchdog: NodeJS.Timeout | null = null;
   let feishuStartupGeneration = 0;
   let pendingReloadTimer: NodeJS.Timeout | null = null;
@@ -14391,18 +14437,44 @@ async function main(): Promise<void> {
     return applyReloadNow(mode);
   };
 
-  const server = startHttp(config, state, { reload: handleReload });
-
-  if ((config.agentSessionPolicy?.busyStrategy || "reject") !== "queue") {
-    dropPendingAgentRunsBecauseQueuesAreDisabled(config);
+  const server = await startHttp(config, state, { reload: handleReload });
+  try {
+    channelIngressQueue = createChannelConnectorIngressQueue(ingressQueuePath(config), {
+      queueLimit: Math.max(1, config.agentSessionPolicy?.queueMaxRecords || 100),
+      maxConcurrentPerAccount: Math.max(2, config.agentSessionPolicy?.maxConcurrentTurns || 4),
+    });
+    flushRuntime(config, state);
+    appendLog(config.paths.log, "Tracevane native Channel Connectors daemon started");
+    agentSessionReaper = startAgentSessionDriverReaper(config, state);
+    if ((config.agentSessionPolicy?.busyStrategy || "reject") !== "queue") {
+      dropPendingAgentRunsBecauseQueuesAreDisabled(config);
+    }
+    startPlatformConnections();
+    replayReplyOutbox();
+    replyOutboxReplayTimer = setInterval(replayReplyOutbox, 5_000);
+    replyOutboxReplayTimer.unref();
+  } catch (error) {
+    if (pendingReloadTimer) clearInterval(pendingReloadTimer);
+    if (replyOutboxReplayTimer) clearInterval(replyOutboxReplayTimer);
+    if (feishuWatchdog) clearInterval(feishuWatchdog);
+    if (agentSessionReaper) clearInterval(agentSessionReaper);
+    for (const entry of activeRunCancels.values()) entry.controller.abort();
+    stopPlatformConnections("startup-failed");
+    channelIngressQueue = null;
+    if (runtimeDebounceTimer) {
+      clearTimeout(runtimeDebounceTimer);
+      runtimeDebounceTimer = null;
+    }
+    runtimeDirty = false;
+    cleanupChannelConnectorsRuntimeMetadata(config.paths.runtime);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw error;
   }
 
-  startPlatformConnections();
-  replayReplyOutbox();
-  replyOutboxReplayTimer = setInterval(replayReplyOutbox, 5_000);
-  replyOutboxReplayTimer.unref();
-
+  let stopping = false;
   const stop = () => {
+    if (stopping) return;
+    stopping = true;
     appendLog(config.paths.log, "Tracevane native Channel Connectors daemon stopping");
     if (pendingReloadTimer) clearInterval(pendingReloadTimer);
     if (replyOutboxReplayTimer) clearInterval(replyOutboxReplayTimer);
@@ -14416,7 +14488,12 @@ async function main(): Promise<void> {
     for (const client of feishuClients) client.close({ force: true });
     for (const group of feishuGroups) releaseFeishuGroupLock(config, group);
     channelIngressQueue = null;
-    flushRuntime(config, state);
+    if (runtimeDebounceTimer) {
+      clearTimeout(runtimeDebounceTimer);
+      runtimeDebounceTimer = null;
+    }
+    runtimeDirty = false;
+    cleanupChannelConnectorsRuntimeMetadata(config.paths.runtime);
     const forceExitTimer = setTimeout(() => {
       process.stderr.write("channel-connectors daemon: forced exit after 5s timeout\n");
       process.exit(0);
@@ -14427,12 +14504,15 @@ async function main(): Promise<void> {
       process.exit(0);
     });
   };
-  process.on("SIGINT", stop);
-  process.on("SIGTERM", stop);
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
 }
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.stack || error.message : String(error);
-  process.stderr.write(`${message}\n`);
-  process.exit(1);
-});
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath && invokedPath === fileURLToPath(import.meta.url)) {
+  runChannelConnectorsDaemon().catch((error) => {
+    const message = error instanceof Error ? error.stack || error.message : String(error);
+    process.stderr.write(`channel-connectors daemon: ${message}\n`);
+    process.exit(1);
+  });
+}

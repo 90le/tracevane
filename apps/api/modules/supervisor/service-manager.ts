@@ -47,7 +47,7 @@ export interface CreateServiceManagerDependencies {
     command: SupervisorCommand,
     options: RunSupervisorCommandOptions,
   ) => Promise<SupervisorCommandResult>;
-  probe?: (url: string) => Promise<boolean>;
+  probe?: (url: string, expectedPid?: number | null) => Promise<boolean>;
   platform?: NodeJS.Platform;
   homeDir?: string;
   fs?: Pick<
@@ -284,9 +284,12 @@ export function createServiceManager(
   const commandTimeoutMs = Math.max(0, dependencies.commandTimeoutMs ?? 5_000);
   const secrets = dependencies.redact?.filter(Boolean) ?? [];
 
-  async function probeHealth(url: string): Promise<boolean> {
+  async function probeHealth(
+    url: string,
+    expectedPid?: number | null,
+  ): Promise<boolean> {
     try {
-      return await probe(url);
+      return await probe(url, expectedPid);
     } catch {
       return false;
     }
@@ -614,9 +617,13 @@ export function createServiceManager(
   ): Promise<ManageServiceResponse> {
       if (request.mode === "session") {
         let manager: TracevaneServiceManagerStatus;
+        let sessionStarted = false;
+        let sessionOwnerPid: number | null = null;
         let transitionCommands: SupervisorCommandResult[] = [];
         if (!request.apply || request.action === "preview" || request.action === "status") {
-          manager = await session.status(definition.id);
+          const observed = await session.status(definition.id);
+          manager = observed;
+          sessionOwnerPid = observed.pid;
         } else if (request.action === "start" || request.action === "ensure-running") {
           const plan = createSupervisorPlan(definition, platform, homeDir, {
             windowsUserId: dependencies.windowsUserId,
@@ -659,7 +666,10 @@ export function createServiceManager(
               };
             }
           }
-          manager = await session.start(definition);
+          const started = await session.start(definition);
+          manager = started;
+          sessionStarted = true;
+          sessionOwnerPid = started.pid;
         } else if (request.action === "stop") {
           manager = await session.stop(definition.id);
         } else if (request.action === "restart") {
@@ -668,7 +678,7 @@ export function createServiceManager(
           });
           const inspection = await inspectPersistent(plan);
           transitionCommands = inspection.commands;
-          if (inspection.templateExists === null) {
+          if (hasUntrustedInspection(inspection)) {
             return {
               ok: false,
               action: request.action,
@@ -680,16 +690,6 @@ export function createServiceManager(
           }
           manager = await session.stop(definition.id);
           if (manager.active === false && manager.state === "stopped") {
-            if (hasUntrustedInspection(inspection)) {
-              return {
-                ok: false,
-                action: request.action,
-                manager: inspection.manager,
-                commands: transitionCommands,
-                templateWritten: false,
-                configCurrent: inspection.manager.configCurrent,
-              };
-            }
             if (inspection.manager.installed) {
               const stopped = await runSequence(
                 plan.commands.stop ?? [],
@@ -716,12 +716,84 @@ export function createServiceManager(
                 };
               }
             }
-            manager = await session.start(definition);
+            const started = await session.start(definition);
+            manager = started;
+            sessionStarted = true;
+            sessionOwnerPid = started.pid;
           }
         } else {
           manager = await session.status(definition.id);
         }
         manager = normalizeManagerStatus(manager);
+        const inspectReadiness = sessionStarted ||
+          (request.action === "status" && request.apply);
+        if (inspectReadiness) {
+          const processRunning = manager.errorCode === null &&
+            manager.active === true &&
+            manager.state === "running";
+          const viableOwner = processRunning &&
+            Number.isInteger(sessionOwnerPid) &&
+            Number(sessionOwnerPid) > 0;
+          const ready = viableOwner && await probeHealth(
+            definition.healthUrl,
+            sessionOwnerPid,
+          );
+          if (ready) {
+            const ownedStatus = await session.status(definition.id);
+            const owned = normalizeManagerStatus(ownedStatus);
+            const ownedPid = ownedStatus.pid;
+            if (
+              owned.errorCode === null &&
+              owned.active === true &&
+              owned.state === "running" &&
+              ownedPid === sessionOwnerPid
+            ) {
+              manager = owned;
+            } else {
+              manager = {
+                ...owned,
+                active: null,
+                state: "degraded",
+                errorCode: "runtime-not-ready",
+                errorMessage: "Session service did not become ready.",
+              };
+            }
+          } else if (
+            manager.errorCode === null &&
+            (sessionStarted || processRunning)
+          ) {
+            manager = {
+              ...manager,
+              active: null,
+              state: "degraded",
+              errorCode: "runtime-not-ready",
+              errorMessage: "Session service did not become ready.",
+            };
+          }
+        }
+        if (
+          sessionStarted &&
+          !(manager.errorCode === null && manager.active === true && manager.state === "running")
+        ) {
+          try {
+            const cleanup = normalizeManagerStatus(await session.stop(definition.id));
+            if (cleanup.active !== false || cleanup.state !== "stopped") {
+              manager = {
+                ...cleanup,
+                errorCode: cleanup.errorCode ?? "runtime-not-ready",
+                errorMessage: "Session readiness failed and cleanup was not confirmed.",
+              };
+            }
+          } catch (error) {
+            manager = {
+              ...manager,
+              errorCode: manager.errorCode ?? "runtime-not-ready",
+              errorMessage: `Session readiness failed and cleanup threw: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            };
+          }
+        }
         return {
           ok: manager.errorCode === null,
           action: request.action,
@@ -767,6 +839,20 @@ export function createServiceManager(
         inspection.manager.active === null &&
         inspection.manager.errorCode === null
       ) {
+        const sessionOwner = await session.status(definition.id);
+        if (
+          sessionOwner.active !== false ||
+          sessionOwner.state !== "stopped"
+        ) {
+          return {
+            ok: true,
+            action: request.action,
+            manager: inspection.manager,
+            commands: inspection.commands,
+            templateWritten: false,
+            configCurrent: true,
+          };
+        }
         const ready = await probeHealth(definition.healthUrl);
         if (!ready &&
           plan.supervisor !== "launchd-user" &&

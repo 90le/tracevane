@@ -1,6 +1,9 @@
 import type {
+  TracevaneServiceAction,
   TracevaneServiceManagerStatus,
+  TracevaneServiceMode,
   TracevaneSupervisorKind,
+  TracevaneSupervisorErrorCode,
 } from "./supervisor.js";
 
 export const CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME = "tracevane-channel-connectors.service";
@@ -851,19 +854,9 @@ export interface ChannelConnectorFeishuWebhookResponse {
   };
 }
 
-export type ChannelConnectorsSupervisorKind =
-  | TracevaneSupervisorKind
-  | "windows-service";
+export type ChannelConnectorsSupervisorKind = TracevaneSupervisorKind;
 
-export type ChannelConnectorsDaemonAction =
-  | "preview"
-  | "install"
-  | "ensure-running"
-  | "start"
-  | "stop"
-  | "restart"
-  | "reload"
-  | "status";
+export type ChannelConnectorsDaemonAction = TracevaneServiceAction | "reload";
 
 export type ChannelConnectorsDaemonReloadMode = "when-idle" | "immediate";
 
@@ -910,17 +903,16 @@ export interface ChannelConnectorsDaemonCommandResult extends ChannelConnectorsD
   exitCode: number | null;
   stdout: string;
   stderr: string;
+  errorCode: TracevaneSupervisorErrorCode | null;
+  errorMessage: string | null;
+  durationMs: number;
   error: string | null;
 }
 
 export interface ChannelConnectorsDaemonManagerStatus
-  extends Partial<
-    Omit<TracevaneServiceManagerStatus, "active" | "enabled">
-  > {
+  extends TracevaneServiceManagerStatus {
   checked: boolean;
   reachable: boolean | null;
-  active: boolean | null;
-  enabled: boolean | null;
   lastError: string | null;
 }
 
@@ -943,6 +935,8 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
   management: {
     host: string;
     port: number;
+    /** Private daemon-only bearer token. Public API projections must redact or omit it. */
+    token?: string;
   };
   paths: {
     root: string;
@@ -1248,6 +1242,8 @@ export interface ChannelConnectorsV3ConfigPlanResponse {
 export interface ChannelConnectorsV3ConfigApplyRequest {
   planId?: string | null;
   config?: ChannelConnectorsV3Config;
+  /** Explicit owner; omitted requests prefer a running session, then a running persistent service. */
+  mode?: TracevaneServiceMode;
   reloadMode?: ChannelConnectorsDaemonReloadMode;
   rollbackOnFailure?: boolean;
 }
@@ -1364,6 +1360,7 @@ export interface ChannelConnectorsDaemonConfigResponse {
 
 export interface ChannelConnectorsDaemonRequest {
   action?: ChannelConnectorsDaemonAction;
+  mode?: TracevaneServiceMode;
   apply?: boolean;
   runCommands?: boolean;
   reloadMode?: ChannelConnectorsDaemonReloadMode;
@@ -1383,6 +1380,7 @@ export interface ChannelConnectorsDaemonResponse {
   plan: ChannelConnectorsDaemonPlan;
   config: ChannelConnectorsDaemonConfigResponse;
   commandsRun: ChannelConnectorsDaemonCommandResult[];
+  manager: TracevaneServiceManagerStatus;
   serviceManager: ChannelConnectorsDaemonManagerStatus;
   reload: ChannelConnectorsDaemonReloadResponse | null;
   diagnostics: string[];
