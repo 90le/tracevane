@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import type {
+  CreateSupervisorPlanOptions,
   ServiceDefinition,
   SupervisorCommand,
   SupervisorPlan,
@@ -120,10 +122,11 @@ function buildLaunchdTemplate(
 function buildWindowsTaskTemplate(
   definition: ServiceDefinition,
   args: string[],
+  windowsUserId: string,
 ): string {
   const argumentLine = args.map(quoteWindowsArgument).join(" ");
+  const escapedUserId = escapeXml(windowsUserId);
   return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
     '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">',
     "  <RegistrationInfo>",
     `    <Description>${escapeXml(definition.displayName)}</Description>`,
@@ -131,10 +134,12 @@ function buildWindowsTaskTemplate(
     "  <Triggers>",
     "    <LogonTrigger>",
     "      <Enabled>true</Enabled>",
+    `      <UserId>${escapedUserId}</UserId>`,
     "    </LogonTrigger>",
     "  </Triggers>",
     "  <Principals>",
     '    <Principal id="Author">',
+    `      <UserId>${escapedUserId}</UserId>`,
     "      <LogonType>InteractiveToken</LogonType>",
     "      <RunLevel>LeastPrivilege</RunLevel>",
     "    </Principal>",
@@ -146,7 +151,7 @@ function buildWindowsTaskTemplate(
     "    <AllowStartOnDemand>true</AllowStartOnDemand>",
     "    <StartWhenAvailable>true</StartWhenAvailable>",
     "    <RestartOnFailure>",
-    "      <Interval>PT30S</Interval>",
+    "      <Interval>PT1M</Interval>",
     "      <Count>999</Count>",
     "    </RestartOnFailure>",
     "    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
@@ -161,6 +166,15 @@ function buildWindowsTaskTemplate(
     "</Task>",
     "",
   ].join("\n");
+}
+
+function currentWindowsUserId(
+  options: CreateSupervisorPlanOptions,
+): string {
+  if (options.windowsUserId?.trim()) return options.windowsUserId;
+  const username = process.env.USERNAME?.trim() || os.userInfo().username;
+  const domain = process.env.USERDOMAIN?.trim();
+  return domain ? `${domain}\\${username}` : username;
 }
 
 function systemdCommands(
@@ -203,20 +217,19 @@ function launchdCommands(
 ): SupervisorPlan["commands"] {
   const domain = launchdUserDomain();
   const target = `${domain}/${definition.launchdLabel}`;
-  const install = [
-    command("Bootstrap LaunchAgent", "launchctl", ["bootstrap", domain, configPath]),
-    command("Enable LaunchAgent", "launchctl", ["enable", target]),
-  ];
+  const bootout = command("Boot out LaunchAgent", "launchctl", ["bootout", target]);
+  const bootstrap = command("Bootstrap LaunchAgent", "launchctl", ["bootstrap", domain, configPath]);
+  const enable = command("Enable LaunchAgent", "launchctl", ["enable", target]);
+  const kickstart = command("Start LaunchAgent", "launchctl", ["kickstart", "-k", target]);
+  const install = [bootout, bootstrap, enable];
+  const start = [...install, kickstart];
   return {
     install,
-    start: [command("Start LaunchAgent", "launchctl", ["kickstart", "-k", target])],
-    stop: [command("Stop LaunchAgent", "launchctl", ["bootout", target])],
-    restart: [command("Restart LaunchAgent", "launchctl", ["kickstart", "-k", target])],
-    repair: install,
-    uninstall: [
-      command("Remove LaunchAgent", "launchctl", ["bootout", target]),
-      command("Disable LaunchAgent", "launchctl", ["disable", target]),
-    ],
+    start,
+    stop: [bootout],
+    restart: start,
+    repair: start,
+    uninstall: [bootout],
     status: [command("Print LaunchAgent status", "launchctl", ["print", target])],
   };
 }
@@ -273,6 +286,7 @@ export function createSupervisorPlan(
   definition: ServiceDefinition,
   platform: NodeJS.Platform,
   homeDir: string,
+  options: CreateSupervisorPlanOptions = {},
 ): SupervisorPlan {
   const args = launchArguments(definition);
   let plan: Omit<SupervisorPlan, "fingerprint">;
@@ -321,7 +335,11 @@ export function createSupervisorPlan(
       supervisor: "scheduled-task",
       serviceName: definition.windowsTaskName,
       configPath,
-      template: buildWindowsTaskTemplate(definition, args),
+      template: buildWindowsTaskTemplate(
+        definition,
+        args,
+        currentWindowsUserId(options),
+      ),
       commands: windowsCommands(definition, configPath),
     };
   } else {

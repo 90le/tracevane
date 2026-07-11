@@ -1,4 +1,5 @@
 export type {
+  CreateSupervisorPlanOptions,
   ServiceDefinition,
   SupervisorCommand,
   SupervisorPlan,

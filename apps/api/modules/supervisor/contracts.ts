@@ -24,6 +24,10 @@ export interface SupervisorCommand {
   args: string[];
 }
 
+export interface CreateSupervisorPlanOptions {
+  windowsUserId?: string;
+}
+
 export interface SupervisorPlan {
   platform: NodeJS.Platform;
   supervisor: TracevaneSupervisorKind;

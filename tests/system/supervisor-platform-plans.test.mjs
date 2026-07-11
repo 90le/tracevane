@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 
 import {
   createSupervisorPlan,
@@ -36,6 +37,25 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function validateWindowsTaskXml(template) {
+  if (process.platform !== "win32") return;
+  const script = [
+    '$ErrorActionPreference = "Stop"',
+    "$xml = [Console]::In.ReadToEnd()",
+    '$service = New-Object -ComObject "Schedule.Service"',
+    "$service.Connect()",
+    "$task = $service.NewTask(0)",
+    "$task.XmlText = $xml",
+    'Write-Output "validated"',
+  ].join("; ");
+  const output = execFileSync(
+    "powershell.exe",
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+    { input: template, encoding: "utf8" },
+  );
+  assert.match(output, /validated/);
+}
+
 test("platform plans are user-scoped and pass config as an argument", () => {
   const definition = fixtureDefinition();
   const previousHttpProxy = process.env.HTTP_PROXY;
@@ -52,7 +72,7 @@ test("platform plans are user-scoped and pass config as an argument", () => {
     assert.equal(windows.platform, "win32");
     assert.equal(windows.supervisor, "scheduled-task");
     assert.equal(windows.serviceName, definition.windowsTaskName);
-    assert.match(windows.template, /^<\?xml version="1\.0" encoding="UTF-8"\?>$/m);
+    assert.match(windows.template, /^<Task version="1\.4"/);
     assert.equal(
       windows.configPath,
       "C:\\Users\\Test User\\AppData\\Roaming\\OpenClaw\\Tracevane\\TracevaneModelGateway.xml",
@@ -62,6 +82,7 @@ test("platform plans are user-scoped and pass config as an argument", () => {
     assert.match(windows.template, /<RunLevel>LeastPrivilege<\/RunLevel>/);
     assert.match(windows.template, /<AllowStartOnDemand>true<\/AllowStartOnDemand>/);
     assert.match(windows.template, /<RestartOnFailure>/);
+    assert.match(windows.template, /<Interval>PT1M<\/Interval>/);
     assert.match(windows.template, /<ExecutionTimeLimit>PT0S<\/ExecutionTimeLimit>/);
     assert.match(windows.template, /<StartWhenAvailable>true<\/StartWhenAvailable>/);
     assert.match(windows.template, /<DisallowStartIfOnBatteries>false<\/DisallowStartIfOnBatteries>/);
@@ -88,6 +109,7 @@ test("platform plans are user-scoped and pass config as an argument", () => {
       [...new Set(Object.values(windows.commands).flat().map(({ command }) => command))],
       ["schtasks.exe"],
     );
+    validateWindowsTaskXml(windows.template);
 
     const mac = createSupervisorPlan(definition, "darwin", "/Users/test user");
     assert.equal(mac.supervisor, "launchd-user");
@@ -143,6 +165,59 @@ test("platform plans are user-scoped and pass config as an argument", () => {
     if (previousStateDir === undefined) delete process.env.OPENCLAW_STATE_DIR;
     else process.env.OPENCLAW_STATE_DIR = previousStateDir;
   }
+});
+
+test("windows tasks bind the logon trigger and principal to one current user", () => {
+  const windowsUserId = "TESTDOMAIN\\Test User & Ops";
+  const plan = createSupervisorPlan(
+    fixtureDefinition(),
+    "win32",
+    "C:/Users/Test User",
+    { windowsUserId },
+  );
+  const escapedUserId = "TESTDOMAIN\\Test User &amp; Ops";
+
+  assert.match(
+    plan.template,
+    new RegExp(`<LogonTrigger>[\\s\\S]*?<UserId>${escapeRegExp(escapedUserId)}<\\/UserId>[\\s\\S]*?<\\/LogonTrigger>`),
+  );
+  assert.match(
+    plan.template,
+    new RegExp(`<Principal id="Author">[\\s\\S]*?<UserId>${escapeRegExp(escapedUserId)}<\\/UserId>[\\s\\S]*?<\\/Principal>`),
+  );
+  assert.equal(
+    [...plan.template.matchAll(new RegExp(`<UserId>${escapeRegExp(escapedUserId)}<\\/UserId>`, "g"))].length,
+    2,
+  );
+});
+
+test("launchd lifecycle actions always rebuild a booted current-user agent", () => {
+  const plan = createSupervisorPlan(
+    fixtureDefinition("/opt/Trace vane/项目"),
+    "darwin",
+    "/Users/test",
+  );
+  const domain = `gui/${typeof process.getuid === "function" ? process.getuid() : 501}`;
+  const target = `${domain}/dev.tracevane.model-gateway`;
+  const bootout = { command: "launchctl", args: ["bootout", target] };
+  const bootstrap = { command: "launchctl", args: ["bootstrap", domain, plan.configPath] };
+  const enable = { command: "launchctl", args: ["enable", target] };
+  const kickstart = { command: "launchctl", args: ["kickstart", "-k", target] };
+  const nativeSequence = (action) => plan.commands[action]?.map(
+    ({ command, args }) => ({ command, args }),
+  );
+
+  assert.deepEqual(nativeSequence("install"), [bootout, bootstrap, enable]);
+  for (const action of ["start", "restart", "repair"]) {
+    assert.deepEqual(
+      nativeSequence(action),
+      [bootout, bootstrap, enable, kickstart],
+      action,
+    );
+  }
+  assert.deepEqual(nativeSequence("stop"), [bootout]);
+  assert.deepEqual(nativeSequence("uninstall"), [bootout]);
+  assert.doesNotMatch(JSON.stringify(plan.commands), /"disable"/);
 });
 
 test("fingerprints deterministically cover every persisted launch input", () => {
