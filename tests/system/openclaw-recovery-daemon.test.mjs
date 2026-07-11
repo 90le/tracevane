@@ -1000,6 +1000,49 @@ test("recovery stop awaits a pending listen and its close before returning", asy
   }
 });
 
+test("recovery stop bounds a pending listen that never emits", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  let releaseListen;
+  let listenCalls = 0;
+  let startSettled = false;
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    controlCloseTimeoutMs: 50,
+    listenControlServer(server, requestedPort, host) {
+      listenCalls += 1;
+      releaseListen = () => server.listen(requestedPort, host);
+    },
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const starting = daemon.start().finally(() => {
+    startSettled = true;
+  });
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(listenCalls, 1);
+    let timeout;
+    const stoppedPromptly = await Promise.race([
+      daemon.stop().then(() => true),
+      new Promise((resolve) => {
+        timeout = setTimeout(() => resolve(false), 300);
+      }),
+    ]);
+    clearTimeout(timeout);
+    assert.equal(stoppedPromptly, true);
+    await starting;
+    assert.equal(startSettled, true);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    if (!startSettled) releaseListen?.();
+    await Promise.allSettled([starting]);
+    await daemon.stop();
+  }
+});
+
 test("recovery stop during initial probe cannot resurrect interval or runtime", async () => {
   const config = makeConfig();
   const port = await reserveLoopbackPort();
@@ -1046,6 +1089,149 @@ test("recovery stop during initial probe cannot resurrect interval or runtime", 
   } finally {
     releaseProbe(true);
     await Promise.allSettled([starting]);
+    await daemon.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("recovery start after stop waits out the cancelled generation then starts fresh", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseOldProbe;
+  let markOldProbeStarted;
+  const oldProbeGate = new Promise((resolve) => {
+    releaseOldProbe = resolve;
+  });
+  const oldProbeStarted = new Promise((resolve) => {
+    markOldProbeStarted = resolve;
+  });
+  let probeCalls = 0;
+  let intervalCalls = 0;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = () => {
+    intervalCalls += 1;
+    return { unref() {} };
+  };
+  globalThis.clearInterval = () => {};
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => {
+      probeCalls += 1;
+      if (probeCalls === 1) {
+        markOldProbeStarted();
+        return oldProbeGate;
+      }
+      return true;
+    },
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const oldStart = daemon.start();
+
+  try {
+    await oldProbeStarted;
+    await waitForFile(runtimePath);
+    await daemon.stop();
+    assert.equal(fs.existsSync(runtimePath), false);
+    const freshStart = daemon.start();
+    releaseOldProbe(true);
+    await Promise.all([oldStart, freshStart]);
+    assert.equal(probeCalls, 2);
+    assert.equal(intervalCalls, 1);
+    assert.equal(fs.existsSync(runtimePath), true);
+    const health = await fetch(`http://127.0.0.1:${port}/health`, {
+      headers: { connection: "close" },
+    });
+    assert.deepEqual(await health.json(), { ok: true, status: "ready" });
+  } finally {
+    releaseOldProbe(true);
+    await Promise.allSettled([oldStart]);
+    await daemon.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("recovery stop cancels an in-flight periodic check before state or repair", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const statePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "state.json",
+  );
+  let releasePeriodicProbe;
+  let markPeriodicProbeStarted;
+  let markPeriodicProbeReturned;
+  const periodicProbeGate = new Promise((resolve) => {
+    releasePeriodicProbe = resolve;
+  });
+  const periodicProbeStarted = new Promise((resolve) => {
+    markPeriodicProbeStarted = resolve;
+  });
+  const periodicProbeReturned = new Promise((resolve) => {
+    markPeriodicProbeReturned = resolve;
+  });
+  let probeCalls = 0;
+  let repairCalls = 0;
+  let intervalCallback;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = (callback) => {
+    intervalCallback = callback;
+    return { unref() {} };
+  };
+  globalThis.clearInterval = () => {};
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => {
+      probeCalls += 1;
+      if (probeCalls === 1) return true;
+      markPeriodicProbeStarted();
+      const result = await periodicProbeGate;
+      markPeriodicProbeReturned();
+      return result;
+    },
+    recoveryRepair: async () => {
+      repairCalls += 1;
+      throw new Error("cancelled periodic check must not repair");
+    },
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+
+  try {
+    await daemon.start();
+    const state = readRecoveryState(config);
+    writeRecoveryState(config, {
+      ...state,
+      policy: {
+        ...state.policy,
+        failureThresholdMs: 0,
+        repairCooldownMs: 0,
+      },
+    });
+    const stateBeforePeriodicProbe = fs.readFileSync(statePath, "utf8");
+    assert.equal(typeof intervalCallback, "function");
+    intervalCallback();
+    await periodicProbeStarted;
+    await daemon.stop();
+    releasePeriodicProbe(false);
+    await periodicProbeReturned;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fs.readFileSync(statePath, "utf8"), stateBeforePeriodicProbe);
+    assert.equal(repairCalls, 0);
+  } finally {
+    releasePeriodicProbe(false);
     await daemon.stop();
     globalThis.setInterval = originalSetInterval;
     globalThis.clearInterval = originalClearInterval;
@@ -1371,7 +1557,14 @@ test("recovery daemon listen failure cleans matching runtime metadata without de
   });
 
   try {
-    await assert.rejects(daemon.start(), (error) => error?.code === "EADDRINUSE");
+    const firstStart = daemon.start();
+    const concurrentStart = daemon.start();
+    const failedStarts = await Promise.allSettled([firstStart, concurrentStart]);
+    assert.deepEqual(
+      failedStarts.map((result) =>
+        result.status === "rejected" ? result.reason?.code : "fulfilled"),
+      ["EADDRINUSE", "EADDRINUSE"],
+    );
     assert.equal(fs.existsSync(runtimePath), false);
     assert.equal(fs.existsSync(statePath), true);
     assert.equal(fs.readFileSync(statePath, "utf8"), stateBeforeStart);

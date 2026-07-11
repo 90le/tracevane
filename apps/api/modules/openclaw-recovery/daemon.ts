@@ -53,6 +53,7 @@ export interface OpenClawRecoveryDaemonOptions {
     port: number,
     host: string,
   ) => void;
+  controlCloseTimeoutMs?: number;
 }
 
 function addMs(date: Date, ms: number): string {
@@ -192,9 +193,15 @@ export function createOpenClawRecoveryDaemon(
     ?? ((server: http.Server, port: number, host: string) => {
       server.listen(port, host);
     });
+  const controlCloseTimeoutMs = Math.max(
+    1,
+    options.controlCloseTimeoutMs ?? 1_000,
+  );
   let interval: NodeJS.Timeout | null = null;
   let startPromise: Promise<void> | null = null;
-  let activeStartup: { cancelled: boolean } | null = null;
+  let stopPromise: Promise<void> | null = null;
+  let activeStartup: { cancelled: boolean; failed: boolean } | null = null;
+  let cancelPendingControlListen: ((error: Error) => void) | null = null;
   let controlServer: http.Server | null = null;
   let startedAt: string | null = null;
   let repairInFlight: Promise<unknown> | null = null;
@@ -273,6 +280,7 @@ export function createOpenClawRecoveryDaemon(
       );
     }
 
+    if (cancelled()) return;
     await maybeRepair(nextState.policy);
   }
 
@@ -282,7 +290,10 @@ export function createOpenClawRecoveryDaemon(
     if (!server) return;
     await new Promise<void>((resolve, reject) => {
       let settled = false;
+      let timeout: NodeJS.Timeout | null = null;
       const cleanup = () => {
+        if (timeout) clearTimeout(timeout);
+        timeout = null;
         server.off("listening", onListening);
         server.off("error", onError);
         server.off("close", onClose);
@@ -302,10 +313,26 @@ export function createOpenClawRecoveryDaemon(
       const onListening = () => close();
       const onError = () => settle();
       const onClose = () => settle();
+      const onTimeout = () => {
+        const closeLateListener = () => {
+          server.close(() => {});
+          server.closeAllConnections?.();
+        };
+        const ignoreLateError = () => {};
+        server.once("listening", closeLateListener);
+        server.once("error", ignoreLateError);
+        cancelPendingControlListen?.(
+          new Error("Recovery control listener close timed out."),
+        );
+        settle();
+      };
       server.once("error", onError);
       server.once("close", onClose);
       if (server.listening) close();
-      else server.once("listening", onListening);
+      else {
+        server.once("listening", onListening);
+        timeout = setTimeout(onTimeout, controlCloseTimeoutMs);
+      }
     });
   }
 
@@ -399,14 +426,26 @@ export function createOpenClawRecoveryDaemon(
     controlServer = server;
     try {
       await new Promise<void>((resolve, reject) => {
-        const onError = (error: Error) => {
+        const cleanup = () => {
+          server.off("error", onError);
           server.off("listening", onListening);
+          if (cancelPendingControlListen === cancel) {
+            cancelPendingControlListen = null;
+          }
+        };
+        const onError = (error: Error) => {
+          cleanup();
           reject(error);
         };
         const onListening = () => {
-          server.off("error", onError);
+          cleanup();
           resolve();
         };
+        const cancel = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+        cancelPendingControlListen = cancel;
         server.once("error", onError);
         server.once("listening", onListening);
         listenControlServer(
@@ -432,9 +471,21 @@ export function createOpenClawRecoveryDaemon(
 
   return {
     async start(): Promise<void> {
+      while (stopPromise) {
+        await stopPromise;
+      }
+      while (startPromise) {
+        const pending = startPromise;
+        const pendingGeneration = activeStartup;
+        if (!pendingGeneration?.cancelled) return pending;
+        try {
+          await pending;
+        } catch (error) {
+          if (!pendingGeneration.cancelled) throw error;
+        }
+      }
       if (interval) return;
-      if (startPromise) return startPromise;
-      const startup = { cancelled: false };
+      const startup = { cancelled: false, failed: false };
       activeStartup = startup;
       const starting = (async () => {
         startedAt = new Date().toISOString();
@@ -477,13 +528,21 @@ export function createOpenClawRecoveryDaemon(
           await checkOnce(() => startup.cancelled);
           if (startup.cancelled) return;
           const policy = readRecoveryState(config).policy;
-          interval = setInterval(() => {
-            checkOnce().catch((error) => logger.error("openclaw-recovery-daemon: check failed", error));
-          }, policy.checkIntervalMs);
+          interval = setInterval(
+            () => checkOnce(() => startup.cancelled).catch(
+              (error) => logger.error(
+                "openclaw-recovery-daemon: check failed",
+                error,
+              ),
+            ),
+            policy.checkIntervalMs,
+          );
         } catch (error) {
-          startup.cancelled = true;
+          const wasCancelled = startup.cancelled;
           await stopControlServer();
           removeOwnedRuntimeMetadata(paths.runtimePath, process.pid);
+          if (wasCancelled) return;
+          startup.failed = true;
           throw error;
         }
       })();
@@ -492,18 +551,32 @@ export function createOpenClawRecoveryDaemon(
         await starting;
       } finally {
         if (startPromise === starting) startPromise = null;
-        if (activeStartup === startup) activeStartup = null;
+        if (
+          activeStartup === startup
+          && (startup.cancelled || startup.failed)
+        ) {
+          activeStartup = null;
+        }
       }
     },
 
     async stop(): Promise<void> {
-      if (activeStartup) activeStartup.cancelled = true;
-      if (interval) clearInterval(interval);
-      interval = null;
+      if (stopPromise) return stopPromise;
+      const stopping = (async () => {
+        if (activeStartup) activeStartup.cancelled = true;
+        if (interval) clearInterval(interval);
+        interval = null;
+        try {
+          await stopControlServer();
+        } finally {
+          removeOwnedRuntimeMetadata(paths.runtimePath, process.pid);
+        }
+      })();
+      stopPromise = stopping;
       try {
-        await stopControlServer();
+        await stopping;
       } finally {
-        removeOwnedRuntimeMetadata(paths.runtimePath, process.pid);
+        if (stopPromise === stopping) stopPromise = null;
       }
     },
 
