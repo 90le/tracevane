@@ -1,10 +1,13 @@
 import { spawn } from "node:child_process";
+import { writeSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 
 const DEFAULT_HTTP_TIMEOUT_MS = 30_000;
 const DEFAULT_HTTP_INTERVAL_MS = 100;
+const STARTUP_STABILITY_MS = 50;
 const STOP_GRACE_MS = 1_000;
 const STOP_CONFIRM_MS = 1_000;
+const TERMINATION_CLEANUP_TIMEOUT_MS = 3_000;
 
 const activeChildren = new Set();
 const stoppingChildren = new WeakMap();
@@ -218,6 +221,36 @@ function removeTerminationHandlers() {
   terminationHandlers.clear();
 }
 
+function cleanupWithin(promise, timeoutMs, pid) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(
+        `Timed out cleaning up owned process ${pid} after ${timeoutMs}ms`,
+      ));
+    }, timeoutMs);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
+function formatError(error) {
+  return error instanceof Error ? error.stack || error.message : String(error);
+}
+
+function writeTerminationError(message) {
+  try {
+    writeSync(2, message);
+  } catch {
+    try {
+      process.stderr.write(message);
+    } catch {
+      // A hard exit is still required when stderr itself is unavailable.
+    }
+  }
+}
+
 function installTerminationHandlers() {
   if (terminationHandlers.size > 0) return;
 
@@ -226,10 +259,23 @@ function installTerminationHandlers() {
       if (terminationInProgress) return;
       terminationInProgress = true;
       void (async () => {
-        await Promise.allSettled(
-          [...activeChildren].map((child) => stopOwnedProcess(child)),
+        const results = await Promise.allSettled(
+          [...activeChildren].map((child) => cleanupWithin(
+            stopOwnedProcess(child),
+            TERMINATION_CLEANUP_TIMEOUT_MS,
+            child.pid,
+          )),
         );
         removeTerminationHandlers();
+        const failures = results
+          .filter((result) => result.status === "rejected")
+          .map((result) => formatError(result.reason));
+        if (failures.length > 0) {
+          writeTerminationError(
+            `[with-server] failed to clean up owned processes after ${signal}:\n${failures.join("\n")}\n`,
+          );
+          process.exit(1);
+        }
         process.exit(signal === "SIGINT" ? 130 : 143);
       })();
     };
@@ -263,6 +309,7 @@ export async function withServer(
     args = [],
     cwd,
     env,
+    stdio = "inherit",
     url,
     timeoutMs = DEFAULT_HTTP_TIMEOUT_MS,
     intervalMs = DEFAULT_HTTP_INTERVAL_MS,
@@ -274,7 +321,7 @@ export async function withServer(
     detached: process.platform !== "win32",
     env: { ...process.env, ...env },
     shell: false,
-    stdio: "inherit",
+    stdio,
     windowsHide: true,
   });
   registerOwnedProcess(child);
@@ -304,7 +351,18 @@ export async function withServer(
       signal: startupController.signal,
       timeoutMs,
     });
+    try {
+      await delay(STARTUP_STABILITY_MS, undefined, {
+        signal: startupController.signal,
+      });
+    } catch {
+      startupController.signal.throwIfAborted();
+      throw new Error("Server startup stability check failed");
+    }
     startupController.signal.throwIfAborted();
+    if (childHasExited(child)) {
+      throw startupExitError(child.exitCode, child.signalCode);
+    }
     waitingForReadiness = false;
     child.off("error", onStartupError);
     child.off("exit", onStartupExit);

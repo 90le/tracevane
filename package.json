@@ -38,7 +38,7 @@
     "dev:fresh": "node scripts/dev-runtime.mjs fresh",
     "dev:restart": "node scripts/dev-runtime.mjs restart",
     "dev:web": "npm run dev --workspace=apps/web",
-    "dev:web:smoke": "bash scripts/dev-web-smoke.sh",
+    "dev:web:smoke": "node scripts/dev-web-smoke.mjs",
     "smoke:model-gateway:cli": "npm run build:api && node scripts/smoke-model-gateway-cli.mjs",
     "smoke:model-gateway:cli:strict": "npm run build:api && node scripts/smoke-model-gateway-cli.mjs --strict",
     "smoke:model-gateway:live": "npm run build:api && node scripts/smoke-model-gateway-live.mjs",

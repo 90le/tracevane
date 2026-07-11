@@ -97,7 +97,13 @@ test.before(() => {
     [
       'import fs from "node:fs";',
       `import { withServer } from ${JSON.stringify(harnessUrl)};`,
-      "const [serverPath, portText, serverStatePath, readyPath] = process.argv.slice(2);",
+      "const [serverPath, portText, serverStatePath, readyPath, brokenPath, requestedSignal = 'SIGINT'] = process.argv.slice(2);",
+      "if (brokenPath) {",
+      "  for (const key of Object.keys(process.env)) {",
+      "    if (key.toLowerCase() === 'path') delete process.env[key];",
+      "  }",
+      "  process.env.PATH = brokenPath;",
+      "}",
       "await withServer({",
       "  command: process.execPath,",
       "  args: [serverPath, portText, serverStatePath, 'signal-owned'],",
@@ -105,7 +111,7 @@ test.before(() => {
       "  timeoutMs: 5_000,",
       "}, async () => {",
       "  fs.writeFileSync(readyPath, 'ready');",
-      "  setTimeout(() => process.emit('SIGINT'), 50);",
+      "  setTimeout(() => process.emit(requestedSignal), 50);",
       "  await new Promise(() => {});",
       "});",
       "",
@@ -555,6 +561,39 @@ test("withServer never kills an unrelated process that owns the readiness port",
   assert.equal(await response.text(), "unrelated");
 });
 
+test("withServer checks an early child exit before invoking the readiness callback", async (t) => {
+  const unrelated = http.createServer((_request, response) => {
+    response.statusCode = 200;
+    response.end("unrelated-ready");
+  });
+  t.after(() => closeServer(unrelated));
+  await new Promise((resolve) => unrelated.listen(0, "127.0.0.1", resolve));
+  const { port } = unrelated.address();
+  let callbackRan = false;
+
+  await assert.rejects(
+    withServer(
+      {
+        command: process.execPath,
+        args: [
+          "-e",
+          "setImmediate(() => process.exit(17)); setInterval(() => {}, 1_000);",
+        ],
+        url: `http://127.0.0.1:${port}/ready`,
+        timeoutMs: 2_000,
+      },
+      async () => {
+        callbackRan = true;
+      },
+    ),
+    /exited before readiness \(code 17\)/,
+  );
+
+  assert.equal(callbackRan, false);
+  const response = await fetch(`http://127.0.0.1:${port}/still-alive`);
+  assert.equal(await response.text(), "unrelated-ready");
+});
+
 test(
   "stopOwnedProcess escalates an ignored POSIX SIGTERM to SIGKILL",
   { skip: process.platform === "win32" ? "POSIX process groups only" : false },
@@ -610,3 +649,79 @@ test("withServer cleans up before exiting on SIGINT", async (t) => {
   await waitForProcessExit(pid);
   await waitForUrlToStop(`http://127.0.0.1:${port}/ready`);
 });
+
+test("withServer cleans up before exiting on SIGTERM", async (t) => {
+  const port = await getFreePort();
+  const serverStatePath = nextStatePath("signal-term-server");
+  const readyPath = nextStatePath("signal-term-ready");
+  const runner = spawn(
+    process.execPath,
+    [
+      signalRunnerFixture,
+      serverFixture,
+      String(port),
+      serverStatePath,
+      readyPath,
+      "",
+      "SIGTERM",
+    ],
+    {
+      detached: process.platform !== "win32",
+      stdio: "ignore",
+      windowsHide: true,
+    },
+  );
+  t.after(() => stopOwnedProcess(runner));
+
+  const [code, signal] = await waitForChildExit(runner);
+  assert.equal(signal, null);
+  assert.equal(code, 143);
+  assert.equal(fs.readFileSync(readyPath, "utf8"), "ready");
+  const { pid } = await readJsonWhenReady(serverStatePath);
+  await waitForProcessExit(pid);
+  await waitForUrlToStop(`http://127.0.0.1:${port}/ready`);
+});
+
+test(
+  "withServer reports SIGINT cleanup failure and does not return the success signal code",
+  { skip: process.platform !== "win32" ? "Windows taskkill failure fixture" : false },
+  async (t) => {
+    const port = await getFreePort();
+    const serverStatePath = nextStatePath("signal-cleanup-failure-server");
+    const readyPath = nextStatePath("signal-cleanup-failure-ready");
+    let serverPid;
+    const runner = spawn(
+      process.execPath,
+      [
+        signalRunnerFixture,
+        serverFixture,
+        String(port),
+        serverStatePath,
+        readyPath,
+        fixtureRoot,
+      ],
+      {
+        detached: false,
+        stdio: ["ignore", "ignore", "pipe"],
+        windowsHide: true,
+      },
+    );
+    let stderr = "";
+    runner.stderr.setEncoding("utf8");
+    runner.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    t.after(async () => {
+      await stopOwnedProcess(runner).catch(() => {});
+      if (serverPid) await killExactWindowsTree(serverPid);
+    });
+
+    const [code, signal] = await waitForChildExit(runner);
+    const state = await readJsonWhenReady(serverStatePath);
+    serverPid = state.pid;
+    assert.equal(signal, null);
+    assert.equal(code, 1);
+    assert.match(stderr, /failed to clean up.*SIGINT/i);
+    assert.match(stderr, /taskkill/i);
+  },
+);
