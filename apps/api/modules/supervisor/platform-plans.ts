@@ -1,0 +1,335 @@
+import { createHash } from "node:crypto";
+import path from "node:path";
+import type {
+  ServiceDefinition,
+  SupervisorCommand,
+  SupervisorPlan,
+} from "./contracts.js";
+
+function command(
+  label: string,
+  commandName: string,
+  args: string[],
+): SupervisorCommand {
+  return { label, command: commandName, args };
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function quoteSystemdToken(value: string): string {
+  return `"${value
+    .replace(/%/g, "%%")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t")}"`;
+}
+
+function quoteWindowsArgument(value: string): string {
+  if (value && !/[\s"]/u.test(value)) return value;
+
+  let result = '"';
+  let backslashes = 0;
+  for (const character of value) {
+    if (character === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (character === '"') {
+      result += "\\".repeat((backslashes * 2) + 1);
+      result += '"';
+    } else {
+      result += "\\".repeat(backslashes);
+      result += character;
+    }
+    backslashes = 0;
+  }
+  return `${result}${"\\".repeat(backslashes * 2)}"`;
+}
+
+function launchArguments(definition: ServiceDefinition): string[] {
+  return [
+    definition.entryPath,
+    ...definition.args,
+    "--config",
+    definition.configPath,
+  ];
+}
+
+function buildSystemdTemplate(
+  definition: ServiceDefinition,
+  args: string[],
+): string {
+  return [
+    "[Unit]",
+    `Description=${quoteSystemdToken(definition.displayName)}`,
+    "After=network-online.target",
+    "",
+    "[Service]",
+    "Type=simple",
+    `WorkingDirectory=${quoteSystemdToken(definition.workingDirectory)}`,
+    `ExecStart=${[process.execPath, ...args].map(quoteSystemdToken).join(" ")}`,
+    "Restart=on-failure",
+    "RestartSec=5",
+    "",
+    "[Install]",
+    "WantedBy=default.target",
+    "",
+  ].join("\n");
+}
+
+function buildLaunchdTemplate(
+  definition: ServiceDefinition,
+  args: string[],
+): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<plist version="1.0">',
+    "<dict>",
+    "  <key>Label</key>",
+    `  <string>${escapeXml(definition.launchdLabel)}</string>`,
+    "  <key>ProgramArguments</key>",
+    "  <array>",
+    ...[process.execPath, ...args].map(
+      (argument) => `    <string>${escapeXml(argument)}</string>`,
+    ),
+    "  </array>",
+    "  <key>WorkingDirectory</key>",
+    `  <string>${escapeXml(definition.workingDirectory)}</string>`,
+    "  <key>RunAtLoad</key>",
+    "  <true/>",
+    "  <key>KeepAlive</key>",
+    "  <true/>",
+    "  <key>ThrottleInterval</key>",
+    "  <integer>5</integer>",
+    "</dict>",
+    "</plist>",
+    "",
+  ].join("\n");
+}
+
+function buildWindowsTaskTemplate(
+  definition: ServiceDefinition,
+  args: string[],
+): string {
+  const argumentLine = args.map(quoteWindowsArgument).join(" ");
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">',
+    "  <RegistrationInfo>",
+    `    <Description>${escapeXml(definition.displayName)}</Description>`,
+    "  </RegistrationInfo>",
+    "  <Triggers>",
+    "    <LogonTrigger>",
+    "      <Enabled>true</Enabled>",
+    "    </LogonTrigger>",
+    "  </Triggers>",
+    "  <Principals>",
+    '    <Principal id="Author">',
+    "      <LogonType>InteractiveToken</LogonType>",
+    "      <RunLevel>LeastPrivilege</RunLevel>",
+    "    </Principal>",
+    "  </Principals>",
+    "  <Settings>",
+    "    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
+    "    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>",
+    "    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>",
+    "    <AllowStartOnDemand>true</AllowStartOnDemand>",
+    "    <StartWhenAvailable>true</StartWhenAvailable>",
+    "    <RestartOnFailure>",
+    "      <Interval>PT30S</Interval>",
+    "      <Count>999</Count>",
+    "    </RestartOnFailure>",
+    "    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
+    "  </Settings>",
+    '  <Actions Context="Author">',
+    "    <Exec>",
+    `      <Command>${escapeXml(process.execPath)}</Command>`,
+    `      <Arguments>${escapeXml(argumentLine)}</Arguments>`,
+    `      <WorkingDirectory>${escapeXml(definition.workingDirectory)}</WorkingDirectory>`,
+    "    </Exec>",
+    "  </Actions>",
+    "</Task>",
+    "",
+  ].join("\n");
+}
+
+function systemdCommands(
+  serviceName: string,
+): SupervisorPlan["commands"] {
+  const reload = command(
+    "Reload user systemd units",
+    "systemctl",
+    ["--user", "daemon-reload"],
+  );
+  const enable = command(
+    "Enable user service",
+    "systemctl",
+    ["--user", "enable", serviceName],
+  );
+  return {
+    install: [reload, enable],
+    start: [command("Start user service", "systemctl", ["--user", "start", serviceName])],
+    stop: [command("Stop user service", "systemctl", ["--user", "stop", serviceName])],
+    restart: [command("Restart user service", "systemctl", ["--user", "restart", serviceName])],
+    repair: [reload, enable],
+    uninstall: [
+      command("Disable user service", "systemctl", ["--user", "disable", serviceName]),
+      reload,
+    ],
+    status: [
+      command("Check user service active state", "systemctl", ["--user", "is-active", serviceName]),
+      command("Check user service enabled state", "systemctl", ["--user", "is-enabled", serviceName]),
+    ],
+  };
+}
+
+function launchdUserDomain(): string {
+  return `gui/${typeof process.getuid === "function" ? process.getuid() : 501}`;
+}
+
+function launchdCommands(
+  definition: ServiceDefinition,
+  configPath: string,
+): SupervisorPlan["commands"] {
+  const domain = launchdUserDomain();
+  const target = `${domain}/${definition.launchdLabel}`;
+  const install = [
+    command("Bootstrap LaunchAgent", "launchctl", ["bootstrap", domain, configPath]),
+    command("Enable LaunchAgent", "launchctl", ["enable", target]),
+  ];
+  return {
+    install,
+    start: [command("Start LaunchAgent", "launchctl", ["kickstart", "-k", target])],
+    stop: [command("Stop LaunchAgent", "launchctl", ["bootout", target])],
+    restart: [command("Restart LaunchAgent", "launchctl", ["kickstart", "-k", target])],
+    repair: install,
+    uninstall: [
+      command("Remove LaunchAgent", "launchctl", ["bootout", target]),
+      command("Disable LaunchAgent", "launchctl", ["disable", target]),
+    ],
+    status: [command("Print LaunchAgent status", "launchctl", ["print", target])],
+  };
+}
+
+function windowsCommands(
+  definition: ServiceDefinition,
+  configPath: string,
+): SupervisorPlan["commands"] {
+  const register = command("Register scheduled task", "schtasks.exe", [
+    "/Create",
+    "/TN",
+    definition.windowsTaskName,
+    "/XML",
+    configPath,
+    "/F",
+  ]);
+  return {
+    install: [register],
+    start: [command("Run scheduled task", "schtasks.exe", ["/Run", "/TN", definition.windowsTaskName])],
+    stop: [command("Stop scheduled task", "schtasks.exe", ["/End", "/TN", definition.windowsTaskName])],
+    restart: [
+      command("Stop scheduled task", "schtasks.exe", ["/End", "/TN", definition.windowsTaskName]),
+      command("Run scheduled task", "schtasks.exe", ["/Run", "/TN", definition.windowsTaskName]),
+    ],
+    repair: [register],
+    uninstall: [command("Delete scheduled task", "schtasks.exe", ["/Delete", "/TN", definition.windowsTaskName, "/F"])],
+    status: [command("Query scheduled task", "schtasks.exe", ["/Query", "/TN", definition.windowsTaskName])],
+  };
+}
+
+function fingerprintPlan(
+  definition: ServiceDefinition,
+  plan: Omit<SupervisorPlan, "fingerprint">,
+  args: string[],
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({
+      version: 1,
+      platform: plan.platform,
+      supervisor: plan.supervisor,
+      serviceName: plan.serviceName,
+      templateConfigPath: plan.configPath,
+      nodePath: process.execPath,
+      entryPath: definition.entryPath,
+      workingDirectory: definition.workingDirectory,
+      configPath: definition.configPath,
+      launchArguments: args,
+      template: plan.template,
+    }))
+    .digest("hex");
+}
+
+export function createSupervisorPlan(
+  definition: ServiceDefinition,
+  platform: NodeJS.Platform,
+  homeDir: string,
+): SupervisorPlan {
+  const args = launchArguments(definition);
+  let plan: Omit<SupervisorPlan, "fingerprint">;
+
+  if (platform === "linux") {
+    plan = {
+      platform,
+      supervisor: "systemd-user",
+      serviceName: definition.serviceName,
+      configPath: path.posix.join(
+        homeDir,
+        ".config",
+        "systemd",
+        "user",
+        definition.serviceName,
+      ),
+      template: buildSystemdTemplate(definition, args),
+      commands: systemdCommands(definition.serviceName),
+    };
+  } else if (platform === "darwin") {
+    const configPath = path.posix.join(
+      homeDir,
+      "Library",
+      "LaunchAgents",
+      `${definition.launchdLabel}.plist`,
+    );
+    plan = {
+      platform,
+      supervisor: "launchd-user",
+      serviceName: definition.launchdLabel,
+      configPath,
+      template: buildLaunchdTemplate(definition, args),
+      commands: launchdCommands(definition, configPath),
+    };
+  } else if (platform === "win32") {
+    const configPath = path.win32.join(
+      homeDir,
+      "AppData",
+      "Roaming",
+      "OpenClaw",
+      "Tracevane",
+      `${definition.windowsTaskName}.xml`,
+    );
+    plan = {
+      platform,
+      supervisor: "scheduled-task",
+      serviceName: definition.windowsTaskName,
+      configPath,
+      template: buildWindowsTaskTemplate(definition, args),
+      commands: windowsCommands(definition, configPath),
+    };
+  } else {
+    throw new Error(`Unsupported supervisor platform: ${platform}`);
+  }
+
+  return {
+    ...plan,
+    fingerprint: fingerprintPlan(definition, plan, args),
+  };
+}
