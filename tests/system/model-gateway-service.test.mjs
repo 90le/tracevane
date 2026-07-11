@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { WebSocket } from "ws";
+
+import {
+  assertPrivateFileSecurity,
+  resolvePrivateModeTempRoot,
+} from "./helpers/private-file-mode.mjs";
 
 import {
   createTracevaneContext,
@@ -27,38 +31,6 @@ import {
   writeCodexResponsesSseFromAnthropicMessagesSse,
   writeCodexResponsesSseFromResponse,
 } from "../../dist/apps/api/modules/model-gateway/protocol-streaming.js";
-
-function assertPrivateFileModeSupported(parentDir) {
-  const probeDir = fs.mkdtempSync(path.join(parentDir, "tracevane-mode-check-"));
-  const probeFile = path.join(probeDir, "secret.json");
-  try {
-    fs.writeFileSync(probeFile, "{}", { mode: 0o600 });
-    fs.chmodSync(probeFile, 0o600);
-    return (fs.statSync(probeFile).mode & 0o777) === 0o600;
-  } catch {
-    return false;
-  } finally {
-    fs.rmSync(probeDir, { recursive: true, force: true });
-  }
-}
-
-function resolvePrivateModeTempRoot() {
-  const candidates = [
-    process.env.TRACEVANE_TEST_TMPDIR,
-    process.env.TEST_TMPDIR,
-    process.platform === "win32" ? "" : "/tmp",
-    os.tmpdir(),
-  ].filter(Boolean);
-  for (const candidate of candidates) {
-    try {
-      fs.mkdirSync(candidate, { recursive: true });
-      if (assertPrivateFileModeSupported(candidate)) return candidate;
-    } catch {
-      // Try the next candidate.
-    }
-  }
-  throw new Error("Model Gateway system tests require a temp directory that preserves chmod(0600); set TRACEVANE_TEST_TMPDIR.");
-}
 
 const PRIVATE_MODE_TEMP_ROOT = resolvePrivateModeTempRoot();
 
@@ -447,7 +419,7 @@ test("model gateway registry stores provider secrets separately and masks views"
   const secretsRaw = fs.readFileSync(paths.secrets, "utf8");
   assert.ok(!registryRaw.includes("sk-test-secret-123456"));
   assert.ok(secretsRaw.includes("sk-test-secret-123456"));
-  assert.equal(fs.statSync(paths.secrets).mode & 0o777, 0o600);
+  assertPrivateFileSecurity(paths.secrets);
 
   const listed = service.listProviders();
   assert.equal(listed.providers.length, 1);
@@ -1083,7 +1055,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.ok(!registryRaw.includes("codex-refresh-token"));
       assert.ok(secretsRaw.includes("codex-access-token"));
       assert.ok(secretsRaw.includes("codex-refresh-token"));
-      assert.equal(fs.statSync(paths.secrets).mode & 0o777, 0o600);
+      assertPrivateFileSecurity(paths.secrets);
 
       const response = await requestJson(`${baseUrl}/v1/responses`, {
         method: "POST",
@@ -1370,7 +1342,7 @@ test("model gateway preserves Codex account login sessions across service instan
     assert.equal(start.ok, true);
     assert.equal(start.userCode, "WXYZ-1234");
     assert.ok(fs.existsSync(paths.codexLoginSessions));
-    assert.equal(fs.statSync(paths.codexLoginSessions).mode & 0o777, 0o600);
+    assertPrivateFileSecurity(paths.codexLoginSessions);
     const persistedLoginSession = fs.readFileSync(paths.codexLoginSessions, "utf8");
     assert.ok(persistedLoginSession.includes(start.loginId));
     assert.ok(persistedLoginSession.includes("device-cross"));
@@ -7316,8 +7288,8 @@ test("model gateway applies custom content and validates json", () => {
   const onDisk = JSON.parse(fs.readFileSync(claudePath, "utf8"));
   assert.equal(onDisk.custom, true);
   assert.equal(onDisk.env.CUSTOM, "yes");
-  // Written file is 0600.
-  assert.equal(fs.statSync(claudePath).mode & 0o777, 0o600);
+  // Written file satisfies the platform's private-file evidence boundary.
+  assertPrivateFileSecurity(claudePath);
 
   // Invalid JSON for a json target is rejected, and the existing file is unchanged,
   // and no extra (broken) write happened.
@@ -23428,7 +23400,7 @@ test("model gateway restores codex tool-call history for follow-up chat adapter 
         arguments: "{\"query\":\"weather\"}",
       }]);
       assert.ok(fs.existsSync(paths.codexHistory));
-      assert.equal(fs.statSync(paths.codexHistory).mode & 0o777, 0o600);
+      assertPrivateFileSecurity(paths.codexHistory);
       assert.ok(!fs.readFileSync(paths.codexHistory, "utf8").includes("sk-codex-history-secret"));
 
       const second = await requestJson(`${baseUrl}/v1/responses`, {
