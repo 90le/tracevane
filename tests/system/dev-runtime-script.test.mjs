@@ -943,7 +943,7 @@ test("restart and fresh preserve their default port contracts", () => {
   assert.deepEqual(runtime.modeConfig("restart", {}), {
     requestedBackendPort: 3761,
     frontendPort: 5176,
-    allowBackendFallback: true,
+    allowBackendFallback: false,
   });
   assert.deepEqual(runtime.modeConfig("fresh", {}), {
     requestedBackendPort: 3761,

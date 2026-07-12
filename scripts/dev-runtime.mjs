@@ -321,7 +321,7 @@ export function modeConfig(mode, env = process.env) {
   return {
     requestedBackendPort,
     frontendPort,
-    allowBackendFallback: mode === "restart",
+    allowBackendFallback: false,
   };
 }
 
