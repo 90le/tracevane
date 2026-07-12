@@ -592,18 +592,26 @@ export function formatLogTail(logFile, maxBytes = DEFAULT_LOG_TAIL_BYTES) {
   }
 }
 
-export async function portIsFree(port) {
+async function hostPortIsFree(host, port) {
   return new Promise((resolvePort, rejectPort) => {
     const server = createServer();
     server.unref();
     server.once("error", (error) => {
       if (error?.code === "EADDRINUSE" || error?.code === "EACCES") resolvePort(false);
+      else if (error?.code === "EADDRNOTAVAIL" || error?.code === "EAFNOSUPPORT") resolvePort(true);
       else rejectPort(error);
     });
-    server.listen({ host: "127.0.0.1", port, exclusive: true }, () => {
+    server.listen({ host, port, exclusive: true }, () => {
       server.close((error) => error ? rejectPort(error) : resolvePort(true));
     });
   });
+}
+
+export async function portIsFree(port) {
+  for (const host of ["127.0.0.1", "::"]) {
+    if (!await hostPortIsFree(host, port)) return false;
+  }
+  return true;
 }
 
 export async function findFreePort(

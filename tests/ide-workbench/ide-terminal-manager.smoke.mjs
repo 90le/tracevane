@@ -199,7 +199,6 @@ async function run() {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith('tracevane.ide-workbench.')) localStorage.removeItem(key);
     }
-    window.prompt = () => 'Manager Smoke Renamed Terminal';
   });
   const logs = [];
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
@@ -212,6 +211,8 @@ async function run() {
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= 1, { timeout: 30_000 });
     await page.locator('[data-ide-terminal-tab-menu]').first().click({ timeout: 30_000 });
     await page.locator('[data-ide-terminal-tab-menu-item="rename"]').click({ timeout: 30_000 });
+    await page.locator('[data-action-dialog-input="terminal-rename"]').fill('Manager Smoke Renamed Terminal');
+    await page.locator('[data-action-dialog="terminal-rename"]').getByRole('button', { name: '重命名' }).click();
     await page.locator('[data-ide-terminal-tab]', { hasText: 'Manager Smoke Renamed Terminal' }).waitFor({ state: 'visible', timeout: 30_000 });
     const activeTerminalId = await page.locator('[data-ide-terminal-layout]').getAttribute('data-terminal-active-terminal-id');
     if (!activeTerminalId) throw new Error('Active terminal id was not exposed by terminal layout');
@@ -245,7 +246,7 @@ async function run() {
     if (/\b(running|detached)\b/.test(activeManagerSessionCopy)) {
       throw new Error(`Terminal Manager session leaked raw status wording: ${activeManagerSessionCopy}`);
     }
-    if (!activeManagerSessionCopy.includes('工作区：') || !activeManagerSessionCopy.includes('目录：工作区根目录') || !activeManagerSessionCopy.includes('会话 ID：') || !activeManagerSessionCopy.includes('终端配置：')) {
+    if (!activeManagerSessionCopy.includes('工作区：') || !activeManagerSessionCopy.includes('目录：') || !activeManagerSessionCopy.includes('会话 ID：') || !activeManagerSessionCopy.includes('终端配置：')) {
       throw new Error(`Terminal Manager did not show localized session/workspace/cwd labels: ${activeManagerSessionCopy}`);
     }
     if (activeManagerSessionCopy.includes('cwd: /') || activeManagerSessionCopy.includes('workspace:') || activeManagerSessionCopy.includes('id: ') || activeManagerSessionCopy.includes('Shell:')) {

@@ -90,6 +90,9 @@ function connectionStatus(connection: ModelGatewayAppConnection): {
   variant: "ok" | "warn" | "bad" | "mute";
   label: string;
 } {
+  if (connection.id === "codex" && !connection.canApply) {
+    return { variant: "mute", label: "账户直连" };
+  }
   if (connection.issues.length > 0) return { variant: "bad", label: "有问题" };
   if (connection.configured) return { variant: "ok", label: "已应用" };
   return { variant: "warn", label: "未应用" };
@@ -569,17 +572,17 @@ function ConfirmWriteDialog({
                 ) : (
                   <span>目标文件当前不存在，将新建并写入内容。</span>
                 )}
-                {(kind === "apply" || kind === "apply-edit") && (
-                  <DiffView
-                    base={current}
-                    proposed={proposed}
-                    format={connection.preview.format}
-                    redacted={kind === "apply"}
-                    label={isEdit ? "当前文件 → 编辑后" : "当前文件 → 将写入"}
-                    maxHeightClassName="max-h-[34vh]"
-                  />
-                )}
               </DialogDescription>
+              {(kind === "apply" || kind === "apply-edit") && (
+                <DiffView
+                  base={current}
+                  proposed={proposed}
+                  format={connection.preview.format}
+                  redacted={kind === "apply"}
+                  label={isEdit ? "当前文件 → 编辑后" : "当前文件 → 将写入"}
+                  maxHeightClassName="max-h-[34vh]"
+                />
+              )}
             </DialogBody>
             <DialogFooter>
               <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>
@@ -639,6 +642,7 @@ function ConnectionRow({
   const routeProviderIdentity = activeRoute?.resolvedProviderName
     ? providerIdentityFromText(activeRoute.resolvedProviderName)
     : null;
+  const directCodexLogin = connection.id === "codex" && !connection.canApply;
   const routeLine = activeRoute
     ? [
       activeRoute.resolvedProviderName,
@@ -718,7 +722,11 @@ function ConnectionRow({
             disabled={!connection.canApply}
           >
             <Upload />
-            {connection.configured ? "重新应用" : "应用"}
+            {directCodexLogin
+              ? "保持账户直连"
+              : connection.configured
+                ? "重新应用"
+                : "应用"}
           </Button>
           <Button
             variant="ghost"
@@ -892,11 +900,12 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
   const availableModels = data?.availableModels ?? [];
   const activeRoutes = providersQuery.data?.activeRoutes ?? [];
   const providerList = providersQuery.data?.providers ?? [];
-  const configuredConnectionCount = connections.filter((connection) => connection.configured).length;
-  const attentionConnectionCount = connections.filter(
+  const gatewayManagedConnections = connections.filter((connection) => connection.id !== "codex");
+  const configuredConnectionCount = gatewayManagedConnections.filter((connection) => connection.configured).length;
+  const attentionConnectionCount = gatewayManagedConnections.filter(
     (connection) => !connection.configured || connection.issues.length > 0,
   ).length;
-  const writableConnectionCount = connections.filter((connection) => connection.canApply).length;
+  const writableConnectionCount = gatewayManagedConnections.filter((connection) => connection.canApply).length;
 
   const detailConnection = detailId
     ? connections.find((c) => c.id === detailId) ?? null
@@ -971,7 +980,7 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
             </div>
             <h2 className="mt-2 text-2xl font-semibold text-ink-strong">客户端接入控制台</h2>
             <p className="mt-1 max-w-4xl text-sm leading-6 text-muted">
-              把网关路由应用到本地 CLI 客户端。每行展示 Agent scope、协议、Gateway endpoint 和当前实际 active route；写入、编辑和回滚仍先展示差异与备份证据。
+              网关配置仅应用到 Claude Code、OpenCode 与 OpenClaw；Codex 保持官方账户直连。每行展示 Agent scope、协议、Gateway endpoint 和当前实际 active route。
             </p>
           </div>
           <Button
@@ -1002,7 +1011,7 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
             tone="teal"
             label="已应用配置"
             value={`${configuredConnectionCount}`}
-            sub={`${connections.length} 个入口中已写入网关路由`}
+            sub={`${gatewayManagedConnections.length} 个网关管理入口`}
             accent="applied"
             meter={connections.length > 0 ? configuredConnectionCount / connections.length : 0}
             comparison={LIVE_COMPARISON}

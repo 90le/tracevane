@@ -23,6 +23,13 @@ const scriptSource = readFileSync(scriptPath, "utf8");
 assert.match(scriptSource, /isMainModule/);
 const runtime = await import(pathToFileURL(scriptPath).href + "?dev-runtime-test");
 
+test("port availability checks both IPv4 and dual-stack listeners", () => {
+  assert.match(
+    scriptSource,
+    /for \(const host of \["127\.0\.0\.1", "::"\]\)/,
+  );
+});
+
 const RUN_TOKEN = "0123456789abcdef0123456789abcdef";
 const STARTED_AT = "2026-07-12T00:00:00.000Z";
 

@@ -466,7 +466,7 @@ function TerminalNewProfileMenu({
   return (
     <div
       role="menu"
-      className="fixed z-50 min-w-72 overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+      className="fixed z-50 w-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
       style={{ left: x, top: y, maxHeight: `calc(100vh - ${y + 8}px)` }}
       onPointerDown={(event) => event.stopPropagation()}
       data-ide-terminal-new-profile-menu
@@ -519,7 +519,7 @@ function TerminalNewProfileMenu({
             >
               <TerminalIcon className="size-3.5 text-subtle" />
               <span className="min-w-0 flex-1 truncate">{profile.labelZh || profile.label}</span>
-              <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">{profile.command}</span>
+              <span className="max-w-24 truncate rounded bg-panel-3 px-1 font-mono text-2xs text-muted" title={profile.command}>{profile.command}</span>
               <span className="rounded bg-warning-soft px-1 text-2xs text-warning">不可用</span>
             </button>
           ))}
@@ -566,7 +566,7 @@ function TerminalProfileMenuItem({
       >
         <TerminalIcon className="size-3.5 shrink-0 text-subtle" />
         <span className="min-w-0 flex-1 truncate">{profile.labelZh || profile.label}</span>
-        <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">{profile.command}</span>
+        <span className="max-w-32 truncate rounded bg-panel-3 px-1 font-mono text-2xs text-muted" title={profile.command}>{profile.command}</span>
       </button>
       <button
         type="button"

@@ -3,6 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { readCodexModelCache } from "./codex-model-cache.js";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   TracevaneServiceManagerStatus,
@@ -117,6 +118,8 @@ import {
   type ModelGatewayModelUsageRow,
   type ModelGatewayUsageLedgerResponse,
   type ModelGatewayRouteDecision,
+  type ModelGatewayRouteSmokeRecord,
+  type ModelGatewayRouteSmokeVerification,
   type ModelGatewayRouteId,
   type ModelGatewayRouteMode,
   type ModelGatewaySecretState,
@@ -195,6 +198,8 @@ const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS = 60_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
+const MAX_ROUTE_SMOKE_ENTRIES = 64;
+const ROUTE_SMOKE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_USAGE_LEDGER_READ_ENTRIES = 20_000;
 const MAX_USAGE_LEDGER_READ_BYTES = 16 * 1024 * 1024;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
@@ -1964,6 +1969,7 @@ function createEmptyRuntime(updatedAt = nowIso()): ModelGatewayRuntimeState {
     version: 1,
     updatedAt,
     requestLog: [],
+    routeSmokes: {},
     accountRouting: {
       codexCursors: {},
       codexAffinities: {},
@@ -2290,6 +2296,56 @@ function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLog
     errorMessage: normalizeString(value.errorMessage) || null,
     usage: normalizeRuntimeUsage(value.usage) || zeroRuntimeUsage(),
   };
+}
+
+function normalizeRouteSmokeRecord(value: unknown): ModelGatewayRouteSmokeRecord | null {
+  if (!isRecord(value)) return null;
+  const signature = normalizeString(value.signature);
+  const scope = normalizeString(value.scope) as ModelGatewayAppScope;
+  const providerId = normalizeString(value.providerId);
+  const model = normalizeString(value.model);
+  const routeId = normalizeString(value.routeId) as ModelGatewayRouteId;
+  const checkedAt = normalizeString(value.checkedAt);
+  const checkedAtMs = Date.parse(checkedAt);
+  const state = value.state === "passed" || value.state === "failed" ? value.state : null;
+  if (
+    !signature
+    || !MODEL_GATEWAY_APP_SCOPES.includes(scope)
+    || !providerId
+    || !model
+    || !MODEL_GATEWAY_ROUTE_IDS.includes(routeId)
+    || !Number.isFinite(checkedAtMs)
+    || !state
+  ) return null;
+  const statusCode = typeof value.statusCode === "number" && Number.isInteger(value.statusCode)
+    ? value.statusCode
+    : null;
+  const latencyMs = typeof value.latencyMs === "number" && Number.isFinite(value.latencyMs)
+    ? Math.max(0, Math.floor(value.latencyMs))
+    : null;
+  return {
+    signature,
+    scope,
+    providerId,
+    model,
+    routeId,
+    state,
+    checkedAt: new Date(checkedAtMs).toISOString(),
+    statusCode,
+    latencyMs,
+    errorCode: normalizeString(value.errorCode) || null,
+    errorMessage: normalizeString(value.errorMessage) || null,
+  };
+}
+
+function normalizeRuntimeRouteSmokes(value: unknown): Record<string, ModelGatewayRouteSmokeRecord> {
+  const source = isRecord(value) ? value : {};
+  return Object.fromEntries(Object.values(source)
+    .map(normalizeRouteSmokeRecord)
+    .filter((record): record is ModelGatewayRouteSmokeRecord => Boolean(record))
+    .sort((left, right) => right.checkedAt.localeCompare(left.checkedAt))
+    .slice(0, MAX_ROUTE_SMOKE_ENTRIES)
+    .map((record) => [record.signature, record]));
 }
 
 function normalizeRuntimeAccountRouting(value: unknown): ModelGatewayRuntimeState["accountRouting"] {
@@ -3804,6 +3860,44 @@ function expectedDaemonSupervisor(): ModelGatewaySupervisorKind {
   return "systemd-user";
 }
 
+function codexAccountManagedModels(homeDir: string): {
+  catalog: ModelGatewayProviderModelCatalog;
+  metadata: Record<string, unknown>;
+} {
+  const defaults = codexAccountDefaultModels();
+  const cache = readCodexModelCache(homeDir);
+  if (cache.state !== "current" && cache.state !== "stale") {
+    return {
+      catalog: defaults,
+      metadata: { codexModelCatalogSource: `fallback-${cache.state}` },
+    };
+  }
+  const cacheById = new Map(cache.models.map((model) => [normalizeModelLookupKey(model.id), model]));
+  const defaultIds = new Set(defaults.models.map((model) => normalizeModelLookupKey(model.id)));
+  return {
+    catalog: {
+      ...defaults,
+      models: [
+        ...defaults.models.map((model) => ({
+          ...model,
+          ...(cacheById.get(normalizeModelLookupKey(model.id)) || {}),
+          features: model.features,
+          pricing: model.pricing,
+          maxOutputTokens: cacheById.get(normalizeModelLookupKey(model.id))?.maxOutputTokens
+            ?? model.maxOutputTokens,
+        })),
+        ...cache.models.filter((model) => !defaultIds.has(normalizeModelLookupKey(model.id))),
+      ],
+    },
+    metadata: {
+      codexModelCatalogSource: cache.state === "stale" ? "codex-model-cache-stale" : "codex-model-cache",
+      codexModelCatalogFetchedAt: cache.fetchedAt,
+      codexModelCatalogClientVersion: cache.clientVersion,
+      codexModelCatalogEtag: cache.etag,
+    },
+  };
+}
+
 function normalizeSupervisorKind(value: unknown): ModelGatewaySupervisorKind {
   if (value === "systemd-user"
     || value === "launchd-user"
@@ -3909,7 +4003,7 @@ function applyProviderAuth(headers: Headers, provider: ModelGatewayProvider, sec
     const accountId = normalizeString(bundle?.tokens.account_id);
     if (accountId) headers.set("chatgpt-account-id", accountId);
     if (!headers.get("originator")) headers.set("originator", CODEX_ACCOUNT_ORIGINATOR);
-    if (!headers.get("user-agent")) headers.set("user-agent", CODEX_ACCOUNT_USER_AGENT);
+    headers.set("user-agent", CODEX_ACCOUNT_USER_AGENT);
     return;
   }
 
@@ -6565,6 +6659,7 @@ export interface ModelGatewayService {
 export interface ModelGatewayServiceOptions {
   runtimeHost?: "tracevane-api" | "local-daemon";
   homeDir?: string;
+  manageCodexCli?: boolean;
   listener?: {
     host?: string;
     port?: number;
@@ -6583,6 +6678,7 @@ export function createModelGatewayService(
   const codexHistory = new CodexChatHistoryStore(paths.codexHistory);
   const runtimeHost = options.runtimeHost || "tracevane-api";
   const homeDir = options.homeDir || resolveModelGatewaySupervisorHome(config);
+  const manageCodexCli = options.manageCodexCli === true;
   const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
   const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
   const daemonServiceManager = options.daemonServiceManager ?? createServiceManager({
@@ -6774,7 +6870,9 @@ export function createModelGatewayService(
               };
             }
             if (isCodexAccountBackedProvider(normalized)) {
-              normalized.models = mergeManagedModelCatalogWithDefaults(normalized.models, codexAccountDefaultModels());
+              const managed = codexAccountManagedModels(homeDir);
+              normalized.models = mergeManagedModelCatalogWithDefaults(normalized.models, managed.catalog);
+              normalized.metadata = { ...normalized.metadata, ...managed.metadata };
               normalized.endpoints = {
                 ...normalized.endpoints,
                 openai_responses: normalized.endpoints.openai_responses || "/responses",
@@ -6816,7 +6914,7 @@ export function createModelGatewayService(
   function repairManagedCodexAccountProviderCatalogs(): void {
     const raw = readJsonFile<Partial<ModelGatewayRegistryState>>(paths.registry, createEmptyRegistry());
     if (!Array.isArray(raw.providers)) return;
-    const defaults = codexAccountDefaultModels();
+    const managed = codexAccountManagedModels(homeDir);
     let changed = false;
     const providers = raw.providers.map((provider) => {
       if (!isRecord(provider)) return provider;
@@ -6832,7 +6930,7 @@ export function createModelGatewayService(
       if (!codexAccountHint) return provider;
 
       const currentModels = normalizeModelCatalog(provider.models);
-      const managedModels = mergeManagedModelCatalogWithDefaults(currentModels, defaults);
+      const managedModels = mergeManagedModelCatalogWithDefaults(currentModels, managed.catalog);
       const currentEndpoints = normalizeEndpointMap(provider.endpoints);
       const managedEndpoints = {
         ...currentEndpoints,
@@ -6842,6 +6940,7 @@ export function createModelGatewayService(
       if (
         JSON.stringify(provider.models || null) === JSON.stringify(managedModels)
         && JSON.stringify(provider.endpoints || null) === JSON.stringify(managedEndpoints)
+        && JSON.stringify(rawMetadata) === JSON.stringify({ ...rawMetadata, ...managed.metadata })
       ) {
         return provider;
       }
@@ -6850,6 +6949,7 @@ export function createModelGatewayService(
         ...provider,
         models: managedModels,
         endpoints: managedEndpoints,
+        metadata: { ...rawMetadata, ...managed.metadata },
         failover: isRecord(provider.failover)
           ? provider.failover
           : { enabled: true, priority: 20, maxRetries: 1 },
@@ -6909,6 +7009,7 @@ export function createModelGatewayService(
       version: 1,
       updatedAt: normalizeString(raw.updatedAt, nowIso()),
       requestLog,
+      routeSmokes: normalizeRuntimeRouteSmokes(raw.routeSmokes),
       accountRouting: normalizeRuntimeAccountRouting(raw.accountRouting),
     };
   }
@@ -6918,6 +7019,7 @@ export function createModelGatewayService(
       version: 1,
       updatedAt: nowIso(),
       requestLog: runtime.requestLog.slice(-MAX_RUNTIME_REQUEST_LOG_ENTRIES),
+      routeSmokes: normalizeRuntimeRouteSmokes(runtime.routeSmokes),
       accountRouting: normalizeRuntimeAccountRouting(runtime.accountRouting),
     });
   }
@@ -8427,6 +8529,7 @@ export function createModelGatewayService(
           setSecretValue(account.authRef, serialized);
           const updatedAccount = codexAccountFromTokenBundle(account.id, account.authRef, refreshed, account.credentialSource, account);
           markCodexAccountReady(providerId, accountId, updatedAccount);
+          repairManagedCodexAccountProviderCatalogs();
           return serialized;
         } catch (error) {
           const message = error instanceof Error ? error.message : "Codex account token refresh failed.";
@@ -8958,6 +9061,7 @@ export function createModelGatewayService(
     );
     const existingAccounts = existing?.accountProvider?.accounts.filter((item) => item.id !== account.id) || [];
     const nextAccounts = [...existingAccounts, account];
+    const managed = codexAccountManagedModels(homeDir);
     const provider = normalizeProvider({
       ...(existing || {}),
       id: providerId,
@@ -8970,7 +9074,7 @@ export function createModelGatewayService(
       apiKeyRef: authRef,
       apiFormat: "openai_responses",
       authStrategy: "oauth_proxy",
-      models: mergeManagedModelCatalogWithDefaults(existing?.models, codexAccountDefaultModels()),
+      models: mergeManagedModelCatalogWithDefaults(existing?.models, managed.catalog),
       endpoints: {
         ...(existing?.endpoints || {}),
         openai_responses: "/responses",
@@ -8991,6 +9095,7 @@ export function createModelGatewayService(
       },
       metadata: {
         ...(existing?.metadata || {}),
+        ...managed.metadata,
         importedFrom: "codex-device-login",
         website: "https://chatgpt.com",
         notes: "User-owned Codex/ChatGPT account-backed provider. Credentials stay in the local Tracevane Gateway secret store.",
@@ -9251,6 +9356,81 @@ export function createModelGatewayService(
     return normalizeString(profile.appModels[scope as ModelGatewayAppConnectionId] || profile.model || "") || null;
   }
 
+  function routeSmokeSignature(
+    scope: ModelGatewayAppScope,
+    providerId: string,
+    model: string,
+    routeId: ModelGatewayRouteId,
+    endpointProfileId: string | null,
+  ): string {
+    return sha256Short([scope, providerId, model, routeId, endpointProfileId || ""].join("\n"));
+  }
+
+  function unverifiedRouteSmoke(): ModelGatewayRouteSmokeVerification {
+    return {
+      state: "unverified",
+      checkedAt: null,
+      statusCode: null,
+      latencyMs: null,
+      errorCode: null,
+      errorMessage: null,
+    };
+  }
+
+  function routeSmokeVerification(
+    scope: ModelGatewayAppScope,
+    providerId: string | null,
+    model: string | null,
+    routeId: ModelGatewayRouteId,
+    endpointProfileId: string | null,
+  ): ModelGatewayRouteSmokeVerification {
+    if (!providerId || !model) return unverifiedRouteSmoke();
+    const signature = routeSmokeSignature(scope, providerId, model, routeId, endpointProfileId);
+    const record = readRuntime().routeSmokes[signature];
+    if (!record) return unverifiedRouteSmoke();
+    return {
+      state: Date.now() - Date.parse(record.checkedAt) > ROUTE_SMOKE_TTL_MS ? "expired" : record.state,
+      checkedAt: record.checkedAt,
+      statusCode: record.statusCode,
+      latencyMs: record.latencyMs,
+      errorCode: record.errorCode,
+      errorMessage: record.errorMessage,
+    };
+  }
+
+  function recordRouteSmoke(
+    scope: ModelGatewayAppScope,
+    decision: ModelGatewayRouteDecision,
+    model: string,
+    result: ModelGatewayProviderTestResponse,
+  ): void {
+    const providerId = decision.provider?.id || "";
+    if (!providerId || !model) return;
+    const routeId = decision.routeId || defaultRouteIdForScope(scope);
+    const signature = routeSmokeSignature(
+      scope,
+      providerId,
+      model,
+      routeId,
+      decision.endpointProfile?.id || null,
+    );
+    const runtime = readRuntime();
+    runtime.routeSmokes[signature] = {
+      signature,
+      scope,
+      providerId,
+      model,
+      routeId,
+      state: result.ok ? "passed" : "failed",
+      checkedAt: result.checkedAt,
+      statusCode: result.statusCode,
+      latencyMs: result.latencyMs,
+      errorCode: result.error?.code || null,
+      errorMessage: result.error?.message || null,
+    };
+    writeRuntime(runtime);
+  }
+
   function buildActiveRouteStatuses(registry: ModelGatewayRegistryState): ModelGatewayActiveRouteStatus[] {
     return MODEL_GATEWAY_APP_SCOPES.map((scope) => {
       const selectedProviderId = registry.activeProviders[scope] || null;
@@ -9287,6 +9467,7 @@ export function createModelGatewayService(
           resolvedBaseUrl: null,
           upstreamUrl: null,
           state: "missing",
+          verification: routeSmokeVerification(scope, null, resolvedModel, routeId, null),
           message: `No available Model Gateway provider is available for ${scope}.`,
           warning: `No available Model Gateway provider is available for ${scope}.`,
         };
@@ -9308,6 +9489,7 @@ export function createModelGatewayService(
           resolvedBaseUrl: effectiveProvider?.baseUrl || null,
           upstreamUrl,
           state: "fallback",
+          verification: routeSmokeVerification(scope, resolvedProvider.id, resolvedModel, routeId, endpointProfileId),
           message: warning,
           warning,
         };
@@ -9327,6 +9509,7 @@ export function createModelGatewayService(
           resolvedBaseUrl: effectiveProvider?.baseUrl || null,
           upstreamUrl,
           state: "fixed",
+          verification: routeSmokeVerification(scope, resolvedProvider.id, resolvedModel, routeId, endpointProfileId),
           message: endpointProfileName
             ? `Fixed to '${resolvedProvider.name}' via endpoint '${endpointProfileName}'.`
             : `Fixed to '${resolvedProvider.name}'.`,
@@ -9347,6 +9530,7 @@ export function createModelGatewayService(
         resolvedBaseUrl: effectiveProvider?.baseUrl || null,
         upstreamUrl,
         state: "auto",
+        verification: routeSmokeVerification(scope, resolvedProvider.id, resolvedModel, routeId, endpointProfileId),
         message: endpointProfileName
           ? `Auto resolves to '${resolvedRouteTarget}'.`
           : `Auto resolves to '${resolvedProvider.name}'.`,
@@ -9961,6 +10145,9 @@ export function createModelGatewayService(
       ? redactConnectionPreviewContent(spec.format, readTextIfExists(spec.targetPath) ?? "")
       : null;
     const issues = [
+      ...(spec.id === "codex" && !manageCodexCli
+        ? ["Tracevane preserves direct Codex account login and does not apply Gateway configuration to Codex CLI."]
+        : []),
       ...(readRegistry().clientAuth.enabled && options.key
         ? []
         : ["Gateway client key is not enabled or missing; generate or save a local Gateway key before applying app connections."]),
@@ -10032,6 +10219,13 @@ export function createModelGatewayService(
         "model_gateway_app_connection_invalid",
         "A valid app connection id is required.",
         400,
+      );
+    }
+    if (appId === "codex" && !manageCodexCli) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_codex_direct_login_preserved",
+        "Tracevane preserves direct Codex account login and does not apply Gateway configuration to Codex CLI.",
+        409,
       );
     }
     const key = readGatewayClientSecret();
@@ -10215,10 +10409,12 @@ export function createModelGatewayService(
   ): ModelGatewayApplyAppConnectionsResponse {
     requireManagement(req);
     const profile = updateStoredAppConnectionProfile(payload);
-    const applied = appConnectionSpecs().map((spec) => applyAppConnection(req, {
+    const applied = appConnectionSpecs()
+      .filter((spec) => manageCodexCli || spec.id !== "codex")
+      .map((spec) => applyAppConnection(req, {
       appId: spec.id,
       profile,
-    }));
+      }));
     return {
       ok: true,
       checkedAt: nowIso(),
@@ -11436,7 +11632,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         : response.status >= 200 && response.status < 300 && (toolSmoke ? toolMatched : contentMatched);
       const responseProviderId = normalizeString(response.headers.get("x-openclaw-model-gateway-provider")) || providerId;
       const responsePreview = previewText(responseText);
-      return {
+      const result: ModelGatewayProviderTestResponse = {
         ok: success,
         providerId: responseProviderId,
         checkedAt: nowIso(),
@@ -11458,10 +11654,12 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           ...(smokeDiagnostics ? { diagnostics: smokeDiagnostics } : {}),
         },
       };
+      recordRouteSmoke(scope, decision, effectiveModel, result);
+      return result;
     } catch (error) {
       const diagnostics = networkErrorDiagnostics(error, { proxyUrl: null, source: "none" });
       const rawMessage = error instanceof Error ? error.message : "Active route smoke request failed.";
-      return {
+      const result: ModelGatewayProviderTestResponse = {
         ok: false,
         providerId,
         checkedAt: nowIso(),
@@ -11475,6 +11673,8 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           diagnostics,
         },
       };
+      recordRouteSmoke(scope, decision, effectiveModel, result);
+      return result;
     } finally {
       clearTimeout(timeout);
     }
@@ -12595,6 +12795,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       const firstByteMsForLog = () => firstByteMs ?? responseHeaderMs;
       const latencyMs = responseHeaderMs;
       const healthSuccess = isProviderHealthSuccess(upstream.status, null);
+      const requestSuccess = upstream.status >= 200 && upstream.status < 300;
       const errorMessage = healthSuccess ? null : `Upstream returned HTTP ${upstream.status}.`;
       const upstreamRetryAfterUntil = retryAfterUntilIso(upstream.headers);
       const streamingAdapter = useCodexResponsesStreamingAdapter
@@ -12902,7 +13103,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             route: decision,
             model: requestModelForLog,
             statusCode: upstream.status,
-            outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+            outcome: requestOutcomeFromStatus(upstream.status, null, requestSuccess),
             firstByteMs: firstByteMsForLog(),
             errorCode: String(normalizedError.error.code || "model_gateway_upstream_status"),
             errorMessage: normalizedError.error.message,
@@ -12920,7 +13121,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             route: decision,
             model: requestModelForLog,
             statusCode: upstream.status,
-            outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+            outcome: requestOutcomeFromStatus(upstream.status, null, requestSuccess),
             firstByteMs: firstByteMsForLog(),
             errorCode: String(normalizedError.error.code || "model_gateway_upstream_status"),
             errorMessage: normalizedError.error.message,
@@ -13328,9 +13529,9 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         route: decision,
         model: requestModelForLog,
         statusCode: upstream.status,
-        outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+        outcome: requestOutcomeFromStatus(upstream.status, null, requestSuccess),
         firstByteMs: firstByteMsForLog(),
-        errorCode: healthSuccess ? null : String(passthroughUpstreamError?.error.code || "model_gateway_upstream_status"),
+        errorCode: requestSuccess ? null : String(passthroughUpstreamError?.error.code || "model_gateway_upstream_status"),
         errorMessage: passthroughErrorMessage,
         usage: upstream.status >= 200 && upstream.status < 300
           ? runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, responseText)

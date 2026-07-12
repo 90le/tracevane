@@ -711,6 +711,48 @@ test("Windows PowerShell probing uses a non-interactive version command", () => 
   );
 });
 
+test("terminal binary probing degrades spawn errors instead of rejecting the profile catalog", () => {
+  const serviceSource = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    serviceSource,
+    /async function verifyExecutable[\s\S]*?try \{[\s\S]*?await runOwnedCommand[\s\S]*?catch \(error\)[\s\S]*?success:\s*false/,
+  );
+});
+
+test("terminal shell profiles launch the executable path that probing verified", () => {
+  const serviceSource = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    serviceSource,
+    /command:\s*binary\?\.path\s*\|\|\s*profile\.command/,
+  );
+});
+
+test("native Windows shell discovery excludes WSL bash launchers", () => {
+  const serviceSource = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(serviceSource, /function isWindowsWslLauncher/);
+  assert.match(serviceSource, /hasOnlyUnsupportedCandidates/);
+});
+
+test("terminal profile discovery degrades unrelated skill summary failures", () => {
+  const serviceSource = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    serviceSource,
+    /async function buildSkillsDependencySummary[\s\S]*?try \{[\s\S]*?options\.skills\.getSummary[\s\S]*?catch/,
+  );
+});
+
 test("terminal profileless attach preserves the explicit shell API contract", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-explicit-shell-"));
   const fakePty = createFakePtyController({ exitOnKill: true });
@@ -724,7 +766,10 @@ test("terminal profileless attach preserves the explicit shell API contract", as
       pinned: true,
     });
     assert.equal(fakePty.launches.length, 1);
-    assert.equal(fakePty.launches[0].command, requestedShell);
+    assert.equal(
+      path.basename(fakePty.launches[0].command).toLowerCase().replace(/\.exe$/, ""),
+      requestedShell,
+    );
     await service.endSession({ sid: created.sessionId });
   } finally {
     await service.dispose();
@@ -747,7 +792,7 @@ test("Windows local-shell ignores a legacy persisted bash override", {
       pinned: true,
     });
     assert.equal(fakePty.launches.length, 1);
-    assert.notEqual(path.basename(fakePty.launches[0].command).toLowerCase(), "bash");
+    assert.notEqual(path.basename(fakePty.launches[0].command).toLowerCase().replace(/\.exe$/, ""), "bash");
     await service.endSession({ sid: created.sessionId });
 
     const implicitLocal = await service.createPersistedSession({
@@ -755,7 +800,7 @@ test("Windows local-shell ignores a legacy persisted bash override", {
       shell: "bash",
       pinned: true,
     });
-    assert.equal(path.basename(fakePty.launches[1].command).toLowerCase(), "bash");
+    assert.equal(path.basename(fakePty.launches[1].command).toLowerCase().replace(/\.exe$/, ""), "bash");
     await service.endSession({ sid: implicitLocal.sessionId });
 
     const explicitBash = await service.createPersistedSession({
@@ -763,7 +808,7 @@ test("Windows local-shell ignores a legacy persisted bash override", {
       profileId: "shell-bash",
       pinned: true,
     });
-    assert.equal(path.basename(fakePty.launches[2].command).toLowerCase(), "bash");
+    assert.equal(path.basename(fakePty.launches[2].command).toLowerCase().replace(/\.exe$/, ""), "bash");
     await service.endSession({ sid: explicitBash.sessionId });
   } finally {
     await service.dispose();

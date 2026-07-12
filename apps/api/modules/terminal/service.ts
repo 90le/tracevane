@@ -468,6 +468,13 @@ function isWindowsMountedPath(binPath: string): boolean {
   return normalized.startsWith("/mnt/c/") || normalized.startsWith("/mnt/d/");
 }
 
+function isWindowsWslLauncher(binPath: string): boolean {
+  if (process.platform !== "win32") return false;
+  const normalized = path.normalize(String(binPath || "")).toLowerCase();
+  return normalized.endsWith("\\windows\\system32\\bash.exe") ||
+    normalized.includes("\\microsoft\\windowsapps\\bash.exe");
+}
+
 function resolveExecutableCandidates(binary: string): string[] {
   try {
     const resolved = whichModule.sync(binary, { all: true, nothrow: true });
@@ -480,18 +487,26 @@ function resolveExecutableCandidates(binary: string): string[] {
   }
 }
 
-function verifyExecutable(
+async function verifyExecutable(
   command: string,
   args: readonly string[],
   timeoutMs = TERMINAL_BINARY_VERIFY_TIMEOUT_MS,
 ): Promise<{ success: boolean; output: string }> {
-  return runOwnedCommand(command, [...args], {
-    timeoutMs,
-    maxOutputBytes: 4 * 1024 * 1024,
-  }).then((result) => ({
-    success: result.ok,
-    output: [result.stdout, result.stderr].filter(Boolean).join("\n").trim(),
-  }));
+  try {
+    const result = await runOwnedCommand(command, [...args], {
+      timeoutMs,
+      maxOutputBytes: 4 * 1024 * 1024,
+    });
+    return {
+      success: result.ok,
+      output: [result.stdout, result.stderr].filter(Boolean).join("\n").trim(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      output: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function resolveDefaultTerminalShell(): {
@@ -1703,7 +1718,9 @@ export function createTerminalService(
     const explicitShell = requestedProfileId === "local-shell"
       ? null
       : normalizeTerminalShell(requestedShell);
-    if (explicitShell) return explicitShell;
+    if (explicitShell) {
+      return resolveExecutableCandidates(explicitShell)[0] || explicitShell;
+    }
 
     const shellByProfileId: Record<string, string> = {
       "shell-bash": "bash",
@@ -1715,7 +1732,9 @@ export function createTerminalService(
       "shell-cmd": "cmd",
     };
     const profileShell = shellByProfileId[normalizedProfileId];
-    if (profileShell) return profileShell;
+    if (profileShell) {
+      return resolveExecutableCandidates(profileShell)[0] || profileShell;
+    }
 
     if (process.platform === "win32") return resolveDefaultTerminalShell().command;
     return normalizeTerminalShell(process.env.SHELL) || resolveDefaultTerminalShell().command;
@@ -2278,11 +2297,14 @@ export function createTerminalService(
     spec: TerminalCliSpec,
   ): Promise<TerminalBinaryStatus> {
     const candidates = resolveExecutableCandidates(spec.binary);
+    const compatibleCandidates = candidates.filter((item) => !isWindowsWslLauncher(item));
 
     const binaryPath =
-      candidates.find((item) => !isWindowsMountedPath(item)) || "";
+      compatibleCandidates.find((item) => !isWindowsMountedPath(item)) || "";
     const hasOnlyWindowsMountedCandidates =
-      !binaryPath && candidates.some((item) => isWindowsMountedPath(item));
+      !binaryPath && compatibleCandidates.some((item) => isWindowsMountedPath(item));
+    const hasOnlyUnsupportedCandidates =
+      !binaryPath && candidates.length > 0 && compatibleCandidates.length === 0;
 
     const verifyArgs = spec.verifyArgs || ["--version"];
     async function verifyAt(pathToBinary: string): Promise<{
@@ -2294,7 +2316,7 @@ export function createTerminalService(
 
     const verifyFromPath = binaryPath ? await verifyAt(binaryPath) : null;
     const fallbackVerify =
-      verifyFromPath?.success || hasOnlyWindowsMountedCandidates
+      verifyFromPath?.success || hasOnlyWindowsMountedCandidates || hasOnlyUnsupportedCandidates
         ? null
         : await verifyAt(spec.binary);
     const installed = Boolean(
@@ -2612,7 +2634,21 @@ export function createTerminalService(
   }
 
   async function buildSkillsDependencySummary() {
-    const summary = await options.skills.getSummary({ fast: true });
+    let summary;
+    try {
+      summary = await options.skills.getSummary({ fast: true });
+    } catch {
+      return {
+        needsSetupCount: 0,
+        blockedCount: 0,
+        missingBinaryCount: 0,
+        missingBinaries: [],
+        marketplaceCli: {
+          clawhubInstalled: false,
+          skillhubInstalled: false,
+        },
+      };
+    }
     const needsSetupSkills = summary.skills.filter(
       (skill) => skill.status === "needs-setup",
     );
@@ -2956,9 +2992,10 @@ export function createTerminalService(
           ? binaryById.get(profile.binaryId)
           : null;
         const installed = profile.binaryId ? Boolean(binary?.installed) : false;
-        return {
-          ...profile,
-          cwd: options.config.openclawRoot || null,
+          return {
+            ...profile,
+            command: binary?.path || profile.command,
+            cwd: options.config.openclawRoot || null,
           installed,
           launchable: profile.targetKind === "local" && installed,
         };

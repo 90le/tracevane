@@ -583,6 +583,7 @@ export interface ModelGatewayRuntimeState {
   version: 1;
   updatedAt: string;
   requestLog: ModelGatewayRuntimeRequestLogEntry[];
+  routeSmokes: Record<string, ModelGatewayRouteSmokeRecord>;
   accountRouting: {
     codexCursors: Record<string, number>;
     codexAffinities: Record<string, string>;
@@ -629,6 +630,27 @@ export interface ModelGatewayDaemonServiceCommandResult extends ModelGatewayDaem
   errorMessage: string | null;
   durationMs: number;
   error: string | null;
+}
+
+export type ModelGatewayRouteSmokeState = "unverified" | "passed" | "failed" | "expired";
+
+export interface ModelGatewayRouteSmokeVerification {
+  state: ModelGatewayRouteSmokeState;
+  checkedAt: string | null;
+  statusCode: number | null;
+  latencyMs: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+export interface ModelGatewayRouteSmokeRecord extends Omit<ModelGatewayRouteSmokeVerification, "state" | "checkedAt"> {
+  signature: string;
+  scope: ModelGatewayAppScope;
+  providerId: string;
+  model: string;
+  routeId: ModelGatewayRouteId;
+  state: "passed" | "failed";
+  checkedAt: string;
 }
 
 export interface ModelGatewayDaemonServiceManagerStatus
@@ -1134,6 +1156,7 @@ export interface ModelGatewayActiveRouteStatus {
   resolvedBaseUrl: string | null;
   upstreamUrl: string | null;
   state: ModelGatewayActiveRouteState;
+  verification: ModelGatewayRouteSmokeVerification;
   message: string;
   warning: string | null;
 }

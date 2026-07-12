@@ -1084,6 +1084,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
 
       const response = await requestJson(`${baseUrl}/v1/responses`, {
         method: "POST",
+        headers: { "user-agent": "node" },
         body: {
           model: "gpt-5.5",
           input: "hello",
@@ -1096,6 +1097,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
 
       const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
+        headers: { "user-agent": "opencode/test" },
         body: {
           model: "gpt-5.5",
           messages: [{ role: "user", content: "hello" }],
@@ -1106,6 +1108,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
 
       const compact = await requestJson(`${baseUrl}/v1/responses/compact`, {
         method: "POST",
+        headers: { "user-agent": "claude-code/test" },
         body: {
           model: "gpt-5.5",
           input: "summarize",
@@ -1296,7 +1299,11 @@ test("model gateway starts Codex account login and creates an account-backed pro
   assert.equal(upstreamCalls[3].body.tools[0].size, "1024x1024");
   assert.equal(upstreamCalls[3].body.tool_choice.type, "image_generation");
   assert.equal(upstreamCalls[3].dispatcher, true);
-  assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
+  assert.deepEqual(upstreamCalls.slice(0, 3).map((call) => call.userAgent), [
+    "codex_cli_rs/0.133.0 (Tracevane Gateway; local)",
+    "codex_cli_rs/0.133.0 (Tracevane Gateway; local)",
+    "codex_cli_rs/0.133.0 (Tracevane Gateway; local)",
+  ]);
 });
 
 test("model gateway preserves Codex account login sessions across service instances", async () => {
@@ -2424,6 +2431,88 @@ test("model gateway repairs stale raw Codex account catalog budgets on startup",
   assert.deepEqual(rawCodex.failover, { enabled: true, priority: 20, maxRetries: 1 });
   assert.equal(rawCodex.health.circuitState, "closed");
   assert.ok(raw.providers.find((item) => item.id === "legacy-raw-provider"));
+});
+
+test("model gateway imports Codex model cache budgets during startup repair", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const codexDir = path.join(root, ".codex");
+  fs.mkdirSync(codexDir, { recursive: true });
+  fs.writeFileSync(path.join(codexDir, "models_cache.json"), JSON.stringify({
+    fetched_at: "2026-07-12T04:00:28.645Z",
+    etag: "cache-etag",
+    client_version: "0.144.0",
+    models: [{
+      slug: "gpt-5.6-terra",
+      display_name: "GPT-5.6-Terra",
+      visibility: "list",
+      supported_in_api: true,
+      context_window: 372000,
+      max_context_window: 372000,
+      effective_context_window_percent: 95,
+      supported_reasoning_levels: [
+        { effort: "low", description: "Fast" },
+        { effort: "medium", description: "Balanced" },
+      ],
+    }, {
+      slug: "../invalid-model",
+      context_window: 999999,
+    }],
+  }, null, 2), "utf8");
+  fs.mkdirSync(path.dirname(paths.registry), { recursive: true });
+  fs.writeFileSync(paths.registry, JSON.stringify({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    clientAuth: { enabled: false },
+    appConnectionProfile: {},
+    activeProviders: { codex: "codex-cache-sync" },
+    providers: [{
+      id: "codex-cache-sync",
+      name: "Codex Cache Sync",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.6-terra",
+        models: [{ id: "gpt-5.6-terra", contextWindow: 1000000, maxOutputTokens: 128000 }],
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: { strategy: "round-robin", sessionAffinity: true, maxConcurrentPerAccount: null },
+        accounts: [],
+      },
+    }],
+  }, null, 2), "utf8");
+
+  const service = createModelGatewayService(config, { homeDir: root });
+  const provider = service.listProviders().providers.find((item) => item.id === "codex-cache-sync");
+  assert.ok(provider);
+  const terra = provider.models.models.find((model) => model.id === "gpt-5.6-terra");
+  assert.equal(terra.contextWindow, 372000);
+  assert.equal(terra.maxOutputTokens, 128000);
+  assert.ok(!provider.models.models.some((model) => model.id === "../invalid-model"));
+
+  const raw = JSON.parse(fs.readFileSync(paths.registry, "utf8"));
+  const persisted = raw.providers.find((item) => item.id === "codex-cache-sync");
+  assert.equal(persisted.models.models.find((model) => model.id === "gpt-5.6-terra")?.contextWindow, 372000);
+  assert.equal(persisted.metadata.codexModelCatalogSource, "codex-model-cache");
+  assert.equal(persisted.metadata.codexModelCatalogFetchedAt, "2026-07-12T04:00:28.645Z");
+  assert.equal(persisted.metadata.codexModelCatalogClientVersion, "0.144.0");
+
+  const staleCache = JSON.parse(fs.readFileSync(path.join(codexDir, "models_cache.json"), "utf8"));
+  staleCache.fetched_at = "2020-01-01T00:00:00.000Z";
+  staleCache.models[0].context_window = 300000;
+  staleCache.models[0].max_context_window = 300000;
+  fs.writeFileSync(path.join(codexDir, "models_cache.json"), JSON.stringify(staleCache, null, 2), "utf8");
+  const staleService = createModelGatewayService(config, { homeDir: root });
+  const staleProvider = staleService.listProviders().providers.find((item) => item.id === "codex-cache-sync");
+  assert.equal(staleProvider.models.models.find((model) => model.id === "gpt-5.6-terra")?.contextWindow, 300000);
+  assert.equal(staleProvider.metadata.codexModelCatalogSource, "codex-model-cache-stale");
 });
 
 test("model gateway preserves Codex catalog edits and GPT-5.6 models across reload", () => {
@@ -6913,7 +7002,7 @@ test("model gateway app connections preview and apply client config files with r
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir });
+  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -7138,11 +7227,53 @@ function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function setupAppConnectionService() {
+test("model gateway preserves direct Codex login and bulk apply excludes Codex", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
   const service = createModelGatewayService(config, { homeDir });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "gateway-managed-clients",
+      name: "Gateway Managed Clients",
+      appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+      baseUrl: "https://provider.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: { defaultModel: "gpt-main", models: [{ id: "gpt-main" }] },
+    },
+    secret: { apiKey: "sk-upstream-managed-clients" },
+  });
+  service.updateClientAuth(undefined, { apiKey: "sk-local-managed-clients" });
+  const codexPath = path.join(homeDir, ".codex", "config.toml");
+  fs.mkdirSync(path.dirname(codexPath), { recursive: true });
+  const directLoginConfig = 'model = "gpt-5.6-terra"\nmodel_reasoning_effort = "low"\n';
+  fs.writeFileSync(codexPath, directLoginConfig, "utf8");
+
+  const listed = service.listAppConnections();
+  const codex = listed.connections.find((connection) => connection.id === "codex");
+  assert.equal(codex.canApply, false);
+  assert.ok(codex.issues.some((issue) => /direct Codex account login/i.test(issue)));
+  assert.throws(
+    () => service.applyAppConnection(undefined, { appId: "codex" }),
+    (error) => error instanceof ModelGatewayServiceError
+      && error.code === "model_gateway_codex_direct_login_preserved"
+      && error.statusCode === 409,
+  );
+  assert.equal(fs.readFileSync(codexPath, "utf8"), directLoginConfig);
+
+  const applied = service.applyAppConnections(undefined);
+  assert.deepEqual(applied.applied.map((item) => item.connection.id), ["claude-code", "opencode", "openclaw"]);
+  assert.equal(applied.applied.every((item) => item.applied), true);
+  assert.equal(fs.readFileSync(codexPath, "utf8"), directLoginConfig);
+  assert.equal(fs.existsSync(path.join(homeDir, ".codex", "tracevane-gateway-models.json")), false);
+});
+
+function setupAppConnectionService() {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const homeDir = path.join(root, "home");
+  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
   service.upsertProvider(undefined, {
     provider: {
       id: "gateway-main",
@@ -7498,7 +7629,7 @@ test("model gateway app connections keep Codex reasoning effort for Gateway mode
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir });
+  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -7573,7 +7704,7 @@ test("model gateway app connections resolve budgets from each selected app model
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir });
+  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -7636,7 +7767,7 @@ test("model gateway app connections derive Codex auto compact from selected Code
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir });
+  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -7708,7 +7839,7 @@ test("model gateway app connections keep per-model catalog budgets for mixed age
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir });
+  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -7858,7 +7989,8 @@ test("model gateway app connections apply through HTTP routes against an isolate
     const preview = await requestJson(`${baseUrl}/api/model-gateway/app-connections`);
     assert.equal(preview.status, 200);
     assert.equal(preview.body.connections.length, 4);
-    assert.equal(preview.body.connections.every((connection) => connection.canApply), true);
+    assert.equal(preview.body.connections.find((connection) => connection.id === "codex").canApply, false);
+    assert.equal(preview.body.connections.filter((connection) => connection.id !== "codex").every((connection) => connection.canApply), true);
     assert.equal(preview.body.connections.find((connection) => connection.id === "codex").target.path, codexPath);
     assert.equal(preview.body.connections.find((connection) => connection.id === "claude-code").target.path, claudePath);
     assert.equal(preview.body.connections.find((connection) => connection.id === "opencode").target.path, opencodePath);
@@ -7874,15 +8006,11 @@ test("model gateway app connections apply through HTTP routes against an isolate
       body: {},
     });
     assert.equal(applyAll.status, 200);
-    assert.equal(applyAll.body.applied.length, 4);
+    assert.deepEqual(applyAll.body.applied.map((item) => item.connection.id), ["claude-code", "opencode", "openclaw"]);
     assert.equal(applyAll.body.applied.every((item) => item.applied), true);
 
     const codexConfig = fs.readFileSync(codexPath, "utf8");
-    assert.match(codexConfig, /model = "model-b"/);
-    assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
-    assert.match(codexConfig, /experimental_bearer_token = "sk-local-isolated"/);
-    assert.match(codexConfig, /^model_context_window = 128000$/m);
-    assert.match(codexConfig, /^model_auto_compact_token_limit = 100000$/m);
+    assert.equal(codexConfig, "model = \"before-codex\"\n");
 
     const claudeConfig = JSON.parse(fs.readFileSync(claudePath, "utf8"));
     assert.equal(claudeConfig.env.KEEP, "claude");
@@ -7906,10 +8034,11 @@ test("model gateway app connections apply through HTTP routes against an isolate
 
     const configured = await requestJson(`${baseUrl}/api/model-gateway/app-connections`);
     assert.equal(configured.status, 200);
-    assert.equal(configured.body.connections.every((connection) => connection.configured), true);
+    assert.equal(configured.body.connections.find((connection) => connection.id === "codex").configured, false);
+    assert.equal(configured.body.connections.filter((connection) => connection.id !== "codex").every((connection) => connection.configured), true);
     assert.equal(JSON.stringify(configured.body).includes("sk-local-isolated"), false);
 
-    for (const appId of ["codex", "claude-code", "opencode", "openclaw"]) {
+    for (const appId of ["claude-code", "opencode", "openclaw"]) {
       const rollback = await requestJson(`${baseUrl}/api/model-gateway/app-connections/${appId}/rollback`, {
         method: "POST",
         body: {},
@@ -7936,7 +8065,7 @@ test("model gateway app connections require a local client key before apply", ()
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir });
+  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -8106,6 +8235,7 @@ test("model gateway provider list reports active route fallback and disabled act
 test("model gateway active route smoke uses the client protocol endpoint", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
   const service = createModelGatewayService(config);
   service.updateClientAuth(undefined, { apiKey: "sk-local-route-smoke" });
   service.upsertProvider(undefined, {
@@ -8118,7 +8248,7 @@ test("model gateway active route smoke uses the client protocol endpoint", async
       authStrategy: "bearer",
       models: {
         defaultModel: "gpt-route",
-        models: [{ id: "gpt-route" }],
+        models: [{ id: "gpt-route" }, { id: "gpt-route-next" }],
       },
       endpointProfiles: [{
         id: "route-chat-fast",
@@ -8138,10 +8268,17 @@ test("model gateway active route smoke uses the client protocol endpoint", async
   let seenUrl = "";
   let seenHeaders = {};
   let seenBody = {};
+  let failSmoke = false;
   globalThis.fetch = async (url, init = {}) => {
     seenUrl = String(url);
     seenHeaders = Object.fromEntries(new Headers(init.headers).entries());
     seenBody = JSON.parse(String(init.body || "{}"));
+    if (failSmoke) {
+      return new Response(JSON.stringify({ error: { message: "route smoke failed" } }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    }
     const hasResponsesToolResult = Array.isArray(seenBody.input)
       && seenBody.input.some((item) => item?.type === "function_call_output" && item?.call_id === "call_gateway_smoke");
     if (seenBody.stream === true && hasResponsesToolResult) {
@@ -8187,6 +8324,10 @@ test("model gateway active route smoke uses the client protocol endpoint", async
   };
 
   try {
+    assert.equal(
+      service.listProviders().activeRoutes.find((route) => route.scope === "codex")?.verification.state,
+      "unverified",
+    );
     const result = await service.testActiveRoute(undefined, {
       scope: "codex",
       input: "Reply with GATEWAY_OK",
@@ -8204,6 +8345,10 @@ test("model gateway active route smoke uses the client protocol endpoint", async
     assert.equal(seenBody.model, "gpt-route");
     assert.match(seenBody.input, /GATEWAY_OK/);
     assert.equal(seenBody.max_output_tokens, 256);
+    assert.equal(
+      service.listProviders().activeRoutes.find((route) => route.scope === "codex")?.verification.state,
+      "passed",
+    );
 
     const toolResult = await service.testActiveRoute(undefined, {
       scope: "codex",
@@ -8246,6 +8391,30 @@ test("model gateway active route smoke uses the client protocol endpoint", async
     assert.equal(streamToolResultSmoke.ok, true);
     assert.equal(seenBody.stream, true);
     assert.equal(seenBody.input.some((item) => item.type === "function_call_output" && item.call_id === "call_gateway_smoke"), true);
+
+    failSmoke = true;
+    const failed = await service.testActiveRoute(undefined, {
+      scope: "codex",
+      model: "gpt-route",
+    });
+    assert.equal(failed.ok, false);
+    let active = service.listProviders().activeRoutes.find((route) => route.scope === "codex");
+    assert.equal(active?.verification.state, "failed");
+    assert.equal(active?.verification.statusCode, 404);
+
+    const runtime = JSON.parse(fs.readFileSync(paths.runtime, "utf8"));
+    const smokeKey = Object.keys(runtime.routeSmokes)[0];
+    runtime.routeSmokes[smokeKey].checkedAt = "2020-01-01T00:00:00.000Z";
+    fs.writeFileSync(paths.runtime, JSON.stringify(runtime, null, 2), "utf8");
+    active = service.listProviders().activeRoutes.find((route) => route.scope === "codex");
+    assert.equal(active?.verification.state, "expired");
+
+    service.updateAppConnectionProfile(undefined, {
+      profile: { appModels: { codex: "gpt-route-next" } },
+    });
+    active = service.listProviders().activeRoutes.find((route) => route.scope === "codex");
+    assert.equal(active?.resolvedModel, "gpt-route-next");
+    assert.equal(active?.verification.state, "unverified");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -23573,6 +23742,58 @@ test("model gateway normalizes non-json passthrough upstream errors", async () =
       assert.equal(runtime.body.runtime.requestLog[0].outcome, "failure");
       assert.equal(runtime.body.runtime.requestLog[0].errorCode, "upstream_http_502");
       assert.match(runtime.body.runtime.requestLog[0].errorMessage, /Bad gateway from upstream/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway records a 404 request outcome as failure without opening provider health", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "model-not-found-provider",
+      name: "Model Not Found Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://model-not-found.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: { defaultModel: "missing-model", models: [{ id: "missing-model" }] },
+    },
+    secret: { apiKey: "sk-model-not-found" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: { message: "Model not found missing-model", type: "invalid_request_error" },
+  }), {
+    status: 404,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "missing-model",
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+      assert.equal(chat.status, 404);
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.body.runtime.requestLog[0].statusCode, 404);
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "failure");
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      const provider = providers.body.providers.find((item) => item.id === "model-not-found-provider");
+      assert.equal(provider.health.circuitState, "closed");
+      assert.equal(provider.health.consecutiveFailures, 0);
     });
   } finally {
     globalThis.fetch = originalFetch;
