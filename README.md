@@ -132,6 +132,24 @@ npm run test:system
 npm run test:web:api
 ```
 
+Browser and service smoke tests use the same Node-owned lifecycle on Windows,
+macOS, and Linux. Install the Playwright-managed browser once for the current
+native environment, then run the public aliases; the runner reports the actual
+ports it selected and cleans up only the process trees it created:
+
+```bash
+npx playwright install chromium
+npm run smoke:file-manager:online-editor
+npm run smoke:ide:workbench-layout
+npm run smoke:gateway:http-foundation
+npm run test:supervisor
+```
+
+Use `TRACEVANE_WEB_PORT` and `TRACEVANE_API_PORT` to isolate a smoke run when
+the defaults are occupied. Missing optional platform tools produce an explicit
+skip; dependency, build, readiness, or product-runtime failures still fail the
+command.
+
 Default local endpoints:
 
 - Web: `http://127.0.0.1:5176`
