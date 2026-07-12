@@ -1,8 +1,22 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+
+import { runWebSmoke } from '../../scripts/dev-web-smoke.mjs';
 
 const ROOT = process.cwd();
-const PORT = Number(process.env.TRACEVANE_DURABLE_TERMINAL_PORT || 5282);
+const PORT = Number(
+  process.env.TRACEVANE_DURABLE_TERMINAL_PORT
+    || process.env.TRACEVANE_WEB_PORT
+    || 5282,
+);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+const WEB_SMOKE_OPTIONS = {
+  env: {
+    ...process.env,
+    TRACEVANE_WEB_PORT: String(PORT),
+    TRACEVANE_SMOKE_SKIP_OPTIMIZE: '1',
+  },
+  rootDir: ROOT,
+};
 
 function hasTmux() {
   return process.platform !== 'win32' && spawnSync('tmux', ['-V'], { stdio: 'ignore' }).status === 0;
@@ -55,34 +69,6 @@ async function waitForServer() {
   throw new Error(`Server did not become ready on ${BASE_URL}: ${lastError?.message || lastError}`);
 }
 
-function startServer(label) {
-  const child = spawn('bash', ['scripts/dev-web-smoke.sh'], {
-    cwd: ROOT,
-    detached: true,
-    env: {
-      ...process.env,
-      TRACEVANE_WEB_PORT: String(PORT),
-      TRACEVANE_SMOKE_SKIP_OPTIMIZE: '1',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const logs = [];
-  child.stdout.on('data', (chunk) => logs.push(`[${label}:out] ${chunk}`));
-  child.stderr.on('data', (chunk) => logs.push(`[${label}:err] ${chunk}`));
-  return { child, logs };
-}
-
-async function stopServer(runtime) {
-  if (!runtime?.child?.pid) return;
-  try {
-    process.kill(-runtime.child.pid, 'SIGTERM');
-  } catch {}
-  await sleep(1500);
-  try {
-    process.kill(-runtime.child.pid, 'SIGKILL');
-  } catch {}
-}
-
 async function waitForLedger(sessionId, expected) {
   const deadline = Date.now() + 30_000;
   let last = null;
@@ -131,42 +117,43 @@ async function run() {
 
   const sessionId = `ide-terminal-durable-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const token = `TRACEVANE_DURABLE_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  let first = null;
-  let second = null;
+  let rootId = null;
+  let phase = 'first server lifecycle';
 
   try {
-    first = startServer('first');
-    const summary = await waitForServer();
-    const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
-    if (!rootId) throw new Error('No root available for durable terminal smoke');
+    await runWebSmoke(WEB_SMOKE_OPTIONS, async () => {
+      const summary = await waitForServer();
+      rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
+      if (!rootId) throw new Error('No root available for durable terminal smoke');
 
-    const descriptor = await createOrResume(sessionId, rootId, false);
-    if (descriptor.durableBackend !== 'tmux') {
-      throw new Error(`Expected first descriptor to be tmux-backed, got ${JSON.stringify(descriptor)}`);
-    }
-    await sendInput(sessionId, `export TRACEVANE_DURABLE_TOKEN='${token}'\nprintf 'before:%s\\n' "$TRACEVANE_DURABLE_TOKEN"\n`);
-    await waitForLedger(sessionId, `before:${token}`);
+      const descriptor = await createOrResume(sessionId, rootId, false);
+      if (descriptor.durableBackend !== 'tmux') {
+        throw new Error(`Expected first descriptor to be tmux-backed, got ${JSON.stringify(descriptor)}`);
+      }
+      await sendInput(sessionId, `export TRACEVANE_DURABLE_TOKEN='${token}'\nprintf 'before:%s\\n' "$TRACEVANE_DURABLE_TOKEN"\n`);
+      await waitForLedger(sessionId, `before:${token}`);
+    });
 
-    await stopServer(first);
-    first = null;
-
-    second = startServer('second');
-    await waitForServer();
-    const resumed = await createOrResume(sessionId, rootId);
-    if (resumed.durableBackend !== 'tmux' || resumed.canResume !== true) {
-      throw new Error(`Expected resumed descriptor to remain tmux-backed/resumable, got ${JSON.stringify(resumed)}`);
-    }
-    await sendInput(sessionId, `printf 'after:%s\\n' "$TRACEVANE_DURABLE_TOKEN"\n`);
-    await waitForLedger(sessionId, `after:${token}`);
-    await api('/api/terminal/end', {
-      method: 'POST',
-      body: JSON.stringify({ sid: sessionId }),
-    }).catch(() => undefined);
+    phase = 'second server lifecycle';
+    await runWebSmoke(WEB_SMOKE_OPTIONS, async () => {
+      await waitForServer();
+      const resumed = await createOrResume(sessionId, rootId);
+      if (resumed.durableBackend !== 'tmux' || resumed.canResume !== true) {
+        throw new Error(`Expected resumed descriptor to remain tmux-backed/resumable, got ${JSON.stringify(resumed)}`);
+      }
+      await sendInput(sessionId, `printf 'after:%s\\n' "$TRACEVANE_DURABLE_TOKEN"\n`);
+      await waitForLedger(sessionId, `after:${token}`);
+      await api('/api/terminal/end', {
+        method: 'POST',
+        body: JSON.stringify({ sid: sessionId }),
+      }).catch(() => undefined);
+    });
   } catch (error) {
-    throw new Error(`${error instanceof Error ? error.message : String(error)}\nfirstLogs=${first?.logs?.slice(-80).join('') || ''}\nsecondLogs=${second?.logs?.slice(-80).join('') || ''}`);
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\nphase=${phase}`,
+      { cause: error },
+    );
   } finally {
-    await stopServer(first);
-    await stopServer(second);
     spawnSync('tmux', ['kill-session', '-t', `tracevane-${sessionId}`], { stdio: 'ignore' });
   }
 }
