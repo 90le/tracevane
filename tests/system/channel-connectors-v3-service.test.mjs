@@ -184,6 +184,36 @@ function waitForChildExit(child, timeoutMs = 10_000) {
   });
 }
 
+test("cold-start v3 revision stays stable before first save", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-v3-cold-start-"));
+  try {
+    const config = createConfig(root);
+    let nowMs = Date.parse("2026-07-12T12:00:00.000Z");
+    const service = createChannelConnectorsService(config, {
+      homeDir: root,
+      now: () => new Date(nowMs++),
+    });
+    const initial = service.getV3Config();
+    const reread = service.getV3Config();
+    assert.equal(reread.revision, initial.revision);
+    assert.match(initial.revision, /^unpersisted:[a-f0-9]{64}$/);
+    const plan = service.planV3Config({
+      config: initial.config,
+      expectedRevision: initial.revision,
+    });
+    assert.equal(plan.ok, true);
+    assert.ok(plan.planId);
+
+    const saved = service.saveV3Config(initial.config);
+    assert.doesNotMatch(saved.revision, /^unpersisted:/);
+    const persisted = service.getV3Config();
+    const persistedReread = service.getV3Config();
+    assert.equal(persistedReread.revision, persisted.revision);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Channel Connectors persists only v3 resources and redacts generated runtime mappings", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-v3-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

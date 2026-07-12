@@ -672,6 +672,7 @@ function readRuntimeAdapterCatalog(
 
 interface ChannelConnectorsV3Snapshot {
   config: ChannelConnectorsV3Config;
+  revision: string;
 }
 
 /**
@@ -723,11 +724,21 @@ function readV3Snapshot(
   now: Date,
 ): ChannelConnectorsV3Snapshot {
   const parsed = parsedStoredConfig(paths);
-  if (parsed === null) return { config: defaultV3Config(config, now) };
+  if (parsed === null) {
+    const defaultConfig = defaultV3Config(config, now);
+    return {
+      config: defaultConfig,
+      revision: unpersistedV3ConfigRevision(defaultConfig),
+    };
+  }
   if (!isRecord(parsed) || parsed.version !== 3) {
     throw new Error("Channel Connectors only supports version 3 configuration.");
   }
-  return { config: normalizeV3Config(parsed, now) };
+  const normalized = normalizeV3Config(parsed, now);
+  return {
+    config: normalized,
+    revision: v3ConfigRevision(normalized),
+  };
 }
 
 function writeV3Config(
@@ -1434,6 +1445,12 @@ function restoreV3RedactedSecrets(
 
 function v3ConfigRevision(config: ChannelConnectorsV3Config): string {
   return normalizeString(config.updatedAt, "unversioned");
+}
+
+function unpersistedV3ConfigRevision(config: ChannelConnectorsV3Config): string {
+  return `unpersisted:${createHash("sha256")
+    .update(JSON.stringify({ ...config, updatedAt: "" }))
+    .digest("hex")}`;
 }
 
 function v3CandidateHash(config: ChannelConnectorsV3Config): string {
@@ -2912,7 +2929,7 @@ export function createChannelConnectorsService(
       ok: true,
       checkedAt: now().toISOString(),
       configPath: resolvedPaths.nativeConfigPath,
-      revision: v3ConfigRevision(snapshot.config),
+      revision: snapshot.revision,
       config: redactV3Config(snapshot.config),
       validationIssues,
       canApply: validationIssues.length === 0,
@@ -2946,8 +2963,9 @@ export function createChannelConnectorsService(
     if (!payload.config) throw new Error("Channel Connectors v3 config payload is required.");
     cleanupV3ConfigPlans();
     const resolvedPaths = paths();
-    const current = readV3Snapshot(config, resolvedPaths, now()).config;
-    const currentRevision = v3ConfigRevision(current);
+    const snapshot = readV3Snapshot(config, resolvedPaths, now());
+    const current = snapshot.config;
+    const currentRevision = snapshot.revision;
     const expectedRevision = normalizeString(payload.expectedRevision);
     if (expectedRevision && expectedRevision !== currentRevision) {
       throw new Error(
@@ -3004,8 +3022,9 @@ export function createChannelConnectorsService(
       throw new Error("Channel Connectors v3 config plan is missing or expired. Run plan again.");
     }
     const resolvedPaths = paths();
-    const current = readV3Snapshot(config, resolvedPaths, now()).config;
-    if (v3ConfigRevision(current) !== plan.currentRevision) {
+    const snapshot = readV3Snapshot(config, resolvedPaths, now());
+    const current = snapshot.config;
+    if (snapshot.revision !== plan.currentRevision) {
       v3ConfigPlans.delete(planId);
       throw new Error("Channel Connectors v3 config changed after planning. Run plan again.");
     }
@@ -3113,15 +3132,15 @@ export function createChannelConnectorsService(
       else writeSecretTextAtomic(resolvedPaths.configPath, previousDaemonRaw);
       rolledBack = true;
     }
-    const effective = readV3Snapshot(config, resolvedPaths, now()).config;
+    const effective = readV3Snapshot(config, resolvedPaths, now());
     return {
       ok: accepted,
       checkedAt: now().toISOString(),
       accepted,
       persisted: !rolledBack,
       rolledBack,
-      config: redactV3Config(effective),
-      revision: v3ConfigRevision(effective),
+      config: redactV3Config(effective.config),
+      revision: effective.revision,
       reload,
       rollbackReload,
       error: accepted
