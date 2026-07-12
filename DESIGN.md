@@ -3,12 +3,12 @@
 ## Source of truth
 
 - Status: Active
-- Last refreshed: 2026-07-02
+- Last refreshed: 2026-07-12
 - Primary product surfaces:
   - File Manager (`/files`): workspace/root scoped directory and file operations.
   - File Manager Online Editor: lightweight Monaco multi-tab text editing launched from File Manager.
   - Standalone IDE Workbench: project-level IDE surface with explorer, editor groups, panels, terminal, problems/output, layout persistence and future LSP/Git/tasks/debug.
-  - CLI Agents, Model Gateway, Channel Connectors, Platforms, Recovery and Dashboard remain separate product domains.
+  - CLI Agents, Model Gateway, Channel Connectors, Platforms and Dashboard remain separate product domains; OpenClaw Recovery is nested under Platforms / OpenClaw guard.
 - Evidence reviewed:
   - `docs/ide-code-editor-solution/00-README.md` through `14-视觉主题与设计系统适配.md`
   - `docs/界面设计守则.md`
@@ -66,14 +66,14 @@
 ## Information architecture
 
 - Primary navigation:
-  - Global Aurora navigation remains product-level: Dashboard, Workspace/File Manager/IDE, CLI Agents, Model Gateway, Channel Connectors, Platforms, Recovery/System.
+  - Global Aurora navigation remains product-level: Dashboard, Workspace/File Manager/IDE, CLI Agents, Model Gateway, Channel Connectors and Platforms. Recovery/System guard is a Platforms section, not a duplicate primary domain.
   - Standalone IDE owns its internal Activity Bar: Explorer, Search, Source Control, Run/Debug, Extensions, Settings.
   - File Manager Online Editor does not use IDE Activity Bar.
 - Core routes/screens:
   - `/files`: File Manager.
   - File editor container: full-screen dialog/page/route launched from File Manager.
   - `/ide/:workspaceId` or equivalent: standalone IDE workbench.
-  - Existing domain pages remain separate: CLI Agents, Model Gateway, Channel Connectors, Platforms, Recovery.
+  - Existing domain pages remain separate: CLI Agents, Model Gateway, Channel Connectors and Platforms; `/recovery` is a compatibility redirect to the OpenClaw guard section.
 - Content hierarchy:
   - File Manager: path/root controls → file list/tree → selection/actions → contextual properties/search/upload/trash/history.
   - Online Editor: title/tabs/actions → Monaco editor → status bar → search/goto/save affordances.
