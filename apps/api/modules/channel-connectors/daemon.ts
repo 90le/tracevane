@@ -3,6 +3,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -66,7 +67,7 @@ import {
   clearChannelConnectorAgentSessionsForConversation,
   deleteChannelConnectorAgentSession,
   getChannelConnectorAgentSession,
-  getChannelConnectorAgentSessionByDeliveryIdentity,
+  getChannelConnectorAgentSessionByDeliveryExecutionIdentity,
   listChannelConnectorAgentSessionsForConversation,
   updateChannelConnectorAgentSessionDeliveryIdentity,
   upsertChannelConnectorAgentSession,
@@ -403,7 +404,12 @@ const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPo
         const env = processRequest?.env ? { ...processRequest.env } : {};
         const codexHome = normalizeString(env.CODEX_HOME);
         if (codexHome) {
-          const sessionCodexHome = path.join(path.dirname(codexHome), "persistent-sessions", safePathSegment(sessionId), "codex-home");
+          const sessionCodexHome = path.join(
+            path.dirname(codexHome),
+            "persistent-sessions",
+            channelConnectorPersistentSessionStorageKey(sessionId),
+            "codex-home",
+          );
           fs.mkdirSync(sessionCodexHome, { recursive: true, mode: 0o700 });
           const sourceConfigPath = path.join(codexHome, "config.toml");
           if (fs.existsSync(sourceConfigPath)) {
@@ -3769,8 +3775,25 @@ function getChannelConnectorRuntimeAgentSession(input: {
 }): ChannelConnectorAgentSessionRecord | null {
   const filePath = agentSessionsPath(input.config);
   const delivery = channelConnectorDeliverySessionIdentity(input.binding, input.lookup.sessionKey);
-  if (!delivery) return getChannelConnectorAgentSession(filePath, input.lookup);
-  return getChannelConnectorAgentSessionByDeliveryIdentity(filePath, delivery);
+  if (!delivery) {
+    const record = getChannelConnectorAgentSession(filePath, input.lookup);
+    return record && channelConnectorSessionMatchesExecutionIdentity(record, input.lookup) ? record : null;
+  }
+  return getChannelConnectorAgentSessionByDeliveryExecutionIdentity(filePath, {
+    ...delivery,
+    agent: input.lookup.agent,
+    model: input.lookup.model,
+    workDir: input.lookup.workDir,
+  });
+}
+
+export function channelConnectorSessionMatchesExecutionIdentity(
+  record: Pick<ChannelConnectorAgentSessionRecord, "agent" | "model" | "workDir">,
+  lookup: Pick<ChannelConnectorAgentSessionLookup, "agent" | "model" | "workDir">,
+): boolean {
+  return record.agent === lookup.agent
+    && normalizeString(record.model) === normalizeString(lookup.model)
+    && record.workDir === lookup.workDir;
 }
 
 function upsertChannelConnectorRuntimeAgentSession(input: {
@@ -3781,11 +3804,14 @@ function upsertChannelConnectorRuntimeAgentSession(input: {
   const filePath = agentSessionsPath(input.config);
   const delivery = channelConnectorDeliverySessionIdentity(input.binding, input.update.sessionKey);
   if (delivery) {
-    const existing = getChannelConnectorAgentSessionByDeliveryIdentity(filePath, delivery);
+    const existing = getChannelConnectorAgentSessionByDeliveryExecutionIdentity(filePath, {
+      ...delivery,
+      agent: input.update.agent,
+      model: input.update.model,
+      workDir: input.update.workDir,
+    });
     if (
       existing
-      && existing.agent === input.update.agent
-      && existing.workDir === input.update.workDir
     ) {
       const updated = updateChannelConnectorAgentSessionDeliveryIdentity(filePath, existing.id, {
         ...delivery,
@@ -4847,6 +4873,10 @@ async function maybeAutoCompactChannelConnectorConversation(input: {
 
 function safePathSegment(value: string): string {
   return encodeURIComponent(value || "default").replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+export function channelConnectorPersistentSessionStorageKey(sessionId: string): string {
+  return createHash("sha256").update(sessionId || "default").digest("hex").slice(0, 32);
 }
 
 function agentRuntimeDir(

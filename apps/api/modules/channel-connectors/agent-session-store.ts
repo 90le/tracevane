@@ -84,6 +84,7 @@ export function channelConnectorAgentSessionId(input: ChannelConnectorAgentSessi
     input.projectId,
     input.sessionKey,
     input.agent,
+    normalizeString(input.model),
     input.workDir,
   ].map((part) => encodeKeyPart(part)).join("|");
 }
@@ -123,7 +124,7 @@ export function readChannelConnectorAgentSessions(filePath: string): ChannelConn
       const agent = normalizeString(value.agent) as ChannelConnectorAgentId;
       const workDir = normalizeString(value.workDir);
       if (!recordId || !bindingId || !projectId || !sessionKey || !agent || !workDir) continue;
-      sessions[recordId] = {
+      const record: ChannelConnectorAgentSessionRecord = {
         id: recordId,
         name: normalizeString(value.name) || null,
         bindingId,
@@ -143,6 +144,11 @@ export function readChannelConnectorAgentSessions(filePath: string): ChannelConn
         targetId: normalizeString(value.targetId) || null,
         targetRevision: normalizeString(value.targetRevision) || null,
       };
+      const migratedId = channelConnectorAgentSessionId(record);
+      const current = sessions[migratedId];
+      if (!current || Date.parse(record.updatedAt) >= Date.parse(current.updatedAt)) {
+        sessions[migratedId] = { ...record, id: migratedId };
+      }
     }
     return {
       version: 3,
@@ -188,6 +194,23 @@ export function getChannelConnectorAgentSessionByDeliveryIdentity(
       && record.targetId === lookup.targetId
       && record.sessionKey === lookup.sessionKey
   )) || null;
+}
+
+export function getChannelConnectorAgentSessionByDeliveryExecutionIdentity(
+  filePath: string,
+  lookup: ChannelConnectorDeliverySessionLookup & Pick<ChannelConnectorAgentSessionLookup, "agent" | "model" | "workDir">,
+): ChannelConnectorAgentSessionRecord | null {
+  const state = readChannelConnectorAgentSessions(filePath);
+  return Object.values(state.sessions)
+    .filter((record) => (
+      record.accountId === lookup.accountId
+        && record.targetId === lookup.targetId
+        && record.sessionKey === lookup.sessionKey
+        && record.agent === lookup.agent
+        && normalizeString(record.model) === normalizeString(lookup.model)
+        && record.workDir === lookup.workDir
+    ))
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))[0] || null;
 }
 
 export function setChannelConnectorAgentSessionDeliveryIdentity(

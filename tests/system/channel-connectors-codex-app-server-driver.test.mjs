@@ -12,6 +12,29 @@ import {
 import {
   isChannelConnectorProcessProgressEvent,
 } from "../../dist/apps/api/modules/channel-connectors/agent-runner.js";
+import * as channelConnectorsDaemonModule from "../../dist/apps/api/modules/channel-connectors/daemon.js";
+
+test("bounded persistent session key keeps Windows CODEX_HOME below MAX_PATH", () => {
+  const sessionId = [
+    "feishu-account:default",
+    "default-codex",
+    "feishu:chat:user",
+    "codex",
+    "gpt-5.6-luna",
+    "C:\\Users\\Administrator\\Desktop\\tracevane\\.worktrees\\codex-cross-platform-supervisor",
+    "suggest",
+  ].join("|").repeat(2);
+  const storageKey = channelConnectorsDaemonModule.channelConnectorPersistentSessionStorageKey?.(sessionId);
+
+  assert.match(storageKey || "", /^[a-f0-9]{32}$/);
+  assert.equal(
+    storageKey,
+    channelConnectorsDaemonModule.channelConnectorPersistentSessionStorageKey?.(sessionId),
+  );
+  const windowsRoot = "C:\\Users\\Administrator\\.config\\tracevane\\channel-connectors\\daemon\\state\\agent-runtime\\codex\\default-codex\\account-default";
+  const codexHome = path.win32.join(windowsRoot, "persistent-sessions", storageKey, "codex-home");
+  assert.ok(codexHome.length < 260, `bounded CODEX_HOME length=${codexHome.length}`);
+});
 
 class FakeCodexAppServerTransport {
   messages = [];
