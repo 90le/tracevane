@@ -2,14 +2,20 @@ import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { terminateOwnedProcessTree } from "../../core/owned-command.js";
+import { createWindowsJobObjectRunnerLaunch } from "./windows-job-object-runner.js";
+
+export { createWindowsJobObjectRunnerLaunch } from "./windows-job-object-runner.js";
 
 const RESTART_DELAY_MS = 1_000;
 const STOP_GRACE_MS = 2_000;
+const HOST_CHECK_INTERVAL_MS = 100;
 
 export interface WindowsServiceWatchdogOptions {
   entryPath: string;
   args: string[];
   cwd: string;
+  hostPid?: number;
 }
 
 export interface WindowsServiceWatchdog {
@@ -19,7 +25,42 @@ export interface WindowsServiceWatchdog {
 
 export function parseWindowsServiceWatchdogArguments(
   argv: string[],
-): { entryPath: string; args: string[] } {
+): { entryPath: string; args: string[]; hostPid?: number } {
+  if (argv[0] === "--host-pid") {
+    const hostPid = Number(argv[1]);
+    const payload = argv[2] === "--payload" ? argv[3] : null;
+    if (
+      !Number.isSafeInteger(hostPid) ||
+      hostPid <= 0 ||
+      !payload ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(payload)
+    ) {
+      throw new Error("watchdog arguments must be -- <daemonEntry> ...args");
+    }
+    try {
+      const decoded = Buffer.from(payload, "base64");
+      if (decoded.toString("base64") !== payload) throw new Error("invalid payload");
+      const parsed = JSON.parse(decoded.toString("utf8")) as {
+        entryPath?: unknown;
+        args?: unknown;
+      };
+      if (
+        typeof parsed.entryPath !== "string" ||
+        !parsed.entryPath.trim() ||
+        !Array.isArray(parsed.args) ||
+        !parsed.args.every((argument) => typeof argument === "string")
+      ) {
+        throw new Error("invalid payload");
+      }
+      return {
+        entryPath: parsed.entryPath,
+        args: parsed.args,
+        hostPid,
+      };
+    } catch {
+      throw new Error("watchdog arguments must be -- <daemonEntry> ...args");
+    }
+  }
   if (argv[0] !== "--" || !argv[1]?.trim()) {
     throw new Error("watchdog arguments must be -- <daemonEntry> ...args");
   }
@@ -58,6 +99,13 @@ function waitForChildExit(
 
 async function stopChild(child: ChildProcess): Promise<void> {
   if (!childIsRunning(child)) return;
+  if (process.platform === "win32") {
+    const cleanupError = await terminateOwnedProcessTree(child, {
+      graceMs: STOP_GRACE_MS,
+    });
+    if (cleanupError && childIsRunning(child)) throw new Error(cleanupError);
+    return;
+  }
   const gracefulExit = waitForChildExit(child, STOP_GRACE_MS);
   try {
     child.kill("SIGTERM");
@@ -77,11 +125,24 @@ async function stopChild(child: ChildProcess): Promise<void> {
   }
 }
 
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EPERM") return true;
+    if (code === "ESRCH") return false;
+    return true;
+  }
+}
+
 export function startWindowsServiceWatchdog(
   options: WindowsServiceWatchdogOptions,
 ): WindowsServiceWatchdog {
   let child: ChildProcess | null = null;
   let restartTimer: NodeJS.Timeout | null = null;
+  let hostTimer: NodeJS.Timeout | null = null;
   let stopping = false;
   let stopPromise: Promise<void> | null = null;
   let resolveDone!: () => void;
@@ -101,9 +162,18 @@ export function startWindowsServiceWatchdog(
     if (stopping) return;
     let spawned: ChildProcess;
     try {
+      const daemonLaunch = process.platform === "win32"
+        ? createWindowsJobObjectRunnerLaunch({
+            ...options,
+            watchdogPid: process.pid,
+          })
+        : {
+            args: [options.entryPath, ...options.args],
+            command: process.execPath,
+          };
       spawned = spawn(
-        process.execPath,
-        [options.entryPath, ...options.args],
+        daemonLaunch.command,
+        daemonLaunch.args,
         {
           cwd: options.cwd,
           detached: false,
@@ -129,29 +199,40 @@ export function startWindowsServiceWatchdog(
     spawned.once("exit", onSettled);
   };
 
-  launch();
-
-  return {
-    done,
-    stop() {
-      if (stopPromise) return stopPromise;
-      stopping = true;
-      if (restartTimer) {
-        clearTimeout(restartTimer);
-        restartTimer = null;
+  const stop = (): Promise<void> => {
+    if (stopPromise) return stopPromise;
+    stopping = true;
+    if (restartTimer) {
+      clearTimeout(restartTimer);
+      restartTimer = null;
+    }
+    if (hostTimer) {
+      clearInterval(hostTimer);
+      hostTimer = null;
+    }
+    const ownedChild = child;
+    child = null;
+    stopPromise = (async () => {
+      try {
+        if (ownedChild) await stopChild(ownedChild);
+      } finally {
+        resolveDone();
       }
-      const ownedChild = child;
-      child = null;
-      stopPromise = (async () => {
-        try {
-          if (ownedChild) await stopChild(ownedChild);
-        } finally {
-          resolveDone();
-        }
-      })();
-      return stopPromise;
-    },
+    })();
+    return stopPromise;
   };
+
+  launch();
+  if (options.hostPid) {
+    hostTimer = setInterval(() => {
+      if (processIsAlive(options.hostPid!)) return;
+      void stop().catch(() => {
+        process.exitCode = 1;
+      });
+    }, HOST_CHECK_INTERVAL_MS);
+  }
+
+  return { done, stop };
 }
 
 async function runFromCommandLine(): Promise<void> {

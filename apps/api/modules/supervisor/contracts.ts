@@ -22,6 +22,7 @@ export interface SupervisorCommand {
   label: string;
   command: string;
   args: string[];
+  kind?: "windows-task-status";
 }
 
 export interface CreateSupervisorPlanOptions {

@@ -37,15 +37,23 @@ function readConfigArgument() {
 function startFixtureDaemon() {
   const config = JSON.parse(fs.readFileSync(readConfigArgument(), "utf8"));
   assert.equal(typeof config.heartbeatPath, "string");
+  assert.equal(typeof config.runtimePath, "string");
   assert.equal(typeof config.instanceName, "string");
   assert.equal(typeof config.ownerPid, "number");
 
   const startedAt = Date.now();
   const token = randomUUID();
   const temporaryPath = `${config.heartbeatPath}.${process.pid}.tmp`;
+  const runtimeTemporaryPath = `${config.runtimePath}.${process.pid}.tmp`;
   let sequence = 0;
 
   fs.mkdirSync(path.dirname(config.heartbeatPath), { recursive: true });
+  fs.writeFileSync(
+    runtimeTemporaryPath,
+    `${JSON.stringify({ version: 1, pid: process.pid, startedAt, token })}\n`,
+    "utf8",
+  );
+  fs.renameSync(runtimeTemporaryPath, config.runtimePath);
 
   function writeHeartbeat() {
     sequence += 1;
@@ -80,6 +88,12 @@ function startFixtureDaemon() {
     if (stopping) return;
     stopping = true;
     clearInterval(timer);
+    try {
+      const runtime = JSON.parse(fs.readFileSync(config.runtimePath, "utf8"));
+      if (runtime.pid === process.pid) fs.rmSync(config.runtimePath, { force: true });
+    } catch {
+      // The next owner or fixture cleanup owns stale metadata.
+    }
     process.exit(0);
   };
   process.once("SIGINT", stop);
@@ -101,6 +115,7 @@ function createFixtureContext(platformSlug) {
     path.join(os.tmpdir(), `tracevane-supervisor-${instanceName}-`),
   );
   const heartbeatPath = path.join(root, "heartbeat.json");
+  const runtimePath = path.join(root, "runtime.json");
   const configPath = path.join(root, "fixture-config.json");
   const definition = {
     id: "model-gateway",
@@ -111,7 +126,7 @@ function createFixtureContext(platformSlug) {
     entryPath: FIXTURE_ENTRY_PATH,
     workingDirectory: root,
     configPath,
-    runtimePath: path.join(root, "runtime.json"),
+    runtimePath,
     logPath: path.join(root, "fixture.log"),
     healthUrl: `http://127.0.0.1:1/tracevane-supervisor-${ownerPid}`,
     args: [],
@@ -119,7 +134,7 @@ function createFixtureContext(platformSlug) {
 
   fs.writeFileSync(
     configPath,
-    `${JSON.stringify({ heartbeatPath, instanceName, ownerPid }, null, 2)}\n`,
+    `${JSON.stringify({ heartbeatPath, instanceName, ownerPid, runtimePath }, null, 2)}\n`,
     { encoding: "utf8", mode: 0o600 },
   );
 

@@ -47,6 +47,40 @@ test("classifier recognizes the schtasks permission HRESULT", () => {
   );
 });
 
+test("classifier preserves Task Scheduler HRESULTs from the PowerShell COM status probe", () => {
+  const powershellProbe = commandFailure({
+    kind: "windows-task-status",
+    command: "powershell.exe",
+    args: ["-NoProfile", "-EncodedCommand", "fixture"],
+  });
+  assert.equal(classifySupervisorFailure(powershellProbe), "task-not-found");
+  assert.equal(
+    classifySupervisorFailure({ ...powershellProbe, exitCode: 0x80070005 }),
+    "permission-denied",
+  );
+  assert.equal(
+    classifySupervisorFailure({
+      ...powershellProbe,
+      errorCode: "unknown",
+    }),
+    "task-not-found",
+  );
+});
+
+test("runner preserves the semantic command kind used by failure classification", async () => {
+  const result = await runSupervisorCommand(
+    {
+      label: "Tagged command",
+      command: process.execPath,
+      args: ["-e", "process.exit(1)"],
+      kind: "windows-task-status",
+    },
+    { timeoutMs: 2_000, platform: process.platform, action: "status" },
+  );
+
+  assert.equal(result.kind, "windows-task-status");
+});
+
 test("classifier leaves generic exit code 1 unknown regardless of localized text", () => {
   assert.equal(
     classifySupervisorFailure(commandFailure({

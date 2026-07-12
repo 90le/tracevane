@@ -2074,6 +2074,7 @@ export type ModelGatewayDaemonReadinessChecker = (
 export interface ModelGatewayOwnedReadinessProbeOptions {
   runtimePath: string;
   readinessChecker: (endpoint: string) => Promise<ModelGatewayDaemonReadinessResult>;
+  processIsAlive?: (pid: number) => boolean;
   timeoutMs?: number;
   pollIntervalMs?: number;
   now?: () => number;
@@ -2088,6 +2089,7 @@ export function createModelGatewayOwnedReadinessProbe(
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) =>
     new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const processIsAlive = options.processIsAlive ?? isPidAlive;
 
   return async (endpoint, expectedPid) => {
     const sessionOwned = expectedPid !== undefined && expectedPid !== null;
@@ -2107,7 +2109,7 @@ export function createModelGatewayOwnedReadinessProbe(
       if (readiness?.ready) {
         if (!sessionOwned) return true;
         const runtime = readDaemonRuntimeMetadata(options.runtimePath);
-        if (runtime?.pid === expectedPid && isPidAlive(expectedPid)) return true;
+        if (runtime?.pid === expectedPid && processIsAlive(expectedPid)) return true;
       }
 
       const remaining = deadline - now();
@@ -6667,6 +6669,7 @@ export interface ModelGatewayServiceOptions {
   daemonServiceCommandRunner?: ModelGatewayDaemonServiceCommandRunner;
   daemonBootstrapRunner?: ModelGatewayDaemonBootstrapRunner;
   daemonReadinessChecker?: ModelGatewayDaemonReadinessChecker;
+  daemonProcessIsAlive?: (pid: number) => boolean;
   daemonServiceManager?: ServiceManager;
 }
 
@@ -6687,6 +6690,11 @@ export function createModelGatewayService(
       ? runSharedDaemonServiceCommand
       : undefined,
     probe: runSharedDaemonReadinessProbe,
+    processIsAlive: options.daemonProcessIsAlive,
+    shutdownProbe: async (endpoint) => {
+      const result = await runDaemonReadinessChecker(endpoint);
+      return result.ready || result.statusCode !== null;
+    },
     redact: [...new Set(
       Object.entries(process.env)
         .filter(([key, value]) =>
@@ -6823,6 +6831,7 @@ export function createModelGatewayService(
     return createModelGatewayOwnedReadinessProbe({
       runtimePath: paths.daemonRuntime,
       readinessChecker: runDaemonReadinessChecker,
+      processIsAlive: options.daemonProcessIsAlive,
     })(endpoint, expectedPid);
   }
 

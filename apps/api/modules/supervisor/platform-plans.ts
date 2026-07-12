@@ -62,6 +62,35 @@ function quoteWindowsArgument(value: string): string {
   return `${result}${"\\".repeat(backslashes * 2)}"`;
 }
 
+function quotePowerShellLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function encodePowerShellCommand(lines: string[]): string {
+  return Buffer.from(lines.join("\n"), "utf16le").toString("base64");
+}
+
+function powershellCommand(
+  label: string,
+  encodedCommand: string,
+  kind?: SupervisorCommand["kind"],
+): SupervisorCommand {
+  return {
+    label,
+    command: "powershell.exe",
+    args: [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-WindowStyle",
+      "Hidden",
+      "-EncodedCommand",
+      encodedCommand,
+    ],
+    ...(kind ? { kind } : {}),
+  };
+}
+
 export function createServiceLaunchArguments(
   definition: ServiceDefinition,
 ): string[] {
@@ -134,7 +163,27 @@ function buildWindowsTaskTemplate(
   const watchdogPath = fileURLToPath(
     new URL("./windows-service-watchdog.js", import.meta.url),
   );
-  const argumentLine = [watchdogPath, "--", ...args]
+  const watchdogPayload = Buffer.from(JSON.stringify({
+    entryPath: args[0],
+    args: args.slice(1),
+  }), "utf8").toString("base64");
+  const watchdogCommand = encodePowerShellCommand([
+    "$ErrorActionPreference = 'Stop'",
+    `& ${quotePowerShellLiteral(process.execPath)} ${quotePowerShellLiteral(watchdogPath)} ` +
+    `${quotePowerShellLiteral("--host-pid")} ([string]$PID) ` +
+    `${quotePowerShellLiteral("--payload")} ${quotePowerShellLiteral(watchdogPayload)}`,
+    "if ($null -eq $LASTEXITCODE) { exit 1 }",
+    "exit $LASTEXITCODE",
+  ]);
+  const argumentLine = [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-WindowStyle",
+    "Hidden",
+    "-EncodedCommand",
+    watchdogCommand,
+  ]
     .map(quoteWindowsArgument)
     .join(" ");
   const escapedUserId = escapeXml(windowsUserId);
@@ -170,7 +219,7 @@ function buildWindowsTaskTemplate(
     "  </Settings>",
     '  <Actions Context="Author">',
     "    <Exec>",
-    `      <Command>${escapeXml(process.execPath)}</Command>`,
+    "      <Command>powershell.exe</Command>",
     `      <Arguments>${escapeXml(argumentLine)}</Arguments>`,
     `      <WorkingDirectory>${escapeXml(definition.workingDirectory)}</WorkingDirectory>`,
     "    </Exec>",
@@ -250,6 +299,19 @@ function windowsCommands(
   definition: ServiceDefinition,
   configPath: string,
 ): SupervisorPlan["commands"] {
+  const taskStatusCommand = encodePowerShellCommand([
+    "$ErrorActionPreference = 'Stop'",
+    "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)",
+    "try {",
+    "  $scheduler = New-Object -ComObject 'Schedule.Service'",
+    "  $scheduler.Connect()",
+    `  $task = $scheduler.GetFolder('\\').GetTask(${quotePowerShellLiteral(definition.windowsTaskName)})`,
+    "  $snapshot = [pscustomobject]@{ state = [int]$task.State; enabled = [bool]$task.Enabled }",
+    "  [Console]::WriteLine(($snapshot | ConvertTo-Json -Compress))",
+    "} catch {",
+    "  exit $_.Exception.HResult",
+    "}",
+  ]);
   const register = command("Register scheduled task", "schtasks.exe", [
     "/Create",
     "/TN",
@@ -258,22 +320,33 @@ function windowsCommands(
     configPath,
     "/F",
   ]);
+  const enable = command("Enable scheduled task", "schtasks.exe", [
+    "/Change",
+    "/TN",
+    definition.windowsTaskName,
+    "/ENABLE",
+  ]);
+  const run = command("Run scheduled task", "schtasks.exe", [
+    "/Run",
+    "/TN",
+    definition.windowsTaskName,
+  ]);
   return {
     install: [register],
-    start: [command("Run scheduled task", "schtasks.exe", ["/Run", "/TN", definition.windowsTaskName])],
+    start: [enable, run],
     stop: [command("Stop scheduled task", "schtasks.exe", ["/End", "/TN", definition.windowsTaskName])],
     restart: [
       command("Stop scheduled task", "schtasks.exe", ["/End", "/TN", definition.windowsTaskName]),
-      command("Run scheduled task", "schtasks.exe", ["/Run", "/TN", definition.windowsTaskName]),
+      enable,
+      run,
     ],
     repair: [register],
     uninstall: [command("Delete scheduled task", "schtasks.exe", ["/Delete", "/TN", definition.windowsTaskName, "/F"])],
-    status: [command("Query scheduled task", "schtasks.exe", [
-      "/Query",
-      "/TN",
-      definition.windowsTaskName,
-      "/HResult",
-    ])],
+    status: [powershellCommand(
+      "Inspect scheduled task state",
+      taskStatusCommand,
+      "windows-task-status",
+    )],
   };
 }
 

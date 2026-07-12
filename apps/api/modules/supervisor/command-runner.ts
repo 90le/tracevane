@@ -85,6 +85,7 @@ function decodeStream(stream: BoundedStream, secrets: string[]): string {
 }
 
 function isScheduledTaskQuery(result: SupervisorCommandResult): boolean {
+  if (result.kind === "windows-task-status") return true;
   const executable = result.command
     .replaceAll("\\", "/")
     .split("/")
@@ -107,7 +108,9 @@ function matchesExitCode(exitCode: number | null, hresult: number): boolean {
 export function classifySupervisorFailure(
   result: SupervisorCommandResult,
 ): TracevaneSupervisorErrorCode {
-  if (result.errorCode) return result.errorCode;
+  if (result.errorCode && result.errorCode !== "unknown") {
+    return result.errorCode;
+  }
   if (isScheduledTaskQuery(result)) {
     if (matchesExitCode(result.exitCode, SCHEDULED_TASK_NOT_FOUND)) {
       return "task-not-found";
@@ -116,7 +119,7 @@ export function classifySupervisorFailure(
       return "permission-denied";
     }
   }
-  return "unknown";
+  return result.errorCode ?? "unknown";
 }
 
 function stableErrorMessage(code: TracevaneSupervisorErrorCode): string {
@@ -177,6 +180,7 @@ export async function runSupervisorCommand(
         label: redact(command.label, secrets),
         command: redact(command.command, secrets),
         args: command.args.map((argument) => redact(argument, secrets)),
+        ...(command.kind ? { kind: command.kind } : {}),
         ok: !timedOut && spawnError === null && exitCode === 0,
         exitCode,
         stdout: decodeStream(stdout, secrets),

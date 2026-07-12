@@ -103,7 +103,7 @@ function managementRequest({ origin, remoteAddress = "127.0.0.1", authorization 
   };
 }
 
-function legacyCommandResult(command) {
+function legacyCommandResult(command, overrides = {}) {
   return {
     ...command,
     ok: true,
@@ -114,7 +114,14 @@ function legacyCommandResult(command) {
     errorMessage: null,
     durationMs: 1,
     error: null,
+    ...overrides,
   };
+}
+
+function decodeWindowsTaskAction(template) {
+  const encoded = template.match(/-EncodedCommand ([A-Za-z0-9+/=]+)/)?.[1];
+  assert.ok(encoded, "Windows task action must contain an encoded PowerShell command");
+  return Buffer.from(encoded, "base64").toString("utf16le");
 }
 
 function createLogger() {
@@ -250,20 +257,39 @@ test("Channel Connectors Windows compatibility plan is a shared current-user Sch
     assert.match(plan.selectedTemplate.servicePath, /TracevaneChannelConnectors\.xml$/);
     assert.match(plan.selectedTemplate.template, /<LogonType>InteractiveToken<\/LogonType>/);
     assert.match(plan.selectedTemplate.template, /TRACEVANE\\测试用户/);
+    const taskAction = decodeWindowsTaskAction(plan.selectedTemplate.template);
+    const payload = taskAction.match(/'--payload'\s+'([A-Za-z0-9+/]+={0,2})'/u)?.[1];
+    assert.ok(payload, "Windows task action must contain one encoded argv payload");
+    const decodedPayload = JSON.parse(Buffer.from(payload, "base64").toString("utf8"));
     assert.equal(
-      plan.selectedTemplate.template.match(/--config/g)?.length,
-      1,
+      decodedPayload.entryPath,
+      path.join(
+        config.projectRoot,
+        "dist",
+        "apps",
+        "api",
+        "modules",
+        "channel-connectors",
+        "daemon.js",
+      ),
     );
-    assert.match(plan.selectedTemplate.template, new RegExp(plan.configPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.deepEqual(decodedPayload.args, ["--config", plan.configPath]);
+    assert.match(taskAction, /'--host-pid'\s+\(\[string\]\$PID\)/u);
+    assert.match(plan.selectedTemplate.template, /<Command>powershell\.exe<\/Command>/i);
+    assert.match(plan.selectedTemplate.template, /-WindowStyle Hidden/);
     assert.doesNotMatch(plan.selectedTemplate.template, /managementToken|proxyPassword|appSecret/);
 
     const status = plan.selectedTemplate.commands.status ?? [];
     assert.equal(status.length, 1);
-    assert.deepEqual(status[0].args, [
-      "/Query",
-      "/TN",
-      "TracevaneChannelConnectors",
-      "/HResult",
+    assert.equal(status[0].command, "powershell.exe");
+    assert.equal(status[0].kind, "windows-task-status");
+    assert.deepEqual(status[0].args.slice(0, 6), [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-WindowStyle",
+      "Hidden",
+      "-EncodedCommand",
     ]);
 
     assert.equal(
@@ -763,6 +789,11 @@ test("persistent Channel status and start accept one stable native runtime pid",
       managementEndpoint: "http://fixture.persistent.invalid",
       commandRunner: async (command) => {
         commands.push(command);
+        if (command.kind === "windows-task-status") {
+          return legacyCommandResult(command, {
+            stdout: '{"state":4,"enabled":true}\n',
+          });
+        }
         return legacyCommandResult(command);
       },
       fetchImpl: async () => {
@@ -770,7 +801,7 @@ test("persistent Channel status and start accept one stable native runtime pid",
         return new Response(JSON.stringify({
           ok: true,
           implementation: "tracevane-native",
-          pid: 9123,
+          pid: process.pid,
         }), { status: 200, headers: { "content-type": "application/json" } });
       },
     };
@@ -779,6 +810,12 @@ test("persistent Channel status and start accept one stable native runtime pid",
     fs.writeFileSync(
       plan.selectedTemplate.servicePath,
       plan.selectedTemplate.template,
+      "utf8",
+    );
+    fs.mkdirSync(path.dirname(plan.runtimeFile), { recursive: true });
+    fs.writeFileSync(
+      plan.runtimeFile,
+      `${JSON.stringify({ version: 1, pid: process.pid })}\n`,
       "utf8",
     );
     const service = createChannelConnectorsService(config, options);
@@ -800,7 +837,7 @@ test("persistent Channel status and start accept one stable native runtime pid",
     assert.equal(started.ok, true);
     assert.equal(started.manager.state, "running");
     assert.equal(probes, 4);
-    assert.equal(commands.every((command) => command.args[0] === "/Query"), true);
+    assert.equal(commands.every((command) => command.kind === "windows-task-status"), true);
     assert.doesNotMatch(JSON.stringify(commands), /\/Run|\/End|\/Create/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

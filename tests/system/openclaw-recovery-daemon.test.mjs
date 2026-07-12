@@ -357,6 +357,14 @@ function createFakeServiceManager(respond) {
   };
 }
 
+function createDeferred() {
+  let resolve;
+  const promise = new Promise((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 async function withRecoveryHttpServer(config, service, task) {
   const ctx = createTracevaneContext({
     config,
@@ -640,10 +648,16 @@ test("recovery compatibility plans are byte-for-byte shared plans on all three p
     const windows = compatibility.templates.find(
       (template) => template.platform === "win32",
     );
-    assert.equal(
-      windows.commands.status?.[0]?.args.includes("/HResult"),
-      true,
-    );
+    assert.equal(windows.commands.status?.[0]?.command, "powershell.exe");
+    assert.equal(windows.commands.status?.[0]?.kind, "windows-task-status");
+    assert.deepEqual(windows.commands.status?.[0]?.args.slice(0, 6), [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-WindowStyle",
+      "Hidden",
+      "-EncodedCommand",
+    ]);
   } finally {
     if (previousProxy === undefined) delete process.env.HTTP_PROXY;
     else process.env.HTTP_PROXY = previousProxy;
@@ -2657,6 +2671,226 @@ test("recovery live manager overrides persisted legacy service fields", async ()
   assert.equal(status.service.enabledState, "unknown");
   assert.equal(status.service.lastCheckedAt, liveManager.checkedAt);
   assert.deepEqual(status.service.manager, liveManager);
+});
+
+test("recovery overview reports the active persistent owner when the session owner is stopped", async () => {
+  const config = makeConfig();
+  const sessionStopped = sharedManagerStatus();
+  const persistentRunning = sharedManagerStatus({
+    mode: "persistent",
+    supervisor: "scheduled-task",
+    installed: true,
+    enabled: true,
+    active: true,
+    state: "running",
+    checkedAt: "2026-07-12T08:30:00.000Z",
+  });
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request, {
+      manager: request.mode === "persistent"
+        ? persistentRunning
+        : sessionStopped,
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const status = await service.getStatus();
+
+  assert.equal(status.service.installed, true);
+  assert.equal(status.service.activeState, "active");
+  assert.equal(status.service.enabledState, "enabled");
+  assert.deepEqual(status.service.manager, persistentRunning);
+  assert.deepEqual(fake.calls.map(({ request }) => request), [
+    { action: "status", mode: "session", apply: false },
+    { action: "status", mode: "persistent", apply: true },
+    { action: "status", mode: "session", apply: false },
+  ]);
+});
+
+test("recovery overview revalidates a session owner after persistent inspection", async () => {
+  const config = makeConfig();
+  const sessionStopped = sharedManagerStatus();
+  const sessionRunning = sharedManagerStatus({
+    active: true,
+    state: "running",
+    checkedAt: "2026-07-12T09:00:02.000Z",
+  });
+  const persistentStopped = sharedManagerStatus({
+    mode: "persistent",
+    supervisor: "scheduled-task",
+    installed: true,
+    enabled: true,
+    active: false,
+    state: "stopped",
+    checkedAt: "2026-07-12T09:00:01.000Z",
+  });
+  const fake = createFakeServiceManager((_definition, request, index) =>
+    managedResponse(request, {
+      manager: index === 0
+        ? sessionStopped
+        : index === 1
+          ? persistentStopped
+          : sessionRunning,
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const status = await service.getStatus();
+
+  assert.deepEqual(status.service.manager, sessionRunning);
+  assert.equal(status.service.activeState, "active");
+  assert.deepEqual(fake.calls.map(({ request }) => request.mode), [
+    "session",
+    "persistent",
+    "session",
+  ]);
+});
+
+test("recovery overview preserves an inactive failed session over dormant persistent state", async () => {
+  const config = makeConfig();
+  const sessionFailed = sharedManagerStatus({
+    active: false,
+    state: "failed",
+    errorCode: "runtime-not-ready",
+    errorMessage: "Session restart budget exhausted.",
+  });
+  const persistentStopped = sharedManagerStatus({
+    mode: "persistent",
+    supervisor: "scheduled-task",
+    installed: true,
+    enabled: true,
+    active: false,
+    state: "stopped",
+  });
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request, {
+      manager: request.mode === "persistent" ? persistentStopped : sessionFailed,
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const status = await service.getStatus();
+
+  assert.deepEqual(status.service.manager, sessionFailed);
+  assert.equal(status.service.activeState, "inactive");
+  assert.equal(status.service.manager.errorCode, "runtime-not-ready");
+  assert.deepEqual(fake.calls.map(({ request }) => request.mode), [
+    "session",
+    "persistent",
+    "session",
+  ]);
+});
+
+test("recovery overview prefers a live or transitional persistent owner over an inactive failed session", async () => {
+  for (const persistentOwner of [
+    sharedManagerStatus({
+      mode: "persistent",
+      supervisor: "scheduled-task",
+      installed: true,
+      enabled: true,
+      active: true,
+      state: "running",
+      checkedAt: "2026-07-12T09:10:01.000Z",
+    }),
+    sharedManagerStatus({
+      mode: "persistent",
+      supervisor: "scheduled-task",
+      installed: true,
+      enabled: true,
+      active: null,
+      state: "starting",
+      checkedAt: "2026-07-12T09:10:02.000Z",
+    }),
+  ]) {
+    const config = makeConfig();
+    const sessionFailed = sharedManagerStatus({
+      active: false,
+      state: "failed",
+      errorCode: "runtime-not-ready",
+      errorMessage: "Session restart budget exhausted.",
+    });
+    const fake = createFakeServiceManager((_definition, request) =>
+      managedResponse(request, {
+        manager: request.mode === "persistent" ? persistentOwner : sessionFailed,
+      }));
+    const service = createOpenClawRecoveryService(config, {
+      daemonServiceManager: fake.manager,
+    });
+
+    const status = await service.getStatus();
+
+    assert.deepEqual(status.service.manager, persistentOwner);
+    assert.deepEqual(fake.calls.map(({ request }) => request.mode), [
+      "session",
+      "persistent",
+      "session",
+    ]);
+  }
+});
+
+test("recovery owner snapshot serializes with a concurrent lifecycle action", async () => {
+  const config = makeConfig();
+  const persistentEntered = createDeferred();
+  const releasePersistent = createDeferred();
+  const sessionStopped = sharedManagerStatus();
+  const sessionRunning = sharedManagerStatus({
+    active: true,
+    state: "running",
+    checkedAt: "2026-07-12T09:20:02.000Z",
+  });
+  const persistentRunning = sharedManagerStatus({
+    mode: "persistent",
+    supervisor: "scheduled-task",
+    installed: true,
+    enabled: true,
+    active: true,
+    state: "running",
+    checkedAt: "2026-07-12T09:20:01.000Z",
+  });
+  let sessionManager = sessionStopped;
+  let lifecycleEntered = false;
+  const fake = createFakeServiceManager(async (_definition, request) => {
+    if (request.mode === "persistent") {
+      persistentEntered.resolve();
+      await releasePersistent.promise;
+      return managedResponse(request, { manager: persistentRunning });
+    }
+    if (request.action === "start") {
+      lifecycleEntered = true;
+      sessionManager = sessionRunning;
+    }
+    return managedResponse(request, { manager: sessionManager });
+  });
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const statusPromise = service.getStatus();
+  await persistentEntered.promise;
+  const startPromise = service.applyDaemonServiceAction({
+    action: "start",
+    mode: "session",
+    apply: true,
+  });
+  const lifecycleInterleaved = lifecycleEntered;
+  releasePersistent.resolve();
+  const [status, started] = await Promise.all([statusPromise, startPromise]);
+
+  assert.equal(lifecycleInterleaved, false);
+  assert.deepEqual(status.service.manager, persistentRunning);
+  assert.deepEqual(started.service.manager, sessionRunning);
+  assert.deepEqual(
+    fake.calls.map(({ request }) => `${request.mode}:${request.action}`),
+    [
+      "session:status",
+      "persistent:status",
+      "session:status",
+      "session:start",
+    ],
+  );
 });
 
 test("old Recovery snapshots deep-fill partial and null managers", () => {

@@ -37,6 +37,9 @@ const recoveryPanelSource = read(
 const modelOverviewSource = read(
   "apps/web/src/features/model-gateway/views/OverviewView.tsx",
 );
+const recoveryOverviewSource = read(
+  "apps/web/src/features/recovery/views/OverviewView.tsx",
+);
 const channelRuntimeSource = read(
   "apps/web/src/features/channel-connectors/views/V3RuntimeView.tsx",
 );
@@ -465,6 +468,18 @@ test("each daemon panel derives actions from its canonical manager only", () => 
 
   assert.match(recoveryPanelSource, /const manager = data\?\.manager;/);
   assert.doesNotMatch(recoveryPanelSource, /function serviceStateBadge\(activeState|commands\.find|failed\?\./);
+});
+
+test("recovery overview renders the normalized live manager instead of legacy unknown strings", () => {
+  assert.match(recoveryOverviewSource, /serviceStateLabel\(service\.manager\.state\)/);
+  assert.match(recoveryOverviewSource, /supervisorLabel\(service\.manager\.supervisor\)/);
+  assert.match(recoveryOverviewSource, /service\.manager\.enabled/);
+  assert.match(
+    recoveryOverviewSource,
+    /service\.manager\.mode === "session"\s*\? "不适用"/,
+  );
+  assert.doesNotMatch(recoveryOverviewSource, /service\.activeState \|\| "已安装"/);
+  assert.doesNotMatch(recoveryOverviewSource, /service\.enabledState \|\| "未知"/);
 });
 
 test("Channel reload is running-only and never leaks into the other panels", () => {

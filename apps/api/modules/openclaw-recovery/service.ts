@@ -254,6 +254,28 @@ function legacyEnabledState(manager: TracevaneServiceManagerStatus): string {
   return "unknown";
 }
 
+function isCleanlyStoppedOwner(
+  manager: TracevaneServiceManagerStatus,
+): boolean {
+  return manager.active === false &&
+    manager.state === "stopped" &&
+    manager.errorCode === null;
+}
+
+function isInactiveFailedOwner(
+  manager: TracevaneServiceManagerStatus,
+): boolean {
+  return manager.active === false && manager.state === "failed";
+}
+
+function isLiveOrTransitionalOwner(
+  manager: TracevaneServiceManagerStatus,
+): boolean {
+  return manager.active === true ||
+    (manager.active === null &&
+      (manager.state === "starting" || manager.state === "running"));
+}
+
 function compatibilityCommandResult(
   result: SupervisorCommandResult,
 ): OpenClawRecoveryCommandSnapshot {
@@ -349,6 +371,16 @@ export function createOpenClawRecoveryService(
     homeDir,
     port: controlPort,
   });
+  let daemonServiceOperationQueue: Promise<void> = Promise.resolve();
+
+  function runDaemonServiceOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = daemonServiceOperationQueue.then(operation);
+    daemonServiceOperationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
 
   function serviceSnapshot(
     manager: TracevaneServiceManagerStatus,
@@ -473,16 +505,53 @@ export function createOpenClawRecoveryService(
 
   return {
     async getStatus(): Promise<OpenClawRecoveryState> {
-      const state = readRecoveryState(config);
-      const service = await executeDaemonService({
-        action: "status",
-        mode: "session",
-        apply: false,
+      return runDaemonServiceOperation(async () => {
+        const state = readRecoveryState(config);
+        const sessionService = await executeDaemonService({
+          action: "status",
+          mode: "session",
+          apply: false,
+        });
+        let service = sessionService;
+        const sessionManager = sessionService.service.manager;
+        if (
+          isCleanlyStoppedOwner(sessionManager) ||
+          isInactiveFailedOwner(sessionManager)
+        ) {
+          const persistentService = await executeDaemonService({
+            action: "status",
+            mode: "persistent",
+            apply: true,
+          });
+          const persistentManager = persistentService.service.manager;
+          const persistentObserved = persistentManager.mode === "persistent" && (
+            persistentManager.installed ||
+            persistentManager.state !== "not-installed" ||
+            persistentManager.errorCode !== "task-not-found"
+          );
+          const confirmedSession = await executeDaemonService({
+            action: "status",
+            mode: "session",
+            apply: false,
+          });
+          const confirmedManager = confirmedSession.service.manager;
+          if (isLiveOrTransitionalOwner(confirmedManager)) {
+            service = confirmedSession;
+          } else if (isLiveOrTransitionalOwner(persistentManager)) {
+            service = persistentService;
+          } else if (
+            persistentObserved && isCleanlyStoppedOwner(confirmedManager)
+          ) {
+            service = persistentService;
+          } else {
+            service = confirmedSession;
+          }
+        }
+        return {
+          ...state,
+          service: service.service,
+        };
       });
-      return {
-        ...state,
-        service: service.service,
-      };
     },
 
     async listEvents(limit = 100): Promise<OpenClawRecoveryEvent[]> {
@@ -584,11 +653,13 @@ export function createOpenClawRecoveryService(
     },
 
     async getDaemonService() {
-      return (await executeDaemonService({
-        action: "status",
-        mode: "session",
-        apply: false,
-      })).service;
+      return runDaemonServiceOperation(async () =>
+        (await executeDaemonService({
+          action: "status",
+          mode: "session",
+          apply: false,
+        })).service
+      );
     },
 
     async applyDaemonServiceAction(
@@ -602,13 +673,15 @@ export function createOpenClawRecoveryService(
           403,
         );
       }
-      const result = await executeDaemonService(payload);
-      const state = readRecoveryState(config);
-      writeRecoveryState(config, {
-        ...state,
-        service: result.service,
+      return runDaemonServiceOperation(async () => {
+        const result = await executeDaemonService(payload);
+        const state = readRecoveryState(config);
+        writeRecoveryState(config, {
+          ...state,
+          service: result.service,
+        });
+        return result;
       });
-      return result;
     },
   };
 }

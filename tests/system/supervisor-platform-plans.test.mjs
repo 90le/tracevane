@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   createServiceLaunchArguments,
@@ -60,6 +63,18 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function decodePowerShellCommand(args) {
+  const index = args.indexOf("-EncodedCommand");
+  assert.ok(index >= 0 && args[index + 1], "encoded PowerShell command is required");
+  return Buffer.from(args[index + 1], "base64").toString("utf16le");
+}
+
+function windowsTaskActionArguments(template) {
+  const value = template.match(/<Arguments>([^<]+)<\/Arguments>/)?.[1];
+  assert.ok(value, "Windows task action arguments are required");
+  return value.split(" ");
+}
+
 function validateWindowsTaskXml(template) {
   if (process.platform !== "win32") return;
   const script = [
@@ -77,6 +92,28 @@ function validateWindowsTaskXml(template) {
     { input: template, encoding: "utf8" },
   );
   assert.match(output, /validated/);
+}
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error?.code === "EPERM") return true;
+    if (error?.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+async function waitForJson(filePath, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  assert.fail(`file was not created before timeout: ${filePath}`);
 }
 
 test("platform plans are user-scoped and pass config as an argument", () => {
@@ -117,16 +154,33 @@ test("platform plans are user-scoped and pass config as an argument", () => {
     assert.match(windows.template, /<StartWhenAvailable>true<\/StartWhenAvailable>/);
     assert.match(windows.template, /<DisallowStartIfOnBatteries>false<\/DisallowStartIfOnBatteries>/);
     assert.match(windows.template, /<StopIfGoingOnBatteries>false<\/StopIfGoingOnBatteries>/);
-    assert.match(windows.template, /--config/);
+    const watchdogScript = decodePowerShellCommand(
+      windowsTaskActionArguments(windows.template),
+    );
+    const payloadMatch = watchdogScript.match(
+      /'--payload'\s+'([A-Za-z0-9+/]+={0,2})'/u,
+    );
+    assert.ok(payloadMatch, "watchdog launch must use one Base64 argv payload");
+    const watchdogPayload = JSON.parse(
+      Buffer.from(payloadMatch[1], "base64").toString("utf8"),
+    );
+    assert.deepEqual(watchdogPayload, {
+      entryPath: definition.entryPath,
+      args: [...definition.args, "--config", definition.configPath],
+    });
+    assert.match(watchdogScript, /'--host-pid'\s+\(\[string\]\$PID\)/u);
+    assert.match(watchdogScript, /windows-service-watchdog\.js/);
     assert.match(windows.template, /项目/);
     assert.match(windows.template, /&amp;/);
-    assert.match(windows.template, /&quot;/);
-    assert.match(windows.template, /windows-service-watchdog\.js/);
-    const watchdogIndex = windows.template.indexOf("windows-service-watchdog.js");
-    const delimiterIndex = windows.template.indexOf(" -- ", watchdogIndex);
-    const daemonIndex = windows.template.indexOf("daemon worker.js", delimiterIndex);
-    assert.ok(watchdogIndex >= 0 && watchdogIndex < delimiterIndex);
-    assert.ok(delimiterIndex < daemonIndex);
+    assert.match(windows.template, /<Command>powershell\.exe<\/Command>/i);
+    assert.match(windows.template, /-NoProfile/);
+    assert.match(windows.template, /-NonInteractive/);
+    assert.match(windows.template, /-WindowStyle Hidden/);
+    assert.match(windows.template, /-EncodedCommand/);
+    assert.doesNotMatch(
+      windows.template,
+      new RegExp(`<Command>${escapeRegExp(process.execPath)}<\\/Command>`),
+    );
     assert.doesNotMatch(windows.template, /OPENCLAW_STATE_DIR=/);
     assert.doesNotMatch(windows.template, /HTTP_PROXY|HTTPS_PROXY|proxy-secret/i);
     assert.deepEqual(windows.commands.install?.[0], {
@@ -143,7 +197,17 @@ test("platform plans are user-scoped and pass config as an argument", () => {
     });
     assert.deepEqual(
       [...new Set(Object.values(windows.commands).flat().map(({ command }) => command))],
-      ["schtasks.exe"],
+      ["schtasks.exe", "powershell.exe"],
+    );
+    assert.deepEqual(windows.commands.status?.map(({ kind }) => kind), [
+      "windows-task-status",
+    ]);
+    assert.deepEqual(
+      windows.commands.start?.map(({ args }) => args),
+      [
+        ["/Change", "/TN", definition.windowsTaskName, "/ENABLE"],
+        ["/Run", "/TN", definition.windowsTaskName],
+      ],
     );
     validateWindowsTaskXml(windows.template);
 
@@ -227,7 +291,99 @@ test("windows tasks bind the logon trigger and principal to one current user", (
   );
 });
 
-test("windows status queries request stable HRESULT exit codes", () => {
+test("Windows PowerShell 5.1 launch round-trips one encoded watchdog argv payload", {
+  skip: process.platform === "win32" ? false : "Windows PowerShell compatibility only",
+  timeout: 15_000,
+}, async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-powershell-argv-"));
+  const root = path.join(tempRoot, "space & 配置");
+  fs.mkdirSync(root, { recursive: true });
+  const statePath = path.join(root, "argv.json");
+  const entryPath = path.join(root, "capture argv.mjs");
+  fs.writeFileSync(
+    entryPath,
+    [
+      'import fs from "node:fs";',
+      `const statePath = ${JSON.stringify(statePath)};`,
+      'fs.writeFileSync(statePath, JSON.stringify({ pid: process.pid, argv: process.argv.slice(2) }), "utf8");',
+      "setInterval(() => {}, 1_000);",
+      'process.once("SIGTERM", () => process.exit(0));',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const definition = fixtureDefinition(root);
+  definition.entryPath = entryPath;
+  definition.workingDirectory = root;
+  definition.configPath = path.join(root, "tailing slash \\ 配置.json");
+  definition.args = [
+    "",
+    'alpha "beta"',
+    "C:\\tail\\",
+    "space value",
+    "O'Brien",
+    "配置参数",
+  ];
+  const plan = createSupervisorPlan(definition, "win32", os.homedir(), {
+    windowsUserId: "TESTDOMAIN\\Test User",
+  });
+  const actionArgs = windowsTaskActionArguments(plan.template);
+  let powershell = null;
+  let daemonPid = null;
+
+  try {
+    powershell = spawn("powershell.exe", actionArgs, {
+      cwd: root,
+      shell: false,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    const captured = await waitForJson(statePath);
+    daemonPid = captured.pid;
+    assert.deepEqual(captured.argv, [
+      ...definition.args,
+      "--config",
+      definition.configPath,
+    ]);
+  } finally {
+    if (powershell?.pid && processIsAlive(powershell.pid)) {
+      try {
+        execFileSync(
+          "taskkill.exe",
+          ["/PID", String(powershell.pid), "/T", "/F"],
+          { stdio: "ignore", timeout: 5_000, windowsHide: true },
+        );
+      } catch {
+        try { powershell.kill("SIGKILL"); } catch {}
+      }
+    }
+    if (Number.isSafeInteger(daemonPid) && processIsAlive(daemonPid)) {
+      try { process.kill(daemonPid, "SIGKILL"); } catch {}
+    }
+    const exitDeadline = Date.now() + 3_000;
+    while (
+      Date.now() < exitDeadline &&
+      ((powershell?.pid && processIsAlive(powershell.pid)) ||
+        (Number.isSafeInteger(daemonPid) && processIsAlive(daemonPid)))
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    let cleanupError = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+        cleanupError = null;
+        break;
+      } catch (error) {
+        cleanupError = error;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+    if (cleanupError) throw cleanupError;
+  }
+});
+
+test("windows status uses a hidden machine-readable Task Scheduler COM probe", () => {
   const definition = fixtureDefinition();
   const plan = createSupervisorPlan(
     definition,
@@ -236,13 +392,25 @@ test("windows status queries request stable HRESULT exit codes", () => {
     { windowsUserId: "TESTDOMAIN\\Test User" },
   );
 
-  assert.deepEqual(plan.commands.status, [
-    {
-      label: "Query scheduled task",
-      command: "schtasks.exe",
-      args: ["/Query", "/TN", definition.windowsTaskName, "/HResult"],
-    },
+  assert.equal(plan.commands.status?.length, 1);
+  const [status] = plan.commands.status;
+  assert.equal(status.label, "Inspect scheduled task state");
+  assert.equal(status.command, "powershell.exe");
+  assert.equal(status.kind, "windows-task-status");
+  assert.deepEqual(status.args.slice(0, 6), [
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-WindowStyle",
+    "Hidden",
+    "-EncodedCommand",
   ]);
+  const script = decodePowerShellCommand(status.args);
+  assert.match(script, /Schedule\.Service/);
+  assert.match(script, /GetTask\('TracevaneModelGateway'\)/);
+  assert.match(script, /state = \[int\]\$task\.State/);
+  assert.match(script, /enabled = \[bool\]\$task\.Enabled/);
+  assert.match(script, /exit \$_\.Exception\.HResult/);
 });
 
 test("launchd lifecycle actions always rebuild a booted current-user agent", () => {
