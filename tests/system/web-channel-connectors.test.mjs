@@ -111,6 +111,13 @@ test("channel account editor owns credentials, default target, exceptions, and a
   assert.match(accounts, /未界面化扩展字段/);
 });
 
+test("channel account plan opens only after planning succeeds", () => {
+  const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
+  assert.doesNotMatch(accounts, /setPlanOpen\(true\);\s*planMutation\.mutate/);
+  assert.match(accounts, /onSuccess: \(nextPlan\) => \{\s*setPlan\(nextPlan\);\s*setPlanOpen\(true\);\s*\}/);
+  assert.match(accounts, /onError: \(error\) => \{\s*setPendingCandidate\(null\);/);
+});
+
 test("Feishu account creation renders a real local QR code and keeps manual fields editable", () => {
   const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
   assert.match(accounts, /QRCodeSVG/);

@@ -611,7 +611,7 @@ function AccountEditor({
             {enabled && !preflight?.ok && <span className="text-xs text-subtle">保存成功不代表已能收消息；启用后还需在运行中心验证真实入站。</span>}
           </section>
         </DialogBody>
-        <DialogFooter><Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button><Button variant="primary" disabled={!valid || planning || secretsLoading} onClick={buildAndPlan}><ShieldCheck />检查并保存</Button></DialogFooter>
+        <DialogFooter><Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button><Button variant="primary" disabled={!valid || planning || secretsLoading} onClick={buildAndPlan}>{planning ? <Loader2 className="animate-spin" /> : <ShieldCheck />}{planning ? "正在检查…" : "检查并保存"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -650,8 +650,21 @@ export function V3AccountsView({ selectedAccount, goToView }: ChannelConnectorsV
   const targets = new Map(config.targets.map((target) => [target.id, target]));
 
   const requestPlan = (candidate: ChannelConnectorsV3Config) => {
-    setPendingCandidate(candidate); setPlan(null); setPlanOpen(true);
-    planMutation.mutate({ config: candidate, expectedRevision: configQuery.data?.revision }, { onSuccess: setPlan, onError: (error) => { setPlanOpen(false); toast.error("无法生成变更计划", { description: error.message }); } });
+    setPendingCandidate(candidate);
+    setPlan(null);
+    planMutation.mutate(
+      { config: candidate, expectedRevision: configQuery.data?.revision },
+      {
+        onSuccess: (nextPlan) => {
+          setPlan(nextPlan);
+          setPlanOpen(true);
+        },
+        onError: (error) => {
+          setPendingCandidate(null);
+          toast.error("无法生成变更计划", { description: error.message });
+        },
+      },
+    );
   };
   const applyPlan = () => {
     if (!plan?.planId || !pendingCandidate) return;
