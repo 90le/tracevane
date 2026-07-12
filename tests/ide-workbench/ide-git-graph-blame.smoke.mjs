@@ -44,8 +44,7 @@ function relativePathFromRoot(rootAbsolutePath, targetAbsolutePath) {
 }
 function gitApiRootId(rootId) { return rootId === 'openclaw-root' ? 'system-root' : rootId; }
 
-function setupGitFixture() {
-  const tmpParent = path.join(process.cwd(), '.tmp');
+function setupGitFixture(tmpParent) {
   fs.mkdirSync(tmpParent, { recursive: true });
   const fixtureRoot = fs.mkdtempSync(path.join(tmpParent, 'ide-git-graph-blame-'));
   const repoDir = path.join(fixtureRoot, 'repo');
@@ -69,6 +68,7 @@ function setupGitFixture() {
 }
 
 async function run() {
+  const runnerTempDir = process.env.TRACEVANE_SMOKE_TEMP_DIR;
   const summary = await api('/api/files/summary');
   const roots = summary.roots ?? [];
   const root = roots.find((item) => item.absolutePath && item.absolutePath !== '/' && process.cwd().startsWith(item.absolutePath))
@@ -76,7 +76,7 @@ async function run() {
     ?? roots.find((item) => item.absolutePath && item.absolutePath !== '/')
     ?? roots[0];
   if (!root?.id || !root.absolutePath) throw new Error('No file root is available for IDE Git graph/blame smoke');
-  const { fixtureRoot, repoDir } = setupGitFixture();
+  const { fixtureRoot, repoDir } = setupGitFixture(runnerTempDir || path.join(process.cwd(), '.tmp'));
   const repoRelativePath = relativePathFromRoot(root.absolutePath, repoDir);
   if (!repoRelativePath) throw new Error(`Fixture repo is outside selected root: ${repoDir}`);
   const apiRootId = gitApiRootId(root.id);
@@ -101,7 +101,7 @@ async function run() {
     if (!blame.available || blame.path !== 'README.md' || blame.lines.length < 2) throw new Error(`Expected blame lines: ${JSON.stringify(blame)}`);
     if (!blame.lines.every((line) => line.hash && line.shortHash && line.lineNumber > 0)) throw new Error(`Blame line metadata missing: ${JSON.stringify(blame.lines)}`);
   } finally {
-    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    if (!runnerTempDir) fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
   console.log('ide-git-graph-blame smoke passed');
 }

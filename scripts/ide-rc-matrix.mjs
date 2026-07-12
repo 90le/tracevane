@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,44 @@ import { stopOwnedProcess } from "./lib/with-server.mjs";
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const DEFAULT_COMMAND_TIMEOUT_MS = 420_000;
 const DEFAULT_CLEANUP_TIMEOUT_MS = 15_000;
+
+async function canListen(port) {
+  return await new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", () => resolve(false));
+    server.listen(port, "127.0.0.1", () => {
+      server.close(() => resolve(true));
+    });
+  });
+}
+
+async function ephemeralPort() {
+  return await new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : null;
+      server.close((error) => {
+        if (error) reject(error);
+        else if (!Number.isInteger(port)) reject(new Error("Ephemeral RC port allocation returned no TCP port"));
+        else resolve(String(port));
+      });
+    });
+  });
+}
+
+export async function resolveRcWebPort(preferredPort, excludedPorts = new Set()) {
+  for (let port = preferredPort; port <= Math.min(65_535, preferredPort + 200); port += 1) {
+    if (!excludedPorts.has(port) && await canListen(port)) return String(port);
+  }
+  for (;;) {
+    const port = await ephemeralPort();
+    if (!excludedPorts.has(Number(port))) return port;
+  }
+}
 
 export const GROUPS = {
   fileSurface: [
@@ -388,16 +427,24 @@ export async function main(argv = process.argv.slice(2), options = {}) {
     }
 
     const rcWebPort = env.TRACEVANE_RC_WEB_PORT || env.TRACEVANE_WEB_PORT || "5310";
+    const rcWebPortBase = Number(rcWebPort);
+    if (!Number.isInteger(rcWebPortBase) || rcWebPortBase <= 0 || rcWebPortBase + commands.length > 65_535) {
+      throw new Error("TRACEVANE_RC_WEB_PORT must leave room for one isolated port per matrix command");
+    }
     const commandTimeoutMs = commandTimeout(env);
     const failures = [];
     const runMatrixCommandImpl = options.runMatrixCommandImpl ?? runMatrixCommand;
+    const resolveRcWebPortImpl = options.resolveRcWebPortImpl ?? resolveRcWebPort;
+    const assignedWebPorts = new Set();
 
-    for (const command of commands) {
+    for (const [commandIndex, command] of commands.entries()) {
+      const commandWebPort = await resolveRcWebPortImpl(rcWebPortBase + commandIndex, assignedWebPorts);
+      assignedWebPorts.add(Number(commandWebPort));
       const result = await runMatrixCommandImpl(command, {
         cwd,
         env,
         logger,
-        rcWebPort,
+        rcWebPort: commandWebPort,
         commandTimeoutMs,
         ...options.commandOptions,
       });

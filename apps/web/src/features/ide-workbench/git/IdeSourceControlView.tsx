@@ -408,7 +408,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
       setBusyKey("stash:save");
       try {
         await saveGitStash({ rootId, path: status.directoryPath, message: stashMessage.trim() || "Tracevane IDE stash", includeUntracked: true });
-        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: "git stash push --include-untracked" });
+        appendWorkbenchOutput({ channel: { id: "git", label: "Git", kind: "custom" }, level: "info", text: "git stash save --include-untracked" });
         toast.success("已临时保存改动");
         setStashMessage("");
         refreshGitAndStashes();

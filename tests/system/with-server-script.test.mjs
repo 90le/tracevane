@@ -20,6 +20,7 @@ let serverFixture;
 let treeFixture;
 let earlyExitTreeFixture;
 let signalRunnerFixture;
+let selfStopFixture;
 let fixtureCounter = 0;
 
 test.before(() => {
@@ -30,6 +31,22 @@ test.before(() => {
   treeFixture = path.join(fixtureRoot, "process tree fixture.mjs");
   earlyExitTreeFixture = path.join(fixtureRoot, "early exit tree fixture.mjs");
   signalRunnerFixture = path.join(fixtureRoot, "signal runner fixture.mjs");
+  selfStopFixture = path.join(fixtureRoot, "self stop server fixture.mjs");
+
+  fs.writeFileSync(
+    selfStopFixture,
+    [
+      'import http from "node:http";',
+      "const port = Number(process.argv[2]);",
+      "const server = http.createServer((request, response) => {",
+      "  response.statusCode = 200;",
+      "  response.end('ready');",
+      "  if (request.url === '/stop') server.close(() => process.exit(0));",
+      "});",
+      "server.listen(port, '127.0.0.1');",
+      "",
+    ].join("\n"),
+  );
 
   fs.writeFileSync(
     serverFixture,
@@ -268,6 +285,26 @@ test("withServer starts, waits, invokes, and cleans up with tokenized arguments"
   await waitForUrlToStop(url);
 });
 
+test("withServer accepts a successful callback after the owned endpoint stops itself", async () => {
+  const port = await getFreePort();
+  const url = `http://127.0.0.1:${port}`;
+  const result = await withServer(
+    {
+      command: process.execPath,
+      args: [selfStopFixture, String(port)],
+      url,
+      timeoutMs: 5_000,
+    },
+    async () => {
+      const response = await fetch(`${url}/stop`);
+      assert.equal(await response.text(), "ready");
+      await waitForUrlToStop(url);
+      return "stopped-cleanly";
+    },
+  );
+  assert.equal(result, "stopped-cleanly");
+});
+
 test("waitForHttp retries non-ready responses until the endpoint is ready", async (t) => {
   let attempts = 0;
   const server = http.createServer((_request, response) => {
@@ -363,14 +400,14 @@ test("withServer rejects an early child exit without waiting for readiness timeo
         command: process.execPath,
         args: ["-e", "process.exit(23)"],
         url: `http://127.0.0.1:${port}/ready`,
-        timeoutMs: 5_000,
+        timeoutMs: 10_000,
       },
       async () => assert.fail("callback must not run after an early exit"),
     ),
     /Server process exited before readiness \(code 23\)/,
   );
 
-  assert.ok(Date.now() - startedAt < 1_500, "early exit was not reported promptly");
+  assert.ok(Date.now() - startedAt < 5_000, "early exit and safe descendant cleanup were not reported promptly");
 });
 
 test("withServer cleans up its child after a readiness timeout", async () => {
@@ -481,7 +518,7 @@ test("withServer stops its owned process tree", async () => {
 });
 
 test(
-  "withServer reports the Windows dead-root taskkill boundary",
+  "withServer recovers Windows descendants after the owned root exits",
   { skip: process.platform !== "win32" ? "Windows taskkill only" : false },
   async (t) => {
     const port = await getFreePort();
@@ -518,11 +555,8 @@ test(
     const serverState = await readJsonWhenReady(serverStatePath);
     descendantPid = treeState.childPid;
     assert.equal(serverState.pid, descendantPid);
-    assert.equal(processIsAlive(descendantPid), true);
-    assert.match(
-      outcome.reason.cleanupError?.message ?? "",
-      new RegExp(`taskkill failed for owned process ${treeState.pid}`),
-    );
+    await waitForProcessExit(descendantPid);
+    assert.equal(outcome.reason.cleanupError, undefined);
   },
 );
 

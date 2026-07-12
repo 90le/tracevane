@@ -68,8 +68,7 @@ function relativePathFromRoot(rootAbsolutePath, targetAbsolutePath) {
 }
 function gitApiRootId(rootId) { return rootId === 'openclaw-root' ? 'system-root' : rootId; }
 
-function setupGitFixture() {
-  const tmpParent = path.join(process.cwd(), '.tmp');
+function setupGitFixture(tmpParent) {
   fs.mkdirSync(tmpParent, { recursive: true });
   const fixtureRoot = fs.mkdtempSync(path.join(tmpParent, 'ide-git-branch-management-'));
   const repoDir = path.join(fixtureRoot, 'repo');
@@ -91,6 +90,7 @@ function setupGitFixture() {
 }
 
 async function run() {
+  const runnerTempDir = process.env.TRACEVANE_SMOKE_TEMP_DIR;
   const summary = await api('/api/files/summary');
   const roots = summary.roots ?? [];
   const root = roots.find((item) => item.absolutePath && item.absolutePath !== '/' && process.cwd().startsWith(item.absolutePath))
@@ -100,7 +100,7 @@ async function run() {
   const rootId = root?.id;
   if (!rootId || !root.absolutePath) throw new Error('No file root is available for IDE Git branch management smoke');
 
-  const { fixtureRoot, repoDir } = setupGitFixture();
+  const { fixtureRoot, repoDir } = setupGitFixture(runnerTempDir || path.join(process.cwd(), '.tmp'));
   const repoRelativePath = relativePathFromRoot(root.absolutePath, repoDir);
   if (!repoRelativePath) throw new Error(`Fixture repo is outside selected root: ${repoDir}`);
   const apiRootId = gitApiRootId(rootId);
@@ -127,7 +127,7 @@ async function run() {
     const upstreamUnset = await api('/api/git/branches/upstream', { method: 'POST', body: body({ branch: 'smoke/renamed', unset: true }) });
     if (!upstreamUnset.branches.some((branch) => branch.name === 'smoke/renamed' && !branch.upstream)) throw new Error('Upstream not unset');
   } finally {
-    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    if (!runnerTempDir) fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 
   console.log('ide-git-branch-management smoke passed');

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -556,6 +557,7 @@ test("runBrowserSmoke gives explicit ports precedence in a clean child fixture",
         browser: process.env.PLAYWRIGHT_CHROME_EXECUTABLE,
         external: process.env.TRACEVANE_USE_EXTERNAL_API,
         force: process.env.TRACEVANE_SMOKE_FORCE_OPTIMIZE,
+        smokeTemp: process.env.TRACEVANE_SMOKE_TEMP_DIR,
         url: process.env.TRACEVANE_WEB_SMOKE_URL,
         webPort: process.env.TRACEVANE_WEB_PORT,
       }), "utf8");
@@ -592,12 +594,16 @@ test("runBrowserSmoke gives explicit ports precedence in a clean child fixture",
   );
 
   assert.equal(selectedOptions.rootDir, directory);
-  assert.deepEqual(JSON.parse(readFileSync(output, "utf8")), {
+  const childOutput = JSON.parse(readFileSync(output, "utf8"));
+  assert.ok(path.isAbsolute(childOutput.smokeTemp));
+  assert.equal(existsSync(childOutput.smokeTemp), false);
+  assert.deepEqual(childOutput, {
     apiPort: "3910",
     argv: ["参数 含 空格", "中文"],
     browser: process.execPath,
     external: "1",
     force: "1",
+    smokeTemp: childOutput.smokeTemp,
     url: "http://127.0.0.1:5210",
     webPort: "5210",
   });

@@ -16,6 +16,7 @@ import {
   GROUPS,
   createMatrixInvocation,
   main,
+  resolveRcWebPort,
   runMatrixCommand,
   runOwnedInvocation,
   selectedCommands,
@@ -25,6 +26,11 @@ const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const RUNNER = path.join(ROOT_DIR, "scripts", "ide-rc-matrix.mjs");
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("resolveRcWebPort never reuses a port already assigned in the matrix", async () => {
+  const port = await resolveRcWebPort(5310, new Set([5310]));
+  assert.notEqual(port, "5310");
+});
 
 function createLogger() {
   const logs = [];
@@ -356,18 +362,22 @@ test("main preserves list/dry-run output and continue-on-error behavior", async 
 
   const continued = createLogger();
   const continuedCommands = [];
+  const continuedPorts = [];
   assert.equal(
     await main(["--domain=searchProblemsOutput", "--continue-on-error"], {
       env: {},
       logger: continued.logger,
-      runMatrixCommandImpl: async (command) => {
+      resolveRcWebPortImpl: async (port) => String(port),
+      runMatrixCommandImpl: async (command, options) => {
         continuedCommands.push(command);
+        continuedPorts.push(options.rcWebPort);
         return { command, code: continuedCommands.length === 1 ? 7 : 0 };
       },
     }),
     1,
   );
   assert.deepEqual(continuedCommands, GROUPS.searchProblemsOutput);
+  assert.deepEqual(continuedPorts, ["5310", "5311", "5312"]);
 
   const cleanupFailedCommands = [];
   assert.equal(
@@ -393,6 +403,7 @@ test("main gives RC port precedence and preserves interrupt exit status", async 
       TRACEVANE_WEB_PORT: "5310",
     },
     logger,
+    resolveRcWebPortImpl: async (port) => String(port),
     runMatrixCommandImpl: async (command, options) => {
       capturedOptions = options;
       return {

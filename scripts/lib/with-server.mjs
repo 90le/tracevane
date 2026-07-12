@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const DEFAULT_HTTP_TIMEOUT_MS = 30_000;
 const DEFAULT_HTTP_INTERVAL_MS = 100;
-const STARTUP_STABILITY_MS = 50;
+const STARTUP_STABILITY_MS = 150;
 const STOP_GRACE_MS = 1_000;
 const STOP_CONFIRM_MS = 1_000;
 const TERMINATION_CLEANUP_TIMEOUT_MS = 3_000;
@@ -143,13 +143,106 @@ function runTaskkill(pid) {
   });
 }
 
+function snapshotWindowsProcessTree(rootPid) {
+  const command = [
+    `$root = ${rootPid}`,
+    "$items = @(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId, ParentProcessId, CreationDate)",
+    "$pending = [System.Collections.Generic.Queue[int]]::new()",
+    "$found = [System.Collections.Generic.List[int]]::new()",
+    "$pending.Enqueue($root)",
+    "$rootItem = $items | Where-Object { [int]$_.ProcessId -eq $root } | Select-Object -First 1",
+    "if ($null -ne $rootItem) { Write-Output \"$root|$($rootItem.CreationDate.ToUniversalTime().Ticks)\" }",
+    "while ($pending.Count -gt 0) {",
+    "  $parent = $pending.Dequeue()",
+    "  foreach ($item in $items) {",
+    "    $candidate = [int]$item.ProcessId",
+    "    if ([int]$item.ParentProcessId -eq $parent -and -not $found.Contains($candidate)) {",
+    "      $found.Add($candidate)",
+    "      Write-Output \"$candidate|$($item.CreationDate.ToUniversalTime().Ticks)\"",
+    "      $pending.Enqueue($candidate)",
+    "    }",
+    "  }",
+    "}",
+  ].join("; ");
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "powershell.exe",
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+      { stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
+    );
+    let stdout = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      if (stdout.length < 65_536) stdout += chunk;
+    });
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      if (code !== 0) {
+        reject(new Error(`Failed to inspect Windows descendants (${signal ?? `code ${code}`})`));
+        return;
+      }
+      resolve(stdout.split(/\r?\n/u)
+        .map((line) => line.trim().split("|"))
+        .map(([pid, ticks]) => [Number(pid), ticks])
+        .filter(([pid, ticks]) => Number.isSafeInteger(pid) && pid > 0 && /^\d+$/u.test(ticks))
+        .map(([pid, ticks]) => ({ pid, ticks })));
+    });
+  });
+}
+
+function terminateWindowsSnapshot(snapshot) {
+  if (!snapshot.length) return Promise.resolve();
+  const specs = snapshot
+    .slice()
+    .reverse()
+    .map(({ pid, ticks }) => `@{ Pid = ${pid}; Ticks = ${ticks} }`)
+    .join(", ");
+  const command = [
+    `$specs = @(${specs})`,
+    "foreach ($spec in $specs) {",
+    "  $current = Get-CimInstance Win32_Process -Filter \"ProcessId = $($spec.Pid)\" -ErrorAction SilentlyContinue",
+    "  if ($null -ne $current -and $current.CreationDate.ToUniversalTime().Ticks -eq $spec.Ticks) {",
+    "    Invoke-CimMethod -InputObject $current -MethodName Terminate -ErrorAction SilentlyContinue | Out-Null",
+    "  }",
+    "}",
+    "Start-Sleep -Milliseconds 50",
+    "$remaining = 0",
+    "foreach ($spec in $specs) {",
+    "  $current = Get-CimInstance Win32_Process -Filter \"ProcessId = $($spec.Pid)\" -ErrorAction SilentlyContinue",
+    "  if ($null -ne $current -and $current.CreationDate.ToUniversalTime().Ticks -eq $spec.Ticks) { $remaining += 1 }",
+    "}",
+    "if ($remaining -gt 0) { exit 3 }",
+  ].join("; ");
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      "powershell.exe",
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+      { stdio: "ignore", windowsHide: true },
+    );
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Failed to terminate the verified Windows process snapshot (${signal ?? `code ${code}`})`));
+    });
+  });
+}
+
 async function stopWindowsProcess(child, pid) {
   const mustAttemptOwnedTree = activeChildren.has(child);
   if (childHasExited(child) && !mustAttemptOwnedTree) return;
+  const processSnapshot = await snapshotWindowsProcessTree(pid).catch(() => null);
 
   try {
     await runTaskkill(pid);
   } catch (error) {
+    if (processSnapshot) {
+      try {
+        await terminateWindowsSnapshot(processSnapshot);
+        return;
+      } catch {
+        // Preserve the original taskkill error below: cleanup is unconfirmed.
+      }
+    }
     if (!mustAttemptOwnedTree && (childHasExited(child) || !processIsAlive(pid))) {
       return;
     }

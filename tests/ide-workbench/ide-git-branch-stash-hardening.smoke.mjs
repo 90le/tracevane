@@ -103,8 +103,7 @@ function createDefaultWorkbenchLayout(directoryPath = '') {
   };
 }
 
-function setupGitFixture() {
-  const tmpParent = path.join(process.cwd(), '.tmp');
+function setupGitFixture(tmpParent) {
   fs.mkdirSync(tmpParent, { recursive: true });
   const fixtureRoot = fs.mkdtempSync(path.join(tmpParent, 'ide-git-branch-stash-hardening-'));
   const repoDir = path.join(fixtureRoot, 'repo');
@@ -118,12 +117,13 @@ function setupGitFixture() {
   runGit(repoDir, ['commit', '-m', 'base']);
   runGit(repoDir, ['branch', '-M', 'main']);
   fs.writeFileSync(path.join(repoDir, 'stashed.txt'), 'manual stash\n');
-  runGit(repoDir, ['stash', 'push', '--include-untracked', '-m', 'hardening manual stash']);
+  runGit(repoDir, ['stash', 'save', '--include-untracked', 'hardening manual stash']);
 
   return { fixtureRoot, repoDir };
 }
 
 async function run() {
+  const runnerTempDir = process.env.TRACEVANE_SMOKE_TEMP_DIR;
   const summary = await api('/api/files/summary');
   const roots = summary.roots ?? [];
   const root = roots.find((item) => item.absolutePath && item.absolutePath !== '/' && process.cwd().startsWith(item.absolutePath))
@@ -133,7 +133,7 @@ async function run() {
   const rootId = root?.id;
   if (!rootId || !root.absolutePath) throw new Error('No file root is available for IDE Git branch/stash hardening smoke');
 
-  const { fixtureRoot, repoDir } = setupGitFixture();
+  const { fixtureRoot, repoDir } = setupGitFixture(runnerTempDir || path.join(process.cwd(), '.tmp'));
   const repoRelativePath = relativePathFromRoot(root.absolutePath, repoDir);
   if (!repoRelativePath) throw new Error(`Fixture repo is outside selected root: ${repoDir}`);
   const apiRootId = gitApiRootId(rootId);
@@ -184,11 +184,10 @@ async function run() {
       await page.locator('[data-ide-source-control-section-toggle="stashes"]').click();
       await page.locator('[data-ide-source-control-stash-row]').filter({ hasText: 'hardening manual stash' }).waitFor({ state: 'visible', timeout: 30_000 });
       if (await page.locator('[data-ide-source-control-save-stash]').isEnabled()) throw new Error('Clean repo should disable save stash');
-      page.once('dialog', async (dialog) => {
-        if (!dialog.message().includes('删除 stash@{0}')) throw new Error(`Unexpected drop confirmation: ${dialog.message()}`);
-        await dialog.accept();
-      });
       await page.locator('[data-ide-source-control-stash-row]').filter({ hasText: 'hardening manual stash' }).locator('[data-ide-source-control-drop-stash]').click();
+      const dropConfirm = page.locator('[data-action-dialog="git-confirm"]');
+      await dropConfirm.filter({ hasText: '删除 stash@{0}' }).waitFor({ state: 'visible', timeout: 30_000 });
+      await dropConfirm.getByRole('button', { name: '删除' }).click();
       await page.locator('[data-ide-source-control-stash-row]').filter({ hasText: 'hardening manual stash' }).waitFor({ state: 'detached', timeout: 30_000 });
     } catch (error) {
       console.error(logs.join('\n'));
@@ -197,7 +196,7 @@ async function run() {
       await browser.close();
     }
   } finally {
-    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    if (!runnerTempDir) fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 
   console.log('ide-git-branch-stash-hardening smoke passed');

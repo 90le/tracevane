@@ -72,8 +72,7 @@ function createDefaultWorkbenchLayout(directoryPath = '') {
   };
 }
 
-function setupGitFixture() {
-  const tmpParent = path.join(process.cwd(), '.tmp');
+function setupGitFixture(tmpParent) {
   fs.mkdirSync(tmpParent, { recursive: true });
   const fixtureRoot = fs.mkdtempSync(path.join(tmpParent, 'ide-git-remote-foundation-'));
   const repoDir = path.join(fixtureRoot, 'repo');
@@ -109,12 +108,13 @@ function setupGitFixture() {
 }
 
 async function run() {
+  const runnerTempDir = process.env.TRACEVANE_SMOKE_TEMP_DIR;
   const summary = await api('/api/files/summary');
   const root = summary.roots?.find((item) => item.id === summary.defaultRootId) ?? summary.roots?.[0];
   const rootId = root?.id;
   if (!rootId || !root.absolutePath) throw new Error('No file root is available for IDE Git remote smoke');
 
-  const { fixtureRoot, repoDir } = setupGitFixture();
+  const { fixtureRoot, repoDir } = setupGitFixture(runnerTempDir || path.join(process.cwd(), '.tmp'));
   const repoRelativePath = relativePathFromRoot(root.absolutePath, repoDir);
   if (!repoRelativePath) throw new Error(`Fixture repo is outside selected root: ${repoDir}`);
   const apiRootId = gitApiRootId(rootId);
@@ -154,6 +154,11 @@ async function run() {
       await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 45_000 });
       await page.locator('[data-ide-activity-bar]').getByRole('button', { name: 'Source Control' }).click();
       await page.locator('[data-ide-source-control-view]').waitFor({ state: 'visible', timeout: 30_000 });
+      const branchSection = page.locator('[data-ide-source-control-section="branches"]');
+      if (await branchSection.getAttribute('data-ide-source-control-section-open') !== 'true') {
+        await page.locator('[data-ide-source-control-section-toggle="branches"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-ide-source-control-section="branches"]')?.getAttribute('data-ide-source-control-section-open') === 'true');
+      }
       await page.locator('[data-ide-source-control-branch]').filter({ hasText: 'main' }).waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator('[data-ide-source-control-upstream]').filter({ hasText: 'origin/main' }).waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator('[data-ide-source-control-ahead-behind]').filter({ hasText: '↑1 ↓1' }).waitFor({ state: 'visible', timeout: 30_000 });
@@ -170,7 +175,7 @@ async function run() {
       await browser.close();
     }
   } finally {
-    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    if (!runnerTempDir) fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 }
 

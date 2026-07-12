@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -224,11 +225,13 @@ export async function runBrowserSmoke(
   const browserExecutable = resolveBrowserExecutable(env, {
     defaultExecutablePath,
   });
+  const smokeTempDir = mkdtempSync(path.join(tmpdir(), "tracevane-browser-smoke-"));
   const childEnv = {
     ...env,
     PLAYWRIGHT_CHROME_EXECUTABLE: browserExecutable,
     TRACEVANE_WEB_PORT: String(options.webPort),
     TRACEVANE_WEB_SMOKE_URL: `http://127.0.0.1:${options.webPort}`,
+    TRACEVANE_SMOKE_TEMP_DIR: smokeTempDir,
   };
 
   if (options.externalApi) {
@@ -244,13 +247,22 @@ export async function runBrowserSmoke(
   const launchServer = options.externalApi
     ? runExternalApiSmokeImpl
     : runWebSmokeImpl;
-  return launchServer(
-    { env: childEnv, rootDir },
-    () => runSmokeCommandImpl(options.command, {
-      cwd: rootDir,
-      env: childEnv,
-    }),
-  );
+  try {
+    return await launchServer(
+      { env: childEnv, rootDir },
+      () => runSmokeCommandImpl(options.command, {
+        cwd: rootDir,
+        env: childEnv,
+      }),
+    );
+  } finally {
+    rmSync(smokeTempDir, {
+      force: true,
+      maxRetries: process.platform === "win32" ? 30 : 3,
+      recursive: true,
+      retryDelay: 100,
+    });
+  }
 }
 
 export function isMainModule(

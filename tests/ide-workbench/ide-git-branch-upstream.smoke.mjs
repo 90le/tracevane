@@ -1,7 +1,6 @@
 import { chromium } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || `http://127.0.0.1:${process.env.TRACEVANE_WEB_PORT || '5176'}`;
@@ -77,8 +76,7 @@ function createDefaultWorkbenchLayout(directoryPath = '') {
   };
 }
 
-function setupGitFixture() {
-  const tmpParent = path.join(process.cwd(), '.tmp');
+function setupGitFixture(tmpParent) {
   fs.mkdirSync(tmpParent, { recursive: true });
   const fixtureRoot = fs.mkdtempSync(path.join(tmpParent, 'ide-git-branch-upstream-'));
   const repoDir = path.join(fixtureRoot, 'repo');
@@ -124,7 +122,9 @@ async function run() {
   const rootId = root?.id;
   if (!rootId || !root.absolutePath) throw new Error('No file root is available for IDE Git branch smoke');
 
-  const { fixtureRoot, repoDir } = setupGitFixture();
+  const runnerTempDir = process.env.TRACEVANE_SMOKE_TEMP_DIR;
+  const tmpParent = runnerTempDir || path.join(process.cwd(), '.tmp');
+  const { fixtureRoot, repoDir } = setupGitFixture(tmpParent);
   const repoRelativePath = relativePathFromRoot(root.absolutePath, repoDir);
   if (!repoRelativePath) throw new Error(`Fixture repo is outside selected root: ${repoDir}`);
 
@@ -157,13 +157,19 @@ async function run() {
     await page.locator('[data-ide-workbench]').waitFor({ state: 'visible', timeout: 45_000 });
     await page.locator('[data-ide-activity-bar]').getByRole('button', { name: 'Source Control' }).click();
     await page.locator('[data-ide-source-control-view]').waitFor({ state: 'visible', timeout: 30_000 });
+    const branchSection = page.locator('[data-ide-source-control-section="branches"]');
+    if (await branchSection.getAttribute('data-ide-source-control-section-open') !== 'true') {
+      await page.locator('[data-ide-source-control-section-toggle="branches"]').click();
+      await branchSection.waitFor({ state: 'visible', timeout: 30_000 });
+      await page.waitForFunction(() => document.querySelector('[data-ide-source-control-section="branches"]')?.getAttribute('data-ide-source-control-section-open') === 'true');
+    }
 
     await page.locator('[data-ide-source-control-branch]').filter({ hasText: 'main' }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-source-control-upstream]').filter({ hasText: 'origin/main' }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-source-control-ahead-behind]').filter({ hasText: '↑1 ↓1' }).waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-source-control-staged-count]').filter({ hasText: '1 暂存' }).waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-source-control-unstaged-count]').filter({ hasText: '1 未暂存' }).waitFor({ state: 'visible', timeout: 30_000 });
-    await page.locator('[data-ide-source-control-untracked-count]').filter({ hasText: '1 未跟踪' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-source-control-change-group="已暂存"]').filter({ hasText: '1' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-source-control-change-group="更改"]').filter({ hasText: '1' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator('[data-ide-source-control-change-group="未跟踪"]').filter({ hasText: '1' }).waitFor({ state: 'visible', timeout: 30_000 });
 
     await page.locator('[data-ide-status-git-branch]').filter({ hasText: 'main' }).waitFor({ state: 'visible', timeout: 30_000 });
     await page.locator('[data-ide-status-git-upstream]').filter({ hasText: 'origin/main' }).waitFor({ state: 'visible', timeout: 30_000 });
@@ -171,10 +177,18 @@ async function run() {
     await page.locator('[data-ide-status-git-change-count]').filter({ hasText: '3' }).waitFor({ state: 'visible', timeout: 30_000 });
   } catch (error) {
     console.error(logs.join('\n'));
-    throw error;
+    const state = await page.evaluate(() => ({
+      sourceControlText: document.querySelector('[data-ide-source-control-view]')?.textContent?.slice(0, 1200) ?? null,
+      branchText: document.querySelector('[data-ide-source-control-branch]')?.textContent ?? null,
+      workbenchText: document.querySelector('[data-ide-workbench]')?.textContent?.slice(0, 1600) ?? null,
+      url: location.href,
+    })).catch(() => ({}));
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\nstate=${JSON.stringify(state)}`);
   } finally {
     await browser.close();
-    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    if (!runnerTempDir) {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true, maxRetries: 1, retryDelay: 100 });
+    }
   }
 }
 
