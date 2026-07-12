@@ -8,6 +8,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
   readSync,
   realpathSync,
   renameSync,
@@ -16,7 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
@@ -72,6 +73,49 @@ export function runtimePaths(rootDir, mode) {
     frontendLog: join(logDir, "frontend.log"),
     envFile: join(runtimeDir, mode === "fresh" ? "runtime.env" : "ports.env"),
   };
+}
+
+export function knownWorkspaceRoots(rootDir) {
+  const currentRoot = resolvedRoot(rootDir);
+  const parent = dirname(currentRoot);
+  const mainRoot = basename(parent) === ".worktrees"
+    ? resolvedRoot(dirname(parent))
+    : currentRoot;
+  const roots = [mainRoot];
+  if (currentRoot !== mainRoot) roots.push(currentRoot);
+  const worktreesDir = join(mainRoot, ".worktrees");
+  let entries = [];
+  try {
+    entries = readdirSync(worktreesDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => resolvedRoot(join(worktreesDir, entry.name)))
+      .sort();
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  for (const candidate of entries) {
+    if (!roots.includes(candidate)) roots.push(candidate);
+  }
+  return roots;
+}
+
+export async function stopKnownWorkspaceRuntimes(rootDir, dependencies = {}) {
+  const stopManagedProcessImpl = dependencies.stopManagedProcessImpl ?? stopManagedProcess;
+  const results = [];
+  for (const candidateRoot of knownWorkspaceRoots(rootDir)) {
+    for (const mode of ["restart", "fresh"]) {
+      const paths = runtimePaths(candidateRoot, mode);
+      for (const target of ["frontend", "backend"]) {
+        results.push(await stopManagedProcessImpl({
+          pidFile: target === "backend" ? paths.backendPid : paths.frontendPid,
+          target,
+          mode,
+          resolvedRoot: candidateRoot,
+        }));
+      }
+    }
+  }
+  return results;
 }
 
 function ensureRuntime(paths) {
@@ -785,15 +829,8 @@ export async function refresh(mode, options = {}) {
     throwIfAborted(abortController.signal);
     console.log("Refreshing Tracevane " + (mode === "fresh" ? "canonical" : "development") + " runtime");
 
-    for (const target of ["frontend", "backend"]) {
-      throwIfAborted(abortController.signal);
-      await stopManagedProcessImpl({
-        pidFile: target === "backend" ? paths.backendPid : paths.frontendPid,
-        target,
-        mode,
-        resolvedRoot: rootDir,
-      });
-    }
+    throwIfAborted(abortController.signal);
+    await stopKnownWorkspaceRuntimes(rootDir, { stopManagedProcessImpl });
 
     throwIfAborted(abortController.signal);
     if (!await portIsFreeImpl(config.frontendPort)) {

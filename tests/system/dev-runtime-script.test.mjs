@@ -952,6 +952,35 @@ test("restart and fresh preserve their default port contracts", () => {
   });
 });
 
+test("restart takeover stops owned runtimes across the main workspace and sibling worktrees", async () => {
+  const mainRoot = tempRoot();
+  const currentRoot = join(mainRoot, ".worktrees", "current");
+  const siblingRoot = join(mainRoot, ".worktrees", "sibling");
+  mkdirSync(currentRoot, { recursive: true });
+  mkdirSync(siblingRoot, { recursive: true });
+  const calls = [];
+  try {
+    const roots = runtime.knownWorkspaceRoots(currentRoot);
+    assert.deepEqual(roots, [resolve(mainRoot), resolve(currentRoot), resolve(siblingRoot)]);
+    await runtime.stopKnownWorkspaceRuntimes(currentRoot, {
+      stopManagedProcessImpl: async (expected) => {
+        calls.push([expected.resolvedRoot, expected.mode, expected.target]);
+        return { status: "missing" };
+      },
+    });
+    assert.equal(calls.length, 12);
+    for (const root of roots) {
+      for (const mode of ["restart", "fresh"]) {
+        for (const target of ["frontend", "backend"]) {
+          assert.ok(calls.some((entry) => entry[0] === root && entry[1] === mode && entry[2] === target));
+        }
+      }
+    }
+  } finally {
+    rmSync(mainRoot, { recursive: true, force: true });
+  }
+});
+
 test("npm and supervisor arguments preserve CJK, spaces, and port tokens without a shell", () => {
   const root = resolve("C:/工作区/Tracevane 路径 & more");
   const npmCli = resolve("C:/Node 工具/npm cli.js");
