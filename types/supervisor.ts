@@ -2,7 +2,7 @@ export type TracevaneSupervisorKind = "systemd-user" | "launchd-user" | "schedul
 export type TracevaneServiceMode = "session" | "persistent";
 export type TracevaneServiceState = "not-installed" | "stopped" | "starting" | "running" | "degraded" | "failed" | "stale-config" | "unknown";
 export type TracevaneServiceAction = "preview" | "install" | "ensure-running" | "start" | "stop" | "restart" | "repair" | "uninstall" | "status";
-export type TracevaneSupervisorErrorCode = "task-not-found" | "permission-denied" | "command-not-found" | "command-timeout" | "template-invalid" | "runtime-not-ready" | "stale-config" | "unsupported-platform" | "unknown";
+export type TracevaneSupervisorErrorCode = "task-not-found" | "permission-denied" | "command-not-found" | "command-timeout" | "template-invalid" | "address-in-use" | "runtime-not-ready" | "stale-config" | "unsupported-platform" | "unknown";
 
 export interface TracevaneServiceManagerStatus {
   mode: TracevaneServiceMode;

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -48,6 +49,40 @@ async function waitForFilePattern(filePath, pattern, timeoutMs = 5000) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error(`Timed out waiting for ${pattern} in ${filePath}`);
+}
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+async function waitForProcessExit(pid, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    if (!processIsAlive(pid)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for fixture process ${pid} to exit`);
+}
+
+function stopFixtureProcess(pid) {
+  if (!Number.isInteger(pid) || pid <= 0 || !processIsAlive(pid)) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    return;
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // best-effort fixture cleanup
+  }
 }
 
 function baseTurnRequest(root, agent, nativeCommand = null, extra = {}) {
@@ -874,6 +909,84 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
   } finally {
     process.env.PATH = originalPath;
     delete process.env.TRACEVANE_TEST_CAPTURE;
+  }
+});
+
+test("Channel Connectors Claude persistent session dispose removes its descendant tree", async (t) => {
+  const root = makeTempRoot();
+  const fakeBin = path.join(root, "持久 Claude bin");
+  const leaderPidPath = path.join(root, "claude-leader.pid");
+  const descendantPidPath = path.join(root, "claude-descendant.pid");
+  const descendantPath = path.join(root, "claude-descendant.cjs");
+  let leaderPid = 0;
+  let descendantPid = 0;
+  t.after(() => {
+    stopFixtureProcess(leaderPid);
+    stopFixtureProcess(descendantPid);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  fs.writeFileSync(
+    descendantPath,
+    "process.on('SIGTERM', () => {});\nsetInterval(() => {}, 1000);\n",
+    "utf8",
+  );
+  writeExecutable(path.join(fakeBin, "claude"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const { spawn } = require('node:child_process');",
+    "fs.writeFileSync(process.env.TRACEVANE_TEST_CLAUDE_LEADER_PID, String(process.pid));",
+    "const descendant = spawn(process.execPath, [process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PATH], { stdio: 'ignore' });",
+    "fs.writeFileSync(process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PID, String(descendant.pid));",
+    "process.stdout.write(JSON.stringify({ type: 'system', session_id: 'claude-tree-session' }) + '\\n');",
+    "process.stdin.resume();",
+    "setInterval(() => {}, 1000);",
+  ]);
+
+  const originalPath = process.env.PATH || "";
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
+  process.env.TRACEVANE_TEST_CLAUDE_LEADER_PID = leaderPidPath;
+  process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PID = descendantPidPath;
+  process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PATH = descendantPath;
+  try {
+    const factory = createNativeCliSessionDriverFactory({
+      codexFactory: {
+        create: () => {
+          throw new Error("codex factory should not be used");
+        },
+      },
+    });
+    const key = { ...baseKey, agent: "claude-code", model: "sonnet", workDir: root };
+    const session = await factory.create({
+      key,
+      poolKey: channelConnectorAgentSessionDriverPoolKey(key),
+      turnInput: {
+        mode: "persistent",
+        key,
+        messageId: "claude-tree-message",
+        agentTurnRequest: baseTurnRequest(root, "claude-code"),
+        runOneShot: async () => completedResult("unused"),
+      },
+    });
+    await waitForFilePattern(leaderPidPath, /^\d+$/);
+    await waitForFilePattern(descendantPidPath, /^\d+$/);
+    leaderPid = Number(fs.readFileSync(leaderPidPath, "utf8"));
+    descendantPid = Number(fs.readFileSync(descendantPidPath, "utf8"));
+    assert.equal(processIsAlive(leaderPid), true);
+    assert.equal(processIsAlive(descendantPid), true);
+
+    session.dispose("test-complete");
+    await Promise.all([
+      waitForProcessExit(leaderPid),
+      waitForProcessExit(descendantPid),
+    ]);
+
+    assert.equal(processIsAlive(leaderPid), false);
+    assert.equal(processIsAlive(descendantPid), false);
+  } finally {
+    process.env.PATH = originalPath;
+    delete process.env.TRACEVANE_TEST_CLAUDE_LEADER_PID;
+    delete process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PID;
+    delete process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PATH;
   }
 });
 

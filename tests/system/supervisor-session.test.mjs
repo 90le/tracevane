@@ -31,6 +31,11 @@ function fixtureDefinition(root, options = {}) {
       "  const count = fs.existsSync(statePath) ? Number(fs.readFileSync(statePath, 'utf8')) : 0;",
       "  fs.writeFileSync(statePath, String(count + 1), 'utf8');",
       "  setTimeout(() => process.exit(24), 20);",
+      "} else if (mode === 'address-in-use') {",
+      "  const count = fs.existsSync(statePath) ? Number(fs.readFileSync(statePath, 'utf8')) : 0;",
+      "  fs.writeFileSync(statePath, String(count + 1), 'utf8');",
+      "  console.error('listen EADDRINUSE: address already in use 127.0.0.1:18796');",
+      "  setTimeout(() => process.exit(1), 20);",
       "} else if (mode === 'tree') {",
       "  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
       "  fs.writeFileSync(statePath, String(child.pid), 'utf8');",
@@ -405,6 +410,31 @@ test("restart budget exhaustion reaches failed without an infinite timer", async
     assert.equal(failed.restartCount, 2);
     assert.equal(failed.errorCode, "runtime-not-ready");
     assert.equal(fs.readFileSync(counterPath, "utf8"), "3");
+  } finally {
+    await supervisor.dispose();
+    await removeRoot(root);
+  }
+});
+
+test("address-in-use exits surface a stable error without restart churn", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-session-address-in-use-"));
+  const counterPath = path.join(root, "count.txt");
+  const supervisor = createSessionSupervisor({
+    restartDelayMs: 15,
+    maxRestarts: 3,
+  });
+  try {
+    await supervisor.start(
+      fixtureDefinition(root, { args: ["address-in-use", counterPath] }),
+    );
+    const failed = await waitFor(async () => {
+      const status = await supervisor.status("model-gateway");
+      return status.state === "failed" ? status : null;
+    });
+    assert.equal(failed.active, false);
+    assert.equal(failed.restartCount, 0);
+    assert.equal(failed.errorCode, "address-in-use");
+    assert.equal(fs.readFileSync(counterPath, "utf8"), "1");
   } finally {
     await supervisor.dispose();
     await removeRoot(root);

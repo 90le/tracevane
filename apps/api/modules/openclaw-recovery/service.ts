@@ -41,7 +41,10 @@ import {
   createOpenClawRecoveryServiceDefinition,
 } from "./supervisor.js";
 import { captureOpenClawRecoveryInstallManifest } from "./cli-bootstrap.js";
-import { resolveRecoveryHome } from "./paths.js";
+import {
+  resolveOpenClawRecoveryPaths,
+  resolveRecoveryHome,
+} from "./paths.js";
 import { probeOpenClawGateway } from "./probe.js";
 import {
   createServiceManager,
@@ -98,6 +101,76 @@ export interface OpenClawRecoveryServiceOptions {
   homeDir?: string;
   controlPort?: number;
   daemonServiceManager?: ServiceManager;
+}
+
+export interface OpenClawRecoveryReadinessProbeOptions {
+  fetchImpl?: typeof fetch;
+  runtimePath?: string;
+  timeoutMs?: number;
+  requestTimeoutMs?: number;
+  pollIntervalMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export function createOpenClawRecoveryReadinessProbe(
+  options: OpenClawRecoveryReadinessProbeOptions = {},
+): (url: string, expectedPid?: number | null) => Promise<boolean> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = Math.max(0, options.timeoutMs ?? 8_000);
+  const requestTimeoutMs = Math.max(1, options.requestTimeoutMs ?? 1_000);
+  const pollIntervalMs = Math.max(1, options.pollIntervalMs ?? 75);
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  const runtimeMatches = (expectedPid: number): boolean => {
+    if (!options.runtimePath) return false;
+    try {
+      const value = JSON.parse(fs.readFileSync(options.runtimePath, "utf8")) as {
+        version?: unknown;
+        pid?: unknown;
+      };
+      return value.version === 1 && value.pid === expectedPid;
+    } catch {
+      return false;
+    }
+  };
+
+  return async (url, expectedPid) => {
+    const sessionOwned = expectedPid !== undefined && expectedPid !== null;
+    if (sessionOwned && (!Number.isInteger(expectedPid) || expectedPid <= 0)) {
+      return false;
+    }
+    const deadline = now() + timeoutMs;
+    while (now() < deadline) {
+      const remaining = deadline - now();
+      try {
+        const response = await fetchImpl(url, {
+          signal: AbortSignal.timeout(Math.min(requestTimeoutMs, remaining)),
+        });
+        try {
+          if (
+            response.ok &&
+            (!sessionOwned || runtimeMatches(expectedPid))
+          ) return true;
+        } finally {
+          try {
+            await response.body?.cancel();
+          } catch {
+            // Readiness needs only the status; cancellation is best-effort.
+          }
+        }
+      } catch {
+        // A native supervisor may return before the daemon starts listening.
+      }
+
+      const retryRemaining = deadline - now();
+      if (retryRemaining <= 0) break;
+      await sleep(Math.min(pollIntervalMs, retryRemaining));
+    }
+    return false;
+  };
 }
 
 function findBackupPath(
@@ -262,6 +335,9 @@ export function createOpenClawRecoveryService(
   const daemonServiceManager = options.daemonServiceManager
     ?? createServiceManager({
       homeDir,
+      probe: createOpenClawRecoveryReadinessProbe({
+        runtimePath: resolveOpenClawRecoveryPaths(config).runtimePath,
+      }),
       redact: [...new Set(
         Object.entries(process.env)
           .filter(([key, value]) =>

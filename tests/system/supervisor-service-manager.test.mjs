@@ -255,15 +255,69 @@ test("session start ensure-running and restart require the shared health readine
           ? [
               ["stop", "model-gateway"],
               ["start", "model-gateway"],
+              ["status", "model-gateway"],
               ["stop", "model-gateway"],
             ]
-          : [["start", "model-gateway"], ["stop", "model-gateway"]],
+          : [
+              ["start", "model-gateway"],
+              ["status", "model-gateway"],
+              ["stop", "model-gateway"],
+            ],
         action,
       );
     } finally {
       await manager.dispose();
       fs.rmSync(root, { recursive: true, force: true });
     }
+  }
+});
+
+test("session readiness preserves an address-in-use child failure", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-session-address-in-use-"));
+  let statusChecks = 0;
+  const { calls, session } = createFakeSession({
+    onStatus: (_serviceId, current) => {
+      statusChecks += 1;
+      return statusChecks === 1
+        ? sessionStatus({
+            active: false,
+            state: "failed",
+            errorCode: "address-in-use",
+            errorMessage: "Service address is already in use.",
+          })
+        : current;
+    },
+  });
+  const manager = createServiceManager({
+    platform: "win32",
+    homeDir: root,
+    session,
+    runner: async () => assert.fail("missing persistent target must not run commands"),
+    probe: async () => false,
+  });
+
+  try {
+    const response = await manager.manage(fixtureDefinition(root), {
+      action: "start",
+      mode: "session",
+      apply: true,
+    });
+    assert.equal(response.ok, false);
+    assert.equal(response.manager.state, "failed");
+    assert.equal(response.manager.active, false);
+    assert.equal(response.manager.errorCode, "address-in-use");
+    assert.equal(
+      response.manager.errorMessage,
+      "Service address is already in use by another process.",
+    );
+    assert.deepEqual(calls, [
+      ["start", "model-gateway"],
+      ["status", "model-gateway"],
+      ["stop", "model-gateway"],
+    ]);
+  } finally {
+    await manager.dispose();
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -484,6 +538,7 @@ test("session readiness reports unconfirmed cleanup without hiding residual owne
       }
       assert.deepEqual(calls, [
         ["start", "model-gateway"],
+        ["status", "model-gateway"],
         ["stop", "model-gateway"],
       ]);
     } finally {
@@ -1075,6 +1130,109 @@ test("launchd install normalizes exact bootout exit 3 and executes one closed st
   }
 });
 
+test("launchd stopped service remains installed and start bootstraps it again", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-launchd-restart-"));
+  const definition = fixtureDefinition(root);
+  const commandCalls = [];
+  const { session } = createFakeSession();
+  let loaded = false;
+  const manager = createServiceManager({
+    platform: "darwin",
+    homeDir: root,
+    session,
+    runner: async (command) => {
+      commandCalls.push(command);
+      const operation = command.args[0];
+      if (operation === "print") {
+        return loaded
+          ? commandResult(command)
+          : commandResult(command, {
+              ok: false,
+              exitCode: 113,
+              stderr: "找不到服务",
+              errorCode: "unknown",
+              errorMessage: "Supervisor command failed.",
+            });
+      }
+      if (operation === "bootout") {
+        if (!loaded) {
+          return commandResult(command, {
+            ok: false,
+            exitCode: 3,
+            stderr: "未找到服务",
+            errorCode: "unknown",
+            errorMessage: "Supervisor command failed.",
+          });
+        }
+        loaded = false;
+        return commandResult(command);
+      }
+      if (operation === "bootstrap" || operation === "kickstart") {
+        loaded = true;
+      }
+      return commandResult(command);
+    },
+    probe: async () => loaded,
+  });
+
+  try {
+    const installed = await manager.manage(definition, {
+      action: "install",
+      mode: "persistent",
+      apply: true,
+    });
+    assert.equal(installed.ok, true);
+
+    const stopped = await manager.manage(definition, {
+      action: "stop",
+      mode: "persistent",
+      apply: true,
+    });
+    assert.equal(stopped.ok, true);
+
+    const status = await manager.manage(definition, {
+      action: "status",
+      mode: "persistent",
+      apply: true,
+    });
+    assert.deepEqual(
+      {
+        ok: status.ok,
+        installed: status.manager.installed,
+        active: status.manager.active,
+        state: status.manager.state,
+        errorCode: status.manager.errorCode,
+      },
+      {
+        ok: true,
+        installed: true,
+        active: false,
+        state: "stopped",
+        errorCode: null,
+      },
+    );
+
+    commandCalls.length = 0;
+    const started = await manager.manage(definition, {
+      action: "start",
+      mode: "persistent",
+      apply: true,
+    });
+    assert.equal(started.ok, true);
+    assert.equal(started.manager.state, "running");
+    assert.deepEqual(commandCalls.map(({ args }) => args[0]), [
+      "print",
+      "bootout",
+      "bootstrap",
+      "enable",
+      "kickstart",
+    ]);
+  } finally {
+    await manager.dispose();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("systemd status classifies only exact machine tokens", async () => {
   const scenarios = [
     {
@@ -1167,7 +1325,7 @@ test("systemd status classifies only exact machine tokens", async () => {
   }
 });
 
-test("Windows and launchd status ignore localized prose and launchd uses a fixed absence exit", async () => {
+test("Windows and launchd status ignore localized prose and launchd uses a fixed unloaded exit", async () => {
   for (const scenario of [
     {
       platform: "win32",
@@ -1192,11 +1350,12 @@ test("Windows and launchd status ignore localized prose and launchd uses a fixed
         errorMessage: "Supervisor command failed.",
       },
       expected: {
-        installed: false,
+        installed: true,
         active: false,
-        state: "not-installed",
-        errorCode: "task-not-found",
+        state: "stopped",
+        errorCode: null,
       },
+      expectedOk: true,
       expectedProbes: 0,
     },
   ]) {
@@ -1243,7 +1402,7 @@ test("Windows and launchd status ignore localized prose and launchd uses a fixed
         scenario.expected,
         `${scenario.platform}:${scenario.result.exitCode}`,
       );
-      assert.equal(response.ok, false);
+      assert.equal(response.ok, scenario.expectedOk ?? false);
       assert.deepEqual(commandCalls, plan.commands.status);
       assert.equal(probes, scenario.expectedProbes);
       assert.equal(response.templateWritten, false);

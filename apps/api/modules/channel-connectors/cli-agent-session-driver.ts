@@ -240,6 +240,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
   private stdoutBuffer = "";
   private sessionId: string | null;
   private closed = false;
+  private termination: Promise<string> | null = null;
   private activeTurn: PendingClaudeTurn | null = null;
   private readonly pendingToolNamesById = new Map<string, string>();
   private latestToolName: string | null = null;
@@ -264,6 +265,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
       : Math.max(Number(input.requestTimeoutMs) || 10_000, 10 * 60_000);
     this.child = crossSpawn.spawn(processRequest.command, processRequest.args, {
       cwd: processRequest.cwd,
+      detached: process.platform !== "win32",
       env: {
         ...process.env,
         ...processRequest.env,
@@ -331,7 +333,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
 
   stop(reason: string): void {
     this.cancelActive(reason || "manual-stop");
-    if (!this.child.killed) terminateChannelConnectorAgentChild(this.child, "SIGTERM");
+    this.terminateChild();
   }
 
   dispose(reason: string): void {
@@ -341,8 +343,17 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
       // best effort
     }
     setTimeout(() => {
-      if (!this.child.killed) terminateChannelConnectorAgentChild(this.child, "SIGTERM");
+      this.terminateChild();
     }, reason === "idle-timeout" ? 250 : 0).unref();
+  }
+
+  private terminateChild(): void {
+    if (
+      this.termination
+      || this.child.exitCode !== null
+      || this.child.signalCode !== null
+    ) return;
+    this.termination = terminateChannelConnectorAgentChild(this.child, "SIGTERM");
   }
 
   private handleStdout(chunk: string): void {

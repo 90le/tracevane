@@ -1,5 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import crossSpawn from "cross-spawn";
 import type { ChannelConnectorPermissionMode } from "../../../../types/channel-connectors.js";
+import { terminateOwnedProcessTree } from "../../core/owned-command.js";
 import {
   buildChannelConnectorAgentProcessRequest,
   cleanupChannelConnectorAgentProcessRequest,
@@ -358,15 +360,19 @@ export class JsonLineCodexAppServerTransport implements CodexAppServerTransport 
   private buffer = "";
   private messageCallbacks: Array<(message: Record<string, unknown>) => void> = [];
   private closeCallbacks: Array<(error: Error | null) => void> = [];
+  private closing = false;
 
   constructor(input: { command?: string; args?: string[]; cwd: string; env?: Record<string, string> }) {
-    this.child = spawn(input.command || "codex", input.args || ["app-server", "--stdio"], {
+    this.child = crossSpawn.spawn(input.command || "codex", input.args || ["app-server", "--stdio"], {
       cwd: input.cwd,
+      detached: process.platform !== "win32",
       env: {
         ...process.env,
         ...(input.env || {}),
       },
+      shell: false,
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     });
     this.child.stdout.setEncoding("utf8");
     this.child.stdout.on("data", (chunk) => {
@@ -399,8 +405,21 @@ export class JsonLineCodexAppServerTransport implements CodexAppServerTransport 
     this.child.stdin.write(`${JSON.stringify(message)}\n`);
   }
 
-  close(reason: string): void {
-    if (!this.child.killed) this.child.kill(reason === "dispose" ? "SIGTERM" : "SIGTERM");
+  close(_reason: string): void {
+    if (this.closing) return;
+    this.closing = true;
+    if (this.child.exitCode !== null || this.child.signalCode !== null) return;
+    void terminateOwnedProcessTree(this.child).then(
+      (cleanupError) => {
+        if (!cleanupError) return;
+        const error = new Error(`Codex app-server cleanup failed: ${cleanupError}`);
+        this.closeCallbacks.forEach((callback) => callback(error));
+      },
+      (error) => {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        this.closeCallbacks.forEach((callback) => callback(failure));
+      },
+    );
   }
 
   onMessage(callback: (message: Record<string, unknown>) => void): void {

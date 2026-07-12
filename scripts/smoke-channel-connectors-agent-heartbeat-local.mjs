@@ -8,7 +8,7 @@ import {
   defaultChannelConnectorAgentProcessRunner,
 } from "../dist/apps/api/modules/channel-connectors/agent-runner.js";
 
-const CLI_HEARTBEAT_AGENTS = ["codex", "claude-code", "opencode"];
+const CLI_HEARTBEAT_AGENTS = ["codex", "claude-code", "opencode", "gemini"];
 const HEARTBEAT_INTERVAL_MS = 80;
 const HEARTBEAT_TIMEOUT_MS = 900;
 const IDLE_REPLACES_TOTAL_TIMEOUT_MS = 80;
@@ -44,12 +44,12 @@ function printHelp() {
 
 Runs a local-only Channel Connectors process-runner heartbeat matrix. It uses
 synthetic child Node processes instead of real IM channels, Gateway requests,
-or Codex/Claude/OpenCode binaries.
+or Codex/Claude/OpenCode/Gemini binaries.
 
 Checks:
-  - Codex / Claude Code / OpenCode stderr CR-only TUI heartbeat keeps runs alive
-  - Codex / Claude Code / OpenCode stdout activity keeps runs alive
-  - Codex / Claude Code / OpenCode async child-task TUI status uses bounded idle grace
+  - Codex / Claude Code / OpenCode / Gemini stderr CR-only TUI heartbeat keeps runs alive
+  - Codex / Claude Code / OpenCode / Gemini stdout activity keeps runs alive
+  - Codex / Claude Code / OpenCode / Gemini async child-task TUI status uses bounded idle grace
   - heartbeat-only CLI output emits process/heartbeat-stall diagnostics
   - idleTimeoutMs replaces the old total timeout for CLI heartbeat agents
   - silent CLI agents fail with process/heartbeat-timeout
@@ -85,6 +85,12 @@ function completionLines(agent, text) {
   if (agent === "claude-code") {
     return [
       JSON.stringify({ type: "result", result: text, session_id: `${agent}-heartbeat-local` }),
+    ];
+  }
+  if (agent === "gemini") {
+    return [
+      JSON.stringify({ type: "message", role: "assistant", content: text }),
+      JSON.stringify({ type: "result", status: "success", response: text }),
     ];
   }
   return [
@@ -316,8 +322,8 @@ function buildCases() {
     });
   }
   cases.push({
-    name: "gemini:fixed-timeout-unchanged",
-    agent: "gemini",
+    name: "kimi:fixed-timeout-unchanged",
+    agent: "kimi",
     timeoutMs: NON_RUNTIME_TIMEOUT_MS,
     idleTimeoutMs: 1200,
     script: nonRuntimeActivityScript(),

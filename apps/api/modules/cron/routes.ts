@@ -22,9 +22,9 @@ function sendCronError(res: Parameters<typeof sendJson>[0], error: unknown): voi
 }
 
 export function registerCronRoutes(router: TracevaneRouter, ctx: TracevaneApiContext): void {
-  router.get('/api/cron', (_req, res) => {
+  router.get('/api/cron', async (_req, res) => {
     try {
-      sendJson(res, 200, ctx.services.cron.getSummary());
+      sendJson(res, 200, await ctx.services.cron.getSummary());
     } catch (error) {
       sendCronError(res, error);
     }
@@ -33,15 +33,15 @@ export function registerCronRoutes(router: TracevaneRouter, ctx: TracevaneApiCon
   router.post('/api/cron', async (req, res) => {
     try {
       const payload = await parseJsonBody<CronJobInput>(req);
-      sendJson(res, 201, ctx.services.cron.createJob(payload));
+      sendJson(res, 201, await ctx.services.cron.createJob(payload));
     } catch (error) {
       sendCronError(res, error);
     }
   });
 
-  router.get('/api/cron/:id', (_req, res, routeCtx, params) => {
+  router.get('/api/cron/:id', async (_req, res, routeCtx, params) => {
     try {
-      const detail = routeCtx.services.cron.getDetail(params.id);
+      const detail = await routeCtx.services.cron.getDetail(params.id);
       if (!detail) {
         sendJson(res, 404, {
           error: 'cron_job_not_found',
@@ -58,15 +58,15 @@ export function registerCronRoutes(router: TracevaneRouter, ctx: TracevaneApiCon
   router.put('/api/cron/:id', async (req, res, routeCtx, params) => {
     try {
       const payload = await parseJsonBody<CronJobInput>(req);
-      sendJson(res, 200, routeCtx.services.cron.updateJob(params.id, payload));
+      sendJson(res, 200, await routeCtx.services.cron.updateJob(params.id, payload));
     } catch (error) {
       sendCronError(res, error);
     }
   });
 
-  router.delete('/api/cron/:id', (_req, res, routeCtx, params) => {
+  router.delete('/api/cron/:id', async (_req, res, routeCtx, params) => {
     try {
-      sendJson(res, 200, routeCtx.services.cron.deleteJob(params.id));
+      sendJson(res, 200, await routeCtx.services.cron.deleteJob(params.id));
     } catch (error) {
       sendCronError(res, error);
     }
@@ -75,7 +75,7 @@ export function registerCronRoutes(router: TracevaneRouter, ctx: TracevaneApiCon
   router.post('/api/cron/:id/toggle', async (req, res, routeCtx, params) => {
     try {
       const payload = await parseJsonBody<{ enabled?: boolean }>(req);
-      sendJson(res, 200, routeCtx.services.cron.toggleJob(params.id, payload.enabled !== false));
+      sendJson(res, 200, await routeCtx.services.cron.toggleJob(params.id, payload.enabled !== false));
     } catch (error) {
       sendCronError(res, error);
     }

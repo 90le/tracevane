@@ -1,8 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { execFile, execFileSync } from "node:child_process";
-import { promisify } from "node:util";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   CronAgentOption,
@@ -23,6 +21,7 @@ import type {
   CronSummaryPayload,
   CronTargetOption,
 } from "../../../../types/cron.js";
+import { runOwnedCommand } from "../../core/owned-command.js";
 import {
   ensureDir,
   listDirectories,
@@ -30,8 +29,6 @@ import {
   readOpenClawConfig,
   writeJsonFile,
 } from "../../core/state.js";
-
-const execFileAsync = promisify(execFile);
 
 interface CronServiceErrorShape {
   statusCode: number;
@@ -604,13 +601,20 @@ function readRunHistory(
   }
 }
 
-function readLiveCronStatus(): CronSchedulerSummary["live"] {
+async function readLiveCronStatus(): Promise<CronSchedulerSummary["live"]> {
   try {
-    const stdout = execFileSync("openclaw", ["cron", "status", "--json"], {
-      timeout: 1500,
-      maxBuffer: 1024 * 1024,
-      encoding: "utf-8",
+    const result = await runOwnedCommand("openclaw", ["cron", "status", "--json"], {
+      timeoutMs: 1_500,
+      maxOutputBytes: 1024 * 1024,
     });
+    if (!result.ok) {
+      throw new Error(
+        result.stderr.trim()
+          || result.error
+          || `OpenClaw cron status exited with ${result.signal || String(result.status ?? "unknown status")}`,
+      );
+    }
+    const stdout = result.stdout;
     const parsed = JSON.parse(stdout.trim());
     return {
       source: "cli",
@@ -630,11 +634,11 @@ function readLiveCronStatus(): CronSchedulerSummary["live"] {
   }
 }
 
-function buildSchedulerSummary(
+async function buildSchedulerSummary(
   config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   storePath: string,
-): CronSchedulerSummary {
+): Promise<CronSchedulerSummary> {
   const runLog =
     openclawConfig.cron?.runLog &&
     typeof openclawConfig.cron.runLog === "object"
@@ -644,7 +648,7 @@ function buildSchedulerSummary(
     openclawConfig.cron && typeof openclawConfig.cron === "object"
       ? (openclawConfig.cron as Record<string, any>)
       : {};
-  const live = readLiveCronStatus();
+  const live = await readLiveCronStatus();
   return {
     enabled: cronConfig.enabled !== false,
     storePath,
@@ -671,10 +675,10 @@ function buildSchedulerSummary(
   };
 }
 
-function buildSummary(config: TracevaneServerConfig): CronSummaryPayload {
+async function buildSummary(config: TracevaneServerConfig): Promise<CronSummaryPayload> {
   const openclawConfig = readOpenClawConfig(config);
   const storePath = resolveCronStorePath(config, openclawConfig);
-  const scheduler = buildSchedulerSummary(config, openclawConfig, storePath);
+  const scheduler = await buildSchedulerSummary(config, openclawConfig, storePath);
   const targets = buildCronTargets(config, openclawConfig);
   const store = readCronStore(storePath);
   const jobs = Array.isArray(store.jobs)
@@ -723,13 +727,13 @@ function getRawJob(
   return { openclawConfig, storePath, store, job: jobs[index], index };
 }
 
-function buildDetail(
+async function buildDetail(
   config: TracevaneServerConfig,
   jobId: string,
-): CronDetailPayload {
+): Promise<CronDetailPayload> {
   const openclawConfig = readOpenClawConfig(config);
   const storePath = resolveCronStorePath(config, openclawConfig);
-  const scheduler = buildSchedulerSummary(config, openclawConfig, storePath);
+  const scheduler = await buildSchedulerSummary(config, openclawConfig, storePath);
   const targets = buildCronTargets(config, openclawConfig);
   const store = readCronStore(storePath);
   const rawJobs = Array.isArray(store.jobs) ? store.jobs : [];
@@ -1026,10 +1030,19 @@ async function runCronJobByCli(
   jobId: string,
 ): Promise<{ success: boolean; output: string }> {
   try {
-    const result = await execFileAsync("openclaw", ["cron", "run", jobId], {
-      timeout: 30_000,
-      maxBuffer: 4 * 1024 * 1024,
+    const result = await runOwnedCommand("openclaw", ["cron", "run", jobId], {
+      timeoutMs: 30_000,
+      maxOutputBytes: 4 * 1024 * 1024,
     });
+    if (!result.ok) {
+      return {
+        success: false,
+        output: [result.stderr, result.stdout, result.error]
+          .filter(Boolean)
+          .join("\n")
+          .trim(),
+      };
+    }
     return {
       success: true,
       output: [result.stdout, result.stderr].filter(Boolean).join("\n").trim(),
@@ -1051,24 +1064,24 @@ async function runCronJobByCli(
 }
 
 export interface CronService {
-  getSummary(): CronSummaryPayload;
-  getDetail(jobId: string): CronDetailPayload | null;
-  createJob(input: CronJobInput): CronMutationResponse;
-  updateJob(jobId: string, input: CronJobInput): CronMutationResponse;
-  deleteJob(jobId: string): CronMutationResponse;
-  toggleJob(jobId: string, enabled: boolean): CronMutationResponse;
+  getSummary(): Promise<CronSummaryPayload>;
+  getDetail(jobId: string): Promise<CronDetailPayload | null>;
+  createJob(input: CronJobInput): Promise<CronMutationResponse>;
+  updateJob(jobId: string, input: CronJobInput): Promise<CronMutationResponse>;
+  deleteJob(jobId: string): Promise<CronMutationResponse>;
+  toggleJob(jobId: string, enabled: boolean): Promise<CronMutationResponse>;
   runJob(jobId: string): Promise<CronRunResponse>;
 }
 
 export function createCronService(config: TracevaneServerConfig): CronService {
   return {
-    getSummary(): CronSummaryPayload {
+    async getSummary(): Promise<CronSummaryPayload> {
       return buildSummary(config);
     },
 
-    getDetail(jobId: string): CronDetailPayload | null {
+    async getDetail(jobId: string): Promise<CronDetailPayload | null> {
       try {
-        return buildDetail(config, jobId);
+        return await buildDetail(config, jobId);
       } catch (error) {
         if (error instanceof CronServiceError && error.statusCode === 404)
           return null;
@@ -1076,7 +1089,7 @@ export function createCronService(config: TracevaneServerConfig): CronService {
       }
     },
 
-    createJob(input: CronJobInput): CronMutationResponse {
+    async createJob(input: CronJobInput): Promise<CronMutationResponse> {
       const openclawConfig = readOpenClawConfig(config);
       const storePath = resolveCronStorePath(config, openclawConfig);
       const store = readCronStore(storePath);
@@ -1093,12 +1106,12 @@ export function createCronService(config: TracevaneServerConfig): CronService {
         checkedAt: new Date().toISOString(),
         success: true,
         message: `Cron job '${nextJob.name}' created`,
-        summary: buildSummary(config),
-        detail: buildDetail(config, id),
+        summary: await buildSummary(config),
+        detail: await buildDetail(config, id),
       };
     },
 
-    updateJob(jobId: string, input: CronJobInput): CronMutationResponse {
+    async updateJob(jobId: string, input: CronJobInput): Promise<CronMutationResponse> {
       const { openclawConfig, storePath, store, job, index } = getRawJob(
         config,
         jobId,
@@ -1112,12 +1125,12 @@ export function createCronService(config: TracevaneServerConfig): CronService {
         checkedAt: new Date().toISOString(),
         success: true,
         message: `Cron job '${jobId}' updated`,
-        summary: buildSummary(config),
-        detail: buildDetail(config, jobId),
+        summary: await buildSummary(config),
+        detail: await buildDetail(config, jobId),
       };
     },
 
-    deleteJob(jobId: string): CronMutationResponse {
+    async deleteJob(jobId: string): Promise<CronMutationResponse> {
       const { storePath, store, index } = getRawJob(config, jobId);
       const jobs = Array.isArray(store.jobs) ? store.jobs : [];
       const removed = jobs[index];
@@ -1129,11 +1142,11 @@ export function createCronService(config: TracevaneServerConfig): CronService {
         checkedAt: new Date().toISOString(),
         success: true,
         message: `Cron job '${normalizeString(removed?.name, jobId)}' removed`,
-        summary: buildSummary(config),
+        summary: await buildSummary(config),
       };
     },
 
-    toggleJob(jobId: string, enabled: boolean): CronMutationResponse {
+    async toggleJob(jobId: string, enabled: boolean): Promise<CronMutationResponse> {
       const { storePath, store, index } = getRawJob(config, jobId);
       const jobs = Array.isArray(store.jobs) ? store.jobs : [];
       jobs[index].enabled = enabled;
@@ -1147,13 +1160,13 @@ export function createCronService(config: TracevaneServerConfig): CronService {
         message: enabled
           ? `Cron job '${jobId}' enabled`
           : `Cron job '${jobId}' disabled`,
-        summary: buildSummary(config),
-        detail: buildDetail(config, jobId),
+        summary: await buildSummary(config),
+        detail: await buildDetail(config, jobId),
       };
     },
 
     async runJob(jobId: string): Promise<CronRunResponse> {
-      const detail = this.getDetail(jobId);
+      const detail = await this.getDetail(jobId);
       if (!detail) {
         throw new CronServiceError(
           404,

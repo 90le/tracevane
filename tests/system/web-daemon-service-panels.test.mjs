@@ -345,6 +345,7 @@ test("supervisorErrorCopy maps every structured error to stable Chinese copy", (
     "command-not-found": "系统缺少所需的守护服务管理命令。",
     "command-timeout": "守护服务管理命令执行超时。",
     "template-invalid": "守护服务定义无效或无法写入。",
+    "address-in-use": "守护服务端口已被其他进程占用。",
     "runtime-not-ready": "守护进程未通过就绪检查。",
     "stale-config": "守护服务定义已过期，需要修复。",
     "unsupported-platform": "当前平台不支持此守护方式。",

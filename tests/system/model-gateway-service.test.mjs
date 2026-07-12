@@ -22,6 +22,7 @@ import {
   ModelGatewayServiceError,
   resolveModelGatewayPaths,
 } from "../../dist/apps/api/modules/model-gateway/service.js";
+import * as modelGatewayServiceModule from "../../dist/apps/api/modules/model-gateway/service.js";
 import { createModelGatewayDaemon } from "../../dist/apps/api/modules/model-gateway/daemon.js";
 import * as modelGatewaySupervisor from "../../dist/apps/api/modules/model-gateway/supervisor.js";
 import {
@@ -8723,6 +8724,134 @@ test("model gateway status separates embedded fallback from daemon lifecycle", a
   }
 });
 
+test("model gateway safely retries a transient Windows registry overwrite lock", {
+  skip: process.platform !== "win32" ? "Windows sharing violations are platform-specific" : false,
+}, async (t) => {
+  const root = makeTempRoot();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const service = createModelGatewayService(config);
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "locked-registry-provider",
+      name: "Locked Registry Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://api.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "locked-model",
+        models: [{ id: "locked-model" }],
+      },
+    },
+  });
+
+  const holder = spawn(process.execPath, [
+    "-e",
+    [
+      "const fs = require('node:fs');",
+      "const filePath = process.argv[1];",
+      "const fd = fs.openSync(filePath, 'r');",
+      "process.stdout.write('locked\\n');",
+      "setTimeout(() => { fs.closeSync(fd); process.exit(0); }, 350);",
+    ].join(""),
+    paths.registry,
+  ], {
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  t.after(() => {
+    if (holder.exitCode === null && holder.signalCode === null) holder.kill("SIGKILL");
+  });
+  await new Promise((resolve, reject) => {
+    holder.once("error", reject);
+    holder.once("exit", (code) => {
+      if (code !== null && code !== 0) reject(new Error(`lock holder exited with ${code}`));
+    });
+    holder.stdout.once("data", resolve);
+  });
+
+  service.setActiveProvider(undefined, {
+    scope: "codex",
+    providerId: "locked-registry-provider",
+  });
+  await new Promise((resolve, reject) => {
+    if (holder.exitCode !== null || holder.signalCode !== null) {
+      resolve();
+      return;
+    }
+    holder.once("error", reject);
+    holder.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`lock holder exited with ${code}`)));
+  });
+
+  const registry = JSON.parse(fs.readFileSync(paths.registry, "utf8"));
+  assert.equal(registry.activeProviders.codex, "locked-registry-provider");
+  assert.deepEqual(
+    fs.readdirSync(path.dirname(paths.registry)).filter((name) => name.startsWith(`${path.basename(paths.registry)}.tmp.`)),
+    [],
+  );
+});
+
+test("model gateway preserves the old registry and removes temp files when Windows replacement stays locked", {
+  skip: process.platform !== "win32" ? "Windows sharing violations are platform-specific" : false,
+}, async (t) => {
+  const root = makeTempRoot();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const service = createModelGatewayService(config);
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "persistently-locked-provider",
+      name: "Persistently Locked Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://api.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "locked-model",
+        models: [{ id: "locked-model" }],
+      },
+    },
+  });
+  const originalRegistry = fs.readFileSync(paths.registry, "utf8");
+
+  const holder = spawn(process.execPath, [
+    "-e",
+    [
+      "const fs = require('node:fs');",
+      "const fd = fs.openSync(process.argv[1], 'r');",
+      "process.stdout.write('locked\\n');",
+      "setTimeout(() => { fs.closeSync(fd); process.exit(0); }, 5000);",
+    ].join(""),
+    paths.registry,
+  ], {
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  t.after(() => {
+    if (holder.exitCode === null && holder.signalCode === null) holder.kill("SIGKILL");
+  });
+  await new Promise((resolve, reject) => {
+    holder.once("error", reject);
+    holder.stdout.once("data", resolve);
+  });
+
+  assert.throws(
+    () => service.setActiveProvider(undefined, {
+      scope: "codex",
+      providerId: "persistently-locked-provider",
+    }),
+    (error) => error?.code === "EPERM" || error?.code === "EACCES" || error?.code === "EBUSY",
+  );
+  assert.equal(fs.readFileSync(paths.registry, "utf8"), originalRegistry);
+  assert.deepEqual(
+    fs.readdirSync(path.dirname(paths.registry)).filter((name) => name.startsWith(`${path.basename(paths.registry)}.tmp.`)),
+    [],
+  );
+});
+
 test("model gateway daemon service defaults status to the API-owned session", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -8845,6 +8974,112 @@ test("model gateway daemon service defaults status to the API-owned session", as
     );
   }
   assert.equal(localManagerCalls, 0);
+});
+
+test("model gateway owned readiness waits for matching runtime metadata after HTTP becomes ready", async () => {
+  const root = makeTempRoot();
+  const runtimePath = path.join(root, "daemon-runtime.json");
+  let readinessChecks = 0;
+  const probe = modelGatewayServiceModule.createModelGatewayOwnedReadinessProbe({
+    runtimePath,
+    timeoutMs: 500,
+    pollIntervalMs: 20,
+    readinessChecker: async (endpoint) => {
+      readinessChecks += 1;
+      return { endpoint, ready: true, statusCode: 200, error: null };
+    },
+  });
+  const delayedRuntime = setTimeout(() => {
+    fs.writeFileSync(
+      runtimePath,
+      `${JSON.stringify({ version: 1, pid: process.pid })}\n`,
+      "utf8",
+    );
+  }, 60);
+
+  try {
+    assert.equal(
+      await probe("http://127.0.0.1:18796/status", process.pid),
+      true,
+    );
+    assert.ok(readinessChecks >= 2, "HTTP and runtime ownership should be checked together until both are ready");
+  } finally {
+    clearTimeout(delayedRuntime);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("model gateway owned readiness rejects missing runtime ownership at the absolute deadline", async () => {
+  const root = makeTempRoot();
+  const startedAt = Date.now();
+  let readinessChecks = 0;
+  const probe = modelGatewayServiceModule.createModelGatewayOwnedReadinessProbe({
+    runtimePath: path.join(root, "missing-runtime.json"),
+    timeoutMs: 80,
+    pollIntervalMs: 10,
+    readinessChecker: async (endpoint) => {
+      readinessChecks += 1;
+      return { endpoint, ready: true, statusCode: 200, error: null };
+    },
+  });
+
+  try {
+    assert.equal(
+      await probe("http://127.0.0.1:18796/status", process.pid),
+      false,
+    );
+    assert.ok(readinessChecks >= 2);
+    assert.ok(Date.now() - startedAt >= 60, "ownership must be allowed to converge before the deadline");
+    assert.ok(Date.now() - startedAt < 1_000, "ownership failure must remain bounded by the configured deadline");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("model gateway session rejects a healthy foreign endpoint without matching runtime ownership", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const daemonEntry = path.join(
+    config.projectRoot,
+    "dist",
+    "apps",
+    "api",
+    "model-gateway-daemon.js",
+  );
+  fs.mkdirSync(path.dirname(daemonEntry), { recursive: true });
+  fs.writeFileSync(daemonEntry, "setInterval(() => {}, 1_000);\n", "utf8");
+  const service = createModelGatewayService(config, {
+    homeDir: root,
+    daemonReadinessChecker: async (endpoint) => ({
+      endpoint,
+      ready: true,
+      statusCode: 200,
+      error: null,
+    }),
+  });
+
+  try {
+    const started = await service.manageDaemonService(undefined, {
+      action: "start",
+      mode: "session",
+      apply: true,
+    });
+
+    assert.equal(started.ok, false);
+    assert.equal(started.manager.active, null);
+    assert.equal(started.manager.state, "degraded");
+    assert.equal(started.manager.errorCode, "runtime-not-ready");
+    assert.equal(
+      fs.existsSync(resolveModelGatewayPaths(config).daemonRuntime),
+      false,
+    );
+  } finally {
+    await service.manageDaemonService(undefined, {
+      action: "stop",
+      mode: "session",
+      apply: true,
+    });
+  }
 });
 
 test("model gateway daemon service management exposes templates and guarded install", async () => {

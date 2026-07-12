@@ -1971,28 +1971,55 @@ function createEmptyRuntime(updatedAt = nowIso()): ModelGatewayRuntimeState {
   };
 }
 
-function writeJsonSecureAtomic(filePath: string, value: unknown): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  fs.writeFileSync(tmpPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-  fs.renameSync(tmpPath, filePath);
-  try {
-    fs.chmodSync(filePath, 0o600);
-  } catch {
-    // Best effort for filesystems that do not support chmod.
+const ATOMIC_REPLACE_RETRY_DELAYS_MS = [10, 25, 50, 100, 200, 400] as const;
+const ATOMIC_REPLACE_RETRY_CODES = new Set(["EACCES", "EBUSY", "EPERM"]);
+const ATOMIC_REPLACE_WAIT_ARRAY = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+
+function replaceFileAtomic(tmpPath: string, filePath: string): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      fs.renameSync(tmpPath, filePath);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code || "";
+      const delayMs = ATOMIC_REPLACE_RETRY_DELAYS_MS[attempt];
+      if (process.platform !== "win32" || !ATOMIC_REPLACE_RETRY_CODES.has(code) || delayMs === undefined) {
+        throw error;
+      }
+      // Windows can briefly deny replacement while another process holds a read
+      // handle (for example an antivirus scanner). Retrying the same rename keeps
+      // the old file intact until the atomic replacement succeeds.
+      Atomics.wait(ATOMIC_REPLACE_WAIT_ARRAY, 0, 0, delayMs);
+    }
   }
 }
 
-function writeTextAtomic(filePath: string, value: string, mode = 0o644): void {
+function writeFileAtomic(filePath: string, value: string, mode: number): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  fs.writeFileSync(tmpPath, value, { mode });
-  fs.renameSync(tmpPath, filePath);
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
+  try {
+    fs.writeFileSync(tmpPath, value, { mode, flag: "wx" });
+    replaceFileAtomic(tmpPath, filePath);
+  } finally {
+    try {
+      fs.rmSync(tmpPath, { force: true });
+    } catch {
+      // Best effort; the original write/replace error remains authoritative.
+    }
+  }
   try {
     fs.chmodSync(filePath, mode);
   } catch {
     // Best effort for filesystems that do not support chmod.
   }
+}
+
+function writeJsonSecureAtomic(filePath: string, value: unknown): void {
+  writeFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`, 0o600);
+}
+
+function writeTextAtomic(filePath: string, value: string, mode = 0o644): void {
+  writeFileAtomic(filePath, value, mode);
 }
 
 function readTextIfExists(filePath: string): string | null {
@@ -2037,6 +2064,53 @@ export interface ModelGatewayDaemonReadinessResult {
 export type ModelGatewayDaemonReadinessChecker = (
   endpoint: string,
 ) => Promise<ModelGatewayDaemonReadinessResult | boolean> | ModelGatewayDaemonReadinessResult | boolean;
+
+export interface ModelGatewayOwnedReadinessProbeOptions {
+  runtimePath: string;
+  readinessChecker: (endpoint: string) => Promise<ModelGatewayDaemonReadinessResult>;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export function createModelGatewayOwnedReadinessProbe(
+  options: ModelGatewayOwnedReadinessProbeOptions,
+): (endpoint: string, expectedPid?: number | null) => Promise<boolean> {
+  const timeoutMs = Math.max(0, options.timeoutMs ?? 8_000);
+  const pollIntervalMs = Math.max(1, options.pollIntervalMs ?? 75);
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  return async (endpoint, expectedPid) => {
+    const sessionOwned = expectedPid !== undefined && expectedPid !== null;
+    if (sessionOwned && (!Number.isInteger(expectedPid) || expectedPid <= 0)) {
+      return false;
+    }
+
+    const deadline = now() + timeoutMs;
+    while (now() < deadline) {
+      let readiness: ModelGatewayDaemonReadinessResult | null = null;
+      try {
+        readiness = await options.readinessChecker(endpoint);
+      } catch {
+        // The native supervisor may return before the daemon starts listening.
+      }
+      if (now() >= deadline) return false;
+      if (readiness?.ready) {
+        if (!sessionOwned) return true;
+        const runtime = readDaemonRuntimeMetadata(options.runtimePath);
+        if (runtime?.pid === expectedPid && isPidAlive(expectedPid)) return true;
+      }
+
+      const remaining = deadline - now();
+      if (remaining <= 0) break;
+      await sleep(Math.min(pollIntervalMs, remaining));
+    }
+    return false;
+  };
+}
 
 function daemonBootstrapStatus(
   options: Partial<ModelGatewayDaemonBootstrapStatus> = {},
@@ -6646,8 +6720,14 @@ export function createModelGatewayService(
     return normalizeDaemonReadinessResult(endpoint, result);
   }
 
-  async function runSharedDaemonReadinessProbe(endpoint: string): Promise<boolean> {
-    return (await runDaemonReadinessChecker(endpoint)).ready;
+  async function runSharedDaemonReadinessProbe(
+    endpoint: string,
+    expectedPid?: number | null,
+  ): Promise<boolean> {
+    return createModelGatewayOwnedReadinessProbe({
+      runtimePath: paths.daemonRuntime,
+      readinessChecker: runDaemonReadinessChecker,
+    })(endpoint, expectedPid);
   }
 
   function readRegistry(): ModelGatewayRegistryState {

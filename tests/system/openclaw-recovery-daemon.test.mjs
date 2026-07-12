@@ -1,6 +1,6 @@
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -15,9 +15,11 @@ import {
 } from "../../dist/apps/api/modules/openclaw-recovery/cli-bootstrap.js";
 import { createOpenClawRecoveryDaemon } from "../../dist/apps/api/modules/openclaw-recovery/daemon.js";
 import {
+  discoverOpenClawGatewayRuntime,
   isOpenClawGatewayProcess,
   parseLsofListeners,
   parseSsListeners,
+  takeoverOpenClawGatewayListeners,
 } from "../../dist/apps/api/modules/openclaw-recovery/gateway-runtime.js";
 import {
   assessOpenClawGatewayServiceStatus,
@@ -36,12 +38,15 @@ import {
   repairOpenClawGatewayAuthSecretRefDrift,
   repairOpenClawPluginConfigFromFindings,
   restoreOpenClawRecoveryBackup,
+  runOpenClawRecoveryConfigRepair,
 } from "../../dist/apps/api/modules/openclaw-recovery/repair.js";
 import { createOpenClawRecoveryService } from "../../dist/apps/api/modules/openclaw-recovery/service.js";
+import * as recoveryServiceModule from "../../dist/apps/api/modules/openclaw-recovery/service.js";
 import {
   appendRecoveryEvent,
   buildDefaultRecoveryState,
   createRecoveryEvent,
+  DEFAULT_RECOVERY_POLICY,
   listRecoveryBackupsPage,
   listRecoveryEventsPage,
   readRecoveryState,
@@ -78,6 +83,90 @@ afterEach(() => {
     fs.rmSync(root, { force: true, maxRetries: 3, recursive: true });
   }
   temporaryRoots.clear();
+});
+
+test("recovery readiness retries transient failures until the daemon responds", async () => {
+  assert.equal(
+    typeof recoveryServiceModule.createOpenClawRecoveryReadinessProbe,
+    "function",
+  );
+  let now = 0;
+  let requests = 0;
+  const probe = recoveryServiceModule.createOpenClawRecoveryReadinessProbe({
+    fetchImpl: async () => {
+      requests += 1;
+      if (requests < 3) throw new Error("listener not ready");
+      return { ok: true, body: null };
+    },
+    timeoutMs: 100,
+    requestTimeoutMs: 20,
+    pollIntervalMs: 10,
+    now: () => now,
+    sleep: async (ms) => {
+      now += ms;
+    },
+  });
+
+  assert.equal(await probe("http://127.0.0.1:18798/health"), true);
+  assert.equal(requests, 3);
+});
+
+test("recovery readiness returns false at its absolute deadline", async () => {
+  assert.equal(
+    typeof recoveryServiceModule.createOpenClawRecoveryReadinessProbe,
+    "function",
+  );
+  let now = 0;
+  let requests = 0;
+  const sleeps = [];
+  const probe = recoveryServiceModule.createOpenClawRecoveryReadinessProbe({
+    fetchImpl: async () => {
+      requests += 1;
+      throw new Error("listener unavailable");
+    },
+    timeoutMs: 25,
+    requestTimeoutMs: 20,
+    pollIntervalMs: 10,
+    now: () => now,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+      now += ms;
+    },
+  });
+
+  assert.equal(await probe("http://127.0.0.1:18798/health"), false);
+  assert.equal(requests, 3);
+  assert.deepEqual(sleeps, [10, 10, 5]);
+});
+
+test("recovery session readiness waits for matching runtime ownership", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-recovery-readiness-"));
+  temporaryRoots.add(root);
+  const runtimePath = path.join(root, "daemon-runtime.json");
+  fs.writeFileSync(runtimePath, JSON.stringify({ version: 1, pid: process.pid + 1 }), "utf8");
+  let now = 0;
+  let requests = 0;
+  const probe = recoveryServiceModule.createOpenClawRecoveryReadinessProbe({
+    fetchImpl: async () => {
+      requests += 1;
+      return { ok: true, body: null };
+    },
+    runtimePath,
+    timeoutMs: 100,
+    requestTimeoutMs: 20,
+    pollIntervalMs: 10,
+    now: () => now,
+    sleep: async (ms) => {
+      now += ms;
+      fs.writeFileSync(runtimePath, JSON.stringify({ version: 1, pid: process.pid }), "utf8");
+    },
+  });
+
+  assert.equal(
+    await probe("http://127.0.0.1:18798/health", process.pid),
+    true,
+  );
+  assert.equal(requests, 2);
 });
 
 function makeConfig() {
@@ -2205,6 +2294,98 @@ test("CLI bootstrap restores openclaw from install manifest when PATH entry is m
   }
 });
 
+test("CLI bootstrap executes a native Windows openclaw.cmd shim without a shell", {
+  skip: process.platform !== "win32" ? "native Windows .cmd execution only" : false,
+}, async () => {
+  const config = makeConfig();
+  const binDir = path.join(config.projectRoot, "fake CLI bin 空格");
+  const fakeCliScript = path.join(binDir, "fake-openclaw.cjs");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    fakeCliScript,
+    "console.log('OpenClaw 2099.3.0 (fake-windows-cmd)');\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(binDir, "openclaw.cmd"),
+    `@echo off\r\n"${process.execPath}" "%~dp0fake-openclaw.cjs" %*\r\n`,
+    "utf8",
+  );
+
+  const commands = [];
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath || ""}`;
+  try {
+    const result = await ensureOpenClawCliAvailable(
+      config,
+      { allowCliReinstall: false, cliReinstallTimeoutMs: 1 },
+      commands,
+    );
+
+    assert.equal(result.ok, true, JSON.stringify({ result, commands }, null, 2));
+    assert.equal(result.action, "none");
+    assert.equal(result.manifest?.cliVersion, "2099.3.0");
+    assert.equal(commands[0]?.ok, true);
+    assert.match(commands[0]?.stdout || "", /fake-windows-cmd/);
+  } finally {
+    process.env.PATH = originalPath;
+  }
+});
+
+test("config repair executes native Windows openclaw.cmd actions without a shell", {
+  skip: process.platform !== "win32" ? "native Windows .cmd execution only" : false,
+}, async () => {
+  const config = makeConfig();
+  const binDir = path.join(config.projectRoot, "repair CLI bin 空格");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(binDir, "fake-openclaw.cjs"),
+    [
+      "const args = process.argv.slice(2);",
+      "if (args[0] === 'config' && args[1] === 'validate') {",
+      "  console.log(JSON.stringify({ valid: true, marker: 'WINDOWS_REPAIR_OK' }));",
+      "} else {",
+      "  console.log('WINDOWS_REPAIR_OK ' + args.join(' '));",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(binDir, "openclaw.cmd"),
+    `@echo off\r\n"${process.execPath}" "%~dp0fake-openclaw.cjs" %*\r\n`,
+    "utf8",
+  );
+
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath || ""}`;
+  try {
+    const repair = await runOpenClawRecoveryConfigRepair(config, {
+      trigger: "manual",
+      policy: {
+        ...DEFAULT_RECOVERY_POLICY,
+        allowGatewayProcessTakeover: false,
+        allowGatewayServiceRepair: false,
+        allowTracevaneWebRebuild: false,
+      },
+    });
+
+    assert.equal(repair.ok, true, JSON.stringify(repair, null, 2));
+    assert.equal(
+      repair.commands.filter((command) => command.command === "openclaw").length >= 3,
+      true,
+    );
+    assert.equal(
+      repair.commands
+        .filter((command) => command.command === "openclaw")
+        .every((command) => command.ok && command.stdout.includes("WINDOWS_REPAIR_OK")),
+      true,
+    );
+  } finally {
+    process.env.PATH = originalPath;
+  }
+});
+
 test("CLI bootstrap shim executes shell wrapper manifests directly", () => {
   if (process.platform === "win32") return;
   const config = makeConfig();
@@ -2282,6 +2463,155 @@ test("gateway runtime discovery parses listeners and only trusts OpenClaw gatewa
     }).safe,
     false,
   );
+});
+
+test("gateway takeover skips termination when current ownership evidence is missing or changed", async () => {
+  const port = 31879;
+  const missingPid = 41001;
+  const changedPid = 41002;
+  const snapshot = {
+    port,
+    listeners: [missingPid, changedPid].map((pid) => ({
+      pid,
+      command: "openclaw-gateway",
+      address: `127.0.0.1:${port}`,
+      process: {
+        pid,
+        ppid: 1,
+        command: "node",
+        args: "/opt/openclaw/dist/index.js gateway",
+      },
+      safeToTerminate: true,
+      reason: "openclaw-gateway",
+    })),
+    safeListenerPids: [missingPid, changedPid],
+    unsafeListenerPids: [],
+    notes: [],
+  };
+  const lookups = [];
+  const terminated = [];
+
+  const result = await takeoverOpenClawGatewayListeners(
+    port,
+    { allow: true, timeoutMs: 500 },
+    [],
+    {
+      discoverRuntime: async () => snapshot,
+      readProcessInfo: async (pid) => {
+        lookups.push(pid);
+        return pid === missingPid
+          ? null
+          : {
+              pid: changedPid + 100,
+              ppid: 1,
+              command: "node",
+              args: "/opt/openclaw/dist/index.js gateway",
+            };
+      },
+      terminatePid: async (pid) => {
+        terminated.push(pid);
+        return { ok: true, error: "" };
+      },
+    },
+  );
+
+  assert.equal(result.attempted, true);
+  assert.deepEqual(lookups, [missingPid, changedPid]);
+  assert.deepEqual(terminated, [], "termination must require current PID-matched process evidence");
+  assert.deepEqual(result.terminatedPids, []);
+  assert.deepEqual(result.skippedPids, [missingPid, changedPid]);
+  assert.match(result.error, /current process details are unavailable/);
+  assert.match(result.error, /process identity changed/);
+});
+
+test("gateway runtime discovers and takes over a native Windows OpenClaw listener tree", {
+  skip: process.platform !== "win32" ? "native Windows listener ownership" : false,
+}, async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const fixturePath = path.join(config.openclawRoot, "windows-openclaw-gateway-fixture.cjs");
+  const readyPath = path.join(config.openclawRoot, "windows-openclaw-gateway.ready");
+  const descendantPidPath = path.join(config.openclawRoot, "windows-openclaw-descendant.pid");
+  fs.writeFileSync(
+    fixturePath,
+    `const fs = require("node:fs");
+const net = require("node:net");
+const { spawn } = require("node:child_process");
+const descendant = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+fs.writeFileSync(${JSON.stringify(descendantPidPath)}, String(descendant.pid), "utf8");
+const server = net.createServer(() => {});
+server.listen(Number(process.argv[4]), "127.0.0.1", () => {
+  fs.writeFileSync(${JSON.stringify(readyPath)}, "ready", "utf8");
+});
+setInterval(() => {}, 1000);
+`,
+    "utf8",
+  );
+  const child = spawn(
+    process.execPath,
+    [fixturePath, "openclaw", "gateway", String(port)],
+    { stdio: "ignore", windowsHide: true },
+  );
+  let descendantPid = 0;
+  const processIsAlive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      return error?.code === "EPERM";
+    }
+  };
+  const waitUntil = async (check, timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (check()) return true;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return check();
+  };
+
+  try {
+    await waitForFile(readyPath, 3_000);
+    descendantPid = Number(fs.readFileSync(descendantPidPath, "utf8"));
+    assert.equal(processIsAlive(child.pid), true);
+    assert.equal(processIsAlive(descendantPid), true);
+
+    const discoveryCommands = [];
+    const snapshot = await discoverOpenClawGatewayRuntime(port, discoveryCommands);
+    const listener = snapshot.listeners.find((entry) => entry.pid === child.pid);
+    assert.ok(listener, `expected listener pid ${child.pid}: ${JSON.stringify(snapshot)}`);
+    assert.equal(listener.safeToTerminate, true);
+    assert.equal(listener.reason, "openclaw-gateway");
+    assert.match(listener.process?.args || "", /openclaw.*gateway/i);
+    assert.ok(discoveryCommands.some((command) => /powershell\.exe/i.test(command.command)));
+
+    const takeoverCommands = [];
+    const takeover = await takeoverOpenClawGatewayListeners(
+      port,
+      { allow: true, timeoutMs: 5_000 },
+      takeoverCommands,
+    );
+    assert.equal(takeover.attempted, true);
+    assert.deepEqual(takeover.terminatedPids, [child.pid]);
+    assert.equal(takeover.error, "");
+    assert.ok(takeoverCommands.some((command) => /taskkill\.exe/i.test(command.command)));
+    assert.equal(await waitUntil(() => !processIsAlive(child.pid), 3_000), true);
+    assert.equal(await waitUntil(() => !processIsAlive(descendantPid), 3_000), true);
+  } finally {
+    if (child.pid && processIsAlive(child.pid)) {
+      try {
+        execFileSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+          timeout: 5_000,
+        });
+      } catch {
+        try { process.kill(child.pid, "SIGKILL"); } catch {}
+      }
+    }
+    if (descendantPid && processIsAlive(descendantPid)) {
+      try { process.kill(descendantPid, "SIGKILL"); } catch {}
+    }
+  }
 });
 
 test("recovery status is read-only and returns default daemon state without CLI output", async () => {

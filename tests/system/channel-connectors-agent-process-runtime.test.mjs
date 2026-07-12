@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import test from "node:test";
 import crossSpawn from "cross-spawn";
 
@@ -84,6 +86,27 @@ function stopFixtureProcess(pid) {
   }
 }
 
+function writeHangingAgentTree(binDir, root, commandName) {
+  const leaderPidFile = path.join(root, `${commandName}-leader.pid`);
+  const descendantPidFile = path.join(root, `${commandName}-descendant.pid`);
+  const descendantPath = path.join(root, `${commandName}-descendant.cjs`);
+  fs.writeFileSync(
+    descendantPath,
+    "process.on('SIGTERM', () => {});\nsetInterval(() => {}, 1000);\n",
+    "utf8",
+  );
+  writeNodeCommand(binDir, commandName, `
+const fs = require("node:fs");
+const { spawn } = require("node:child_process");
+fs.writeFileSync(process.env.TRACEVANE_TEST_LEADER_PID_FILE, String(process.pid));
+const descendant = spawn(process.execPath, [process.env.TRACEVANE_TEST_DESCENDANT_PATH], { stdio: "ignore" });
+fs.writeFileSync(process.env.TRACEVANE_TEST_DESCENDANT_PID_FILE, String(descendant.pid));
+process.stdin.resume();
+setInterval(() => {}, 1000);
+`);
+  return { leaderPidFile, descendantPidFile, descendantPath };
+}
+
 test("Channel Connector one-shot runner preserves spaced CJK PATH, args, stdin, stdout, and stderr", async (t) => {
   const root = makeTempRoot();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -137,20 +160,22 @@ test("Channel Connector one-shot runner reports a missing executable without a s
   }
 });
 
-test("Channel Connector Windows tree termination bounds taskkill execution", { skip: process.platform !== "win32" }, () => {
+test("Channel Connector Windows tree termination bounds taskkill execution", { skip: process.platform !== "win32" }, async () => {
   const originalSync = crossSpawn.sync;
   let observed = null;
+  const child = {
+    exitCode: null,
+    signalCode: null,
+    pid: 43210,
+    kill: () => true,
+  };
   crossSpawn.sync = (command, args, options) => {
     observed = { command, args, options };
+    child.exitCode = 0;
     return { error: undefined, status: 0 };
   };
   try {
-    terminateChannelConnectorAgentChild({
-      exitCode: null,
-      signalCode: null,
-      pid: 43210,
-      kill: () => true,
-    });
+    await terminateChannelConnectorAgentChild(child);
   } finally {
     crossSpawn.sync = originalSync;
   }
@@ -161,25 +186,128 @@ test("Channel Connector Windows tree termination bounds taskkill execution", { s
   assert.equal(observed.options.timeout, 5_000);
 });
 
+test("Channel Connector POSIX termination targets the owned process group", async () => {
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+  const originalKill = process.kill;
+  const signals = [];
+  let groupAlive = true;
+  let rootKillCalls = 0;
+  try {
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      enumerable: true,
+      value: "linux",
+    });
+    process.kill = (pid, signal) => {
+      signals.push([pid, signal]);
+      assert.equal(pid, -43210);
+      if (signal === 0) {
+        if (groupAlive) return true;
+        const error = new Error("process group absent");
+        error.code = "ESRCH";
+        throw error;
+      }
+      if (signal === "SIGTERM") {
+        groupAlive = false;
+        return true;
+      }
+      return true;
+    };
+
+    const cleanupError = await terminateChannelConnectorAgentChild({
+      exitCode: null,
+      signalCode: null,
+      pid: 43210,
+      kill: () => {
+        rootKillCalls += 1;
+        return true;
+      },
+    });
+
+    assert.equal(cleanupError, "");
+    assert.equal(rootKillCalls, 0);
+    assert.deepEqual(signals, [
+      [-43210, 0],
+      [-43210, "SIGTERM"],
+      [-43210, 0],
+    ]);
+  } finally {
+    process.kill = originalKill;
+    Object.defineProperty(process, "platform", originalPlatform);
+  }
+});
+
+test("Channel Connector one-shot cancellation returns a bounded cleanup failure when the child never closes", async () => {
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+  const originalSpawn = crossSpawn.spawn;
+  const originalSync = crossSpawn.sync;
+  const child = new EventEmitter();
+  child.pid = 43210;
+  child.exitCode = null;
+  child.signalCode = null;
+  child.killed = false;
+  child.stdin = new PassThrough();
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => {
+    child.killed = true;
+    return true;
+  };
+  try {
+    Object.defineProperty(process, "platform", {
+      configurable: true,
+      enumerable: true,
+      value: "win32",
+    });
+    crossSpawn.spawn = () => child;
+    crossSpawn.sync = () => ({
+      error: new Error("fixture taskkill failure"),
+      status: 1,
+    });
+    const controller = new AbortController();
+    const resultPromise = defaultChannelConnectorAgentProcessRunner({
+      ...processRequest(process.cwd(), process.cwd(), "fake-hanging-agent"),
+      signal: controller.signal,
+      timeoutMs: 60_000,
+    });
+    controller.abort();
+
+    let deadline;
+    const result = await Promise.race([
+      resultPromise,
+      new Promise((_, reject) => {
+        deadline = setTimeout(
+          () => reject(new Error("runner remained pending after bounded cleanup failure")),
+          3_000,
+        );
+      }),
+    ]).finally(() => clearTimeout(deadline));
+
+    assert.equal(result.cancelled, true);
+    assert.equal(result.exitCode, null);
+    assert.equal(child.killed, true);
+    assert.equal(
+      result.error,
+      "Agent process cancelled. Agent process cleanup failed: taskkill failed and the owned command remained alive",
+    );
+  } finally {
+    crossSpawn.spawn = originalSpawn;
+    crossSpawn.sync = originalSync;
+    Object.defineProperty(process, "platform", originalPlatform);
+  }
+});
+
 test("Channel Connector one-shot runner cancels a command shim process", async (t) => {
   const root = makeTempRoot();
   const binDir = path.join(root, "取消 shim bin");
-  const pidFile = path.join(root, "fixture.pid");
-  let fixturePid = 0;
+  const fixture = writeHangingAgentTree(binDir, root, "tracevane-hanging-agent");
+  let leaderPid = 0;
+  let descendantPid = 0;
   t.after(() => {
-    stopFixtureProcess(fixturePid);
+    stopFixtureProcess(leaderPid);
+    stopFixtureProcess(descendantPid);
     fs.rmSync(root, { recursive: true, force: true });
   });
-  writeNodeCommand(binDir, "tracevane-hanging-agent", `
-const fs = require("node:fs");
-fs.writeFileSync(process.env.TRACEVANE_TEST_PID_FILE, String(process.pid));
-const heartbeat = setInterval(() => process.stdout.write("heartbeat\\n"), 50);
-process.stdout.on("error", () => {
-  clearInterval(heartbeat);
-  process.exit(0);
-});
-process.stdin.resume();
-`);
   const controller = new AbortController();
   const resultPromise = defaultChannelConnectorAgentProcessRunner(processRequest(
     root,
@@ -188,18 +316,70 @@ process.stdin.resume();
     {
       env: {
         PATH: `${binDir}${path.delimiter}${process.env.PATH || ""}`,
-        TRACEVANE_TEST_PID_FILE: pidFile,
+        TRACEVANE_TEST_LEADER_PID_FILE: fixture.leaderPidFile,
+        TRACEVANE_TEST_DESCENDANT_PID_FILE: fixture.descendantPidFile,
+        TRACEVANE_TEST_DESCENDANT_PATH: fixture.descendantPath,
       },
       signal: controller.signal,
     },
   ));
-  await waitForFile(pidFile);
-  fixturePid = Number(fs.readFileSync(pidFile, "utf8"));
+  await waitForFile(fixture.leaderPidFile);
+  await waitForFile(fixture.descendantPidFile);
+  leaderPid = Number(fs.readFileSync(fixture.leaderPidFile, "utf8"));
+  descendantPid = Number(fs.readFileSync(fixture.descendantPidFile, "utf8"));
   controller.abort();
   const result = await resultPromise;
-  await waitForProcessExit(fixturePid);
+  await Promise.all([
+    waitForProcessExit(leaderPid),
+    waitForProcessExit(descendantPid),
+  ]);
 
   assert.equal(result.cancelled, true);
   assert.equal(result.error, "Agent process cancelled.");
-  assert.equal(processExists(fixturePid), false);
+  assert.equal(processExists(leaderPid), false);
+  assert.equal(processExists(descendantPid), false);
+});
+
+test("Channel Connector one-shot timeout removes the command shim descendant tree", async (t) => {
+  const root = makeTempRoot();
+  const binDir = path.join(root, "超时 shim bin");
+  const fixture = writeHangingAgentTree(binDir, root, "tracevane-timeout-agent");
+  let leaderPid = 0;
+  let descendantPid = 0;
+  t.after(() => {
+    stopFixtureProcess(leaderPid);
+    stopFixtureProcess(descendantPid);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const resultPromise = defaultChannelConnectorAgentProcessRunner(processRequest(
+    root,
+    binDir,
+    "tracevane-timeout-agent",
+    {
+      env: {
+        PATH: `${binDir}${path.delimiter}${process.env.PATH || ""}`,
+        TRACEVANE_TEST_LEADER_PID_FILE: fixture.leaderPidFile,
+        TRACEVANE_TEST_DESCENDANT_PID_FILE: fixture.descendantPidFile,
+        TRACEVANE_TEST_DESCENDANT_PATH: fixture.descendantPath,
+      },
+      idleTimeoutMs: 750,
+      timeoutMs: 750,
+    },
+  ));
+  await waitForFile(fixture.leaderPidFile);
+  await waitForFile(fixture.descendantPidFile);
+  leaderPid = Number(fs.readFileSync(fixture.leaderPidFile, "utf8"));
+  descendantPid = Number(fs.readFileSync(fixture.descendantPidFile, "utf8"));
+
+  const result = await resultPromise;
+  await Promise.all([
+    waitForProcessExit(leaderPid),
+    waitForProcessExit(descendantPid),
+  ]);
+
+  assert.equal(result.timedOut, true);
+  assert.match(result.error || "", /timed out/i);
+  assert.equal(processExists(leaderPid), false);
+  assert.equal(processExists(descendantPid), false);
 });

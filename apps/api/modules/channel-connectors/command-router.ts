@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { terminateOwnedProcessTree } from "../../core/owned-command.js";
 import type {
   ChannelConnectorCommandSurfaceSkillAction,
   ChannelConnectorOctoInboundMessage,
@@ -844,7 +845,7 @@ function commandAudit(input: {
   };
 }
 
-async function runCustomExecCommand(input: {
+export async function runCustomExecCommand(input: {
   command: ChannelConnectorCustomCommandRecord;
   project: ChannelConnectorRuntimeProject;
   args: string[];
@@ -872,10 +873,13 @@ async function runCustomExecCommand(input: {
     let progressStarted = false;
     let progressTimer: NodeJS.Timeout | null = null;
     let settled = false;
+    let timeoutCleanupStarted = false;
     const child = spawn(shell.command, shell.args, {
       cwd: workDir,
+      detached: process.platform !== "win32",
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
 
     const outputText = (): string => [
@@ -983,12 +987,29 @@ async function runCustomExecCommand(input: {
     }, 500);
     quickTimer.unref();
     const timer = setTimeout(() => {
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        // best effort
+      if (settled || timeoutCleanupStarted) return;
+      if (child.exitCode !== null || child.signalCode !== null) {
+        void finish(child.exitCode === 0, {
+          exitCode: child.exitCode,
+          signal: child.signalCode,
+        });
+        return;
       }
-      void finish(false, { timedOut: true, error: `timeout=${timeoutMs}ms` });
+      timeoutCleanupStarted = true;
+      void (async () => {
+        let cleanupError = "";
+        try {
+          cleanupError = await terminateOwnedProcessTree(child);
+        } catch (error) {
+          cleanupError = error instanceof Error ? error.message : String(error);
+        }
+        void finish(false, {
+          timedOut: true,
+          error: cleanupError
+            ? `timeout=${timeoutMs}ms; cleanup failed: ${cleanupError}`
+            : `timeout=${timeoutMs}ms`,
+        });
+      })();
     }, timeoutMs);
     timer.unref();
     child.stdout.on("data", (chunk) => {
@@ -1001,8 +1022,12 @@ async function runCustomExecCommand(input: {
       stderrBytes += Buffer.byteLength(text);
       stderr = bufferPreviewText(`${stderr}${text}`, 16_000);
     });
-    child.on("error", (error) => void finish(false, { error: error.message }));
-    child.on("close", (code, signal) => void finish(code === 0, { exitCode: code, signal }));
+    child.on("error", (error) => {
+      if (!timeoutCleanupStarted) void finish(false, { error: error.message });
+    });
+    child.on("close", (code, signal) => {
+      if (!timeoutCleanupStarted) void finish(code === 0, { exitCode: code, signal });
+    });
   });
 }
 

@@ -40,14 +40,15 @@ function recentIso(offsetMs = 0) {
 
 test("resolveSystemEventStorePaths returns jsonl and state file paths", async () => {
   const { resolveSystemEventStorePaths } = await import(pathsModuleUrl);
+  const stateDir = "/tmp/openclaw-state";
 
   const paths = resolveSystemEventStorePaths({
-    stateDir: "/tmp/openclaw-state",
+    stateDir,
   });
 
   assert.deepEqual(paths, {
-    eventsJsonlPath: "/tmp/openclaw-state/system-events.jsonl",
-    eventStatePath: "/tmp/openclaw-state/system-events.state.json",
+    eventsJsonlPath: path.join(stateDir, "system-events.jsonl"),
+    eventStatePath: path.join(stateDir, "system-events.state.json"),
   });
 });
 

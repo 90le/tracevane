@@ -16,6 +16,7 @@ const BLOCKING_ERROR_CODES = new Set<TracevaneSupervisorErrorCode>([
   "command-not-found",
   "command-timeout",
   "template-invalid",
+  "address-in-use",
   "unsupported-platform",
   "unknown",
 ]);
@@ -155,6 +156,8 @@ export function supervisorErrorCopy(
       return "守护服务管理命令执行超时。";
     case "template-invalid":
       return "守护服务定义无效或无法写入。";
+    case "address-in-use":
+      return "守护服务端口已被其他进程占用。";
     case "runtime-not-ready":
       return "守护进程未通过就绪检查。";
     case "stale-config":

@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { promisify } from "node:util";
+import { execActiveRouteSmoke } from "./lib/active-route-smoke-process.mjs";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:18796";
 const DEFAULT_TIMEOUT_MS = 240_000;
@@ -42,7 +41,6 @@ const FULL_SMOKE_FLAGS = [
   "--stream-error-smoke",
 ];
 
-const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const activeRoutesScript = path.join(repoRoot, "scripts/smoke-model-gateway-active-routes.mjs");
 
@@ -315,13 +313,12 @@ async function runRepresentativeStageOnce(options, stage, attempt, attempts) {
     ...stage.args,
   ];
   try {
-    const result = await execFileAsync(process.execPath, args, {
+    const result = await execActiveRouteSmoke(process.execPath, args, {
       cwd: repoRoot,
       env: process.env,
       encoding: "utf8",
       maxBuffer: 1024 * 1024 * 32,
       timeout: options.stageTimeoutMs,
-      killSignal: "SIGTERM",
     });
     const activeRoutes = JSON.parse(result.stdout);
     return {
@@ -358,7 +355,7 @@ async function runRepresentativeStageOnce(options, stage, attempt, attempts) {
       error: {
         message: error instanceof Error ? error.message : String(error),
         stderr: typeof error?.stderr === "string" ? error.stderr.trim() : "",
-        timedOut: Boolean(error?.killed && error?.signal === "SIGTERM"),
+        timedOut: Boolean(error?.timedOut),
         timeoutMs: options.stageTimeoutMs,
       },
     };

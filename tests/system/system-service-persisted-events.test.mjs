@@ -37,6 +37,81 @@ function createConfig(root) {
   };
 }
 
+function writeFakeDiagnosticsOpenClaw(binDir) {
+  fs.mkdirSync(binDir, { recursive: true });
+  const runnerPath = path.join(binDir, "fake-openclaw.cjs");
+  fs.writeFileSync(
+    runnerPath,
+    `const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.TRACEVANE_FAKE_OPENCLAW_LOG, JSON.stringify(args) + "\\n", "utf8");
+if (args.join(" ") === "gateway status --json") {
+  process.stdout.write(JSON.stringify({ service: { runtime: { status: "running", pid: 1234 } }, rpc: { ok: true } }));
+  process.exit(0);
+}
+if (args.join(" ") === "status --json") {
+  process.stdout.write(JSON.stringify({ channels: { configured: 1 }, agents: { configured: 1 } }));
+  process.exit(0);
+}
+if (args.join(" ") === "doctor") {
+  process.stdout.write("OPENCLAW_DOCTOR_OK");
+  process.exit(0);
+}
+process.stderr.write("unexpected args: " + JSON.stringify(args));
+process.exit(2);
+`,
+    "utf8",
+  );
+  if (process.platform === "win32") {
+    fs.writeFileSync(
+      path.join(binDir, "openclaw.cmd"),
+      `@echo off\r\n"${process.execPath}" "%~dp0fake-openclaw.cjs" %*\r\n`,
+      "utf8",
+    );
+    return;
+  }
+  const commandPath = path.join(binDir, "openclaw");
+  fs.writeFileSync(
+    commandPath,
+    `#!/usr/bin/env node\n${fs.readFileSync(runnerPath, "utf8")}`,
+    { encoding: "utf8", mode: 0o755 },
+  );
+  fs.chmodSync(commandPath, 0o755);
+}
+
+test("system diagnostics launches the platform-native OpenClaw command", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane system diagnostics 测试 "));
+  fs.mkdirSync(path.join(root, "system"), { recursive: true });
+  fs.writeFileSync(path.join(root, "config.json"), "{}\n", "utf8");
+  const binDir = path.join(root, "OpenClaw CLI bin");
+  const logPath = path.join(root, "openclaw-calls.jsonl");
+  const previousPath = process.env.PATH;
+  const previousLog = process.env.TRACEVANE_FAKE_OPENCLAW_LOG;
+  writeFakeDiagnosticsOpenClaw(binDir);
+  process.env.PATH = [binDir, previousPath || ""].filter(Boolean).join(path.delimiter);
+  process.env.TRACEVANE_FAKE_OPENCLAW_LOG = logPath;
+
+  try {
+    const service = createSystemService(createConfig(root), () => 0);
+    const diagnostics = await service.getDiagnostics({ includeCommands: true });
+
+    assert.equal(diagnostics.commands.gatewayStatus.ok, true);
+    assert.equal(diagnostics.commands.status.ok, true);
+    assert.equal(diagnostics.commands.doctor.ok, true);
+    assert.match(diagnostics.commands.doctor.stdout, /OPENCLAW_DOCTOR_OK/);
+    const calls = fs.readFileSync(logPath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    assert.ok(calls.some((args) => args.join(" ") === "gateway status --json"));
+    assert.ok(calls.some((args) => args.join(" ") === "status --json"));
+    assert.ok(calls.some((args) => args.join(" ") === "doctor"));
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousLog === undefined) delete process.env.TRACEVANE_FAKE_OPENCLAW_LOG;
+    else process.env.TRACEVANE_FAKE_OPENCLAW_LOG = previousLog;
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 test("system service persists action events into the system state directory", async () => {
   const root = createTempRoot();
   const service = createSystemService(createConfig(root), () => 0);
@@ -159,4 +234,28 @@ test("system service recovers stale failed upgrade status after the installed ve
   const persisted = JSON.parse(fs.readFileSync(upgradeStatusPath, "utf8"));
   assert.equal(persisted.status, "succeeded");
   assert.equal(persisted.lastError, "");
+});
+
+test("system service reports the POSIX installer as unsupported on Windows", { skip: process.platform !== "win32" }, async () => {
+  const root = createTempRoot();
+  fs.writeFileSync(
+    path.join(root, "install-tracevane.sh"),
+    "#!/bin/sh\nprintf 'installer must not run on Windows\\n'\n",
+    "utf8",
+  );
+  const service = createSystemService(createConfig(root), () => 0);
+
+  const response = await service.startTracevaneUpgrade({
+    mode: "gateway",
+    version: "0.1.99",
+    skipUpgrade: true,
+  });
+
+  assert.equal(response.ok, false);
+  assert.equal(response.status.status, "failed");
+  assert.equal(response.status.running, false);
+  assert.equal(response.status.pid, null);
+  assert.equal(response.status.mode, "gateway");
+  assert.equal(response.status.targetVersion, "0.1.99");
+  assert.match(response.status.lastError, /not supported on Windows/i);
 });

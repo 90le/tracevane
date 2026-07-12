@@ -219,6 +219,8 @@ function stableErrorMessage(
       return "Supervisor command timed out.";
     case "template-invalid":
       return "Persistent service template is invalid.";
+    case "address-in-use":
+      return "Service address is already in use by another process.";
     case "runtime-not-ready":
       return "Persistent service did not become ready.";
     case "stale-config":
@@ -493,8 +495,24 @@ export function createServiceManager(
       ) {
         result = {
           ...result,
-          errorCode: "task-not-found",
-          errorMessage: stableErrorMessage("task-not-found"),
+          ok: true,
+          errorCode: null,
+          errorMessage: null,
+        };
+        results.push(result);
+        const errorCode = configCurrent ? null : "stale-config";
+        return {
+          manager: persistentManagerStatus(plan, {
+            installed: true,
+            enabled: null,
+            active: false,
+            state: configCurrent ? "stopped" : "stale-config",
+            configCurrent,
+            errorCode,
+            errorMessage: stableErrorMessage(errorCode),
+          }),
+          commands: results,
+          templateExists: true,
         };
       }
       results.push(result);
@@ -775,13 +793,18 @@ export function createServiceManager(
             manager.errorCode === null &&
             (sessionStarted || processRunning)
           ) {
-            manager = {
-              ...manager,
-              active: null,
-              state: "degraded",
-              errorCode: "runtime-not-ready",
-              errorMessage: "Session service did not become ready.",
-            };
+            const observed = sessionStarted && viableOwner
+              ? normalizeManagerStatus(await session.status(definition.id))
+              : manager;
+            manager = observed.errorCode !== null
+              ? observed
+              : {
+                  ...manager,
+                  active: null,
+                  state: "degraded",
+                  errorCode: "runtime-not-ready",
+                  errorMessage: "Session service did not become ready.",
+                };
           }
         }
         if (

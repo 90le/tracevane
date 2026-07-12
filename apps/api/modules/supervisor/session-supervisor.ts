@@ -162,6 +162,10 @@ export function createSessionSupervisor(
       entry.state = "stopped";
       return;
     }
+    if (entry.lastErrorCode === "address-in-use") {
+      entry.state = "failed";
+      return;
+    }
     if (entry.restartCount >= maxRestarts) {
       entry.state = "failed";
       entry.lastErrorCode ??= "runtime-not-ready";
@@ -236,7 +240,7 @@ export function createSessionSupervisor(
           cwd: entry.definition.workingDirectory,
           shell: false,
           detached: platform !== "win32",
-          stdio: ["ignore", "inherit", "inherit"],
+          stdio: ["ignore", "inherit", "pipe"],
           windowsHide: true,
         },
       );
@@ -250,6 +254,12 @@ export function createSessionSupervisor(
       return ready;
     }
     entry.child = child;
+    let stderrTail = "";
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
+      process.stderr.write(text);
+      stderrTail = `${stderrTail}${text}`.slice(-4_096);
+    });
     child.once("spawn", () => {
       if (entry.child === child) entry.state = "running";
       settleReady();
@@ -266,6 +276,11 @@ export function createSessionSupervisor(
     });
     child.once("close", (exitCode, signal) => {
       settleReady();
+      if (/\bEADDRINUSE\b|address already in use/i.test(stderrTail)) {
+        entry.lastErrorCode = "address-in-use";
+        entry.lastErrorMessage =
+          `Service address for ${entry.definition.healthUrl} is already in use.`;
+      }
       onChildClose(entry, child, exitCode, signal);
     });
     return ready;

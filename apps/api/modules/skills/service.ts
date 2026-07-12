@@ -1,8 +1,7 @@
-import { execFile } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import type {
   SkillApiKeyMode,
   SkillAgentMapping,
@@ -48,6 +47,7 @@ import type {
   SkillsUploadPreflightResult,
 } from "../../../../types/skills.js";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
+import { runOwnedCommand } from "../../core/owned-command.js";
 import {
   ensureDir,
   fileExists,
@@ -55,13 +55,35 @@ import {
   writeJsonFile,
 } from "../../core/state.js";
 
-const execFileAsync = promisify(execFile);
+const require = createRequire(import.meta.url);
+
+interface WhichModule {
+  sync(
+    command: string,
+    options?: {
+      all?: boolean;
+      nothrow?: boolean;
+      path?: string;
+      pathExt?: string;
+    },
+  ): string | string[] | null;
+}
+
+const whichModule = require("which") as WhichModule;
 
 const SKILLS_SNAPSHOT_TTL_MS = 2 * 60_000;
 const SKILLS_SNAPSHOT_STALE_MS = 15 * 60_000;
 const MARKETPLACE_TTL_MS = 5 * 60_000;
 const DEFAULT_WORKSPACE_DIRNAME = "workspace";
 const TEXT_SCAN_MAX_BYTES = 200_000;
+const SKILLS_JSON_COMMAND_TIMEOUT_MS = 20_000;
+const SKILLS_ZIP_COMMAND_TIMEOUT_MS = 60_000;
+const SKILLS_MARKETPLACE_COMMAND_TIMEOUT_MS = 120_000;
+const SKILLS_COMMAND_MAX_STREAM_BYTES = 8 * 1024 * 1024;
+const PYTHON_EXTRACT_ZIP_SCRIPT =
+  "import sys,zipfile;zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])";
+const PYTHON_EXTRACT_ZIP_SAFELY_SCRIPT =
+  "import pathlib,sys,zipfile;zip_path,output_dir=sys.argv[1],sys.argv[2];zf=zipfile.ZipFile(zip_path);unsafe=next((m.filename for m in zf.infolist() if not m.filename or m.filename.startswith('/') or pathlib.PurePosixPath(m.filename).is_absolute() or '..' in pathlib.PurePosixPath(m.filename).parts),None);unsafe is None or (_ for _ in ()).throw(SystemExit(f'unsafe zip entry: {unsafe}'));zf.extractall(output_dir)";
 
 const SKILLHUB_INSTALL_DOC_URL =
   "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/skillhub.md";
@@ -353,32 +375,83 @@ function parseSkillsJson(stdout: string): OpenClawSkillsSnapshot {
   throw new Error("Failed to isolate skills snapshot JSON payload");
 }
 
+interface SkillsCommandResult {
+  stdout: string;
+  stderr: string;
+}
+
+function resolveSkillsCommand(command: string): string | null {
+  try {
+    const resolved = whichModule.sync(command, {
+      nothrow: true,
+      path: process.env.PATH,
+      pathExt: process.env.PATHEXT,
+    });
+    return typeof resolved === "string" && resolved ? resolved : null;
+  } catch {
+    return null;
+  }
+}
+
+
+function commandFailureDetail(
+  status: number | null,
+  stdout: string,
+  stderr: string,
+): string {
+  const output = [stderr.trim(), stdout.trim()].filter(Boolean).join("\n");
+  const reason = status === null
+    ? "Command failed to start"
+    : `Command exited with status ${status}`;
+  return output ? `${reason}: ${output}` : reason;
+}
+
+export async function runSkillsCommand(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+  cwd?: string,
+): Promise<SkillsCommandResult> {
+  const executable = resolveSkillsCommand(command) || command;
+  const result = await runOwnedCommand(executable, args, {
+    cwd,
+    timeoutMs,
+    maxOutputBytes: SKILLS_COMMAND_MAX_STREAM_BYTES,
+  });
+  if (result.timedOut) {
+    throw new Error(
+      result.cleanupError
+        ? `Command timed out after ${timeoutMs}ms; ${result.cleanupError}`
+        : `Command timed out after ${timeoutMs}ms`,
+    );
+  }
+  if (!result.ok) {
+    const isSpawnError = result.status === null
+      && result.signal === null
+      && result.error
+      && !result.error.startsWith("Command exited with ");
+    if (isSpawnError) throw new Error(result.error);
+    throw new Error(
+      commandFailureDetail(result.status, result.stdout, result.stderr),
+    );
+  }
+  return { stdout: result.stdout, stderr: result.stderr };
+}
+
 async function runJsonCommand(
   file: string,
   args: string[],
   cwd: string,
-): Promise<{ stdout: string; stderr: string }> {
-  const result = await execFileAsync(file, args, {
-    cwd,
-    timeout: 20_000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
-
-  return {
-    stdout: result.stdout,
-    stderr: result.stderr,
-  };
+): Promise<SkillsCommandResult> {
+  return runSkillsCommand(file, args, SKILLS_JSON_COMMAND_TIMEOUT_MS, cwd);
 }
 
 async function commandExists(command: string): Promise<boolean> {
-  try {
-    await execFileAsync("bash", ["-lc", `command -v ${command}`], {
-      timeout: 5_000,
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  return resolveSkillsCommand(command) !== null;
+}
+
+function resolvePythonCommand(): string | null {
+  return resolveSkillsCommand("python3") || resolveSkillsCommand("python");
 }
 
 function readInstallMetadataFromDir(
@@ -1268,38 +1341,33 @@ function analyzeExtractedSkillBundle(
 }
 
 async function extractZip(zipPath: string, outputDir: string): Promise<void> {
-  if (await commandExists("unzip")) {
-    await execFileAsync("unzip", ["-qq", "-o", zipPath, "-d", outputDir], {
-      timeout: 60_000,
-      maxBuffer: 8 * 1024 * 1024,
-    });
+  const unzipPath = resolveSkillsCommand("unzip");
+  if (unzipPath) {
+    await runSkillsCommand(
+      unzipPath,
+      ["-qq", "-o", zipPath, "-d", outputDir],
+      SKILLS_ZIP_COMMAND_TIMEOUT_MS,
+    );
     return;
   }
 
-  if (await commandExists("python3")) {
-    await execFileAsync(
-      "python3",
+  const pythonPath = resolvePythonCommand();
+  if (pythonPath) {
+    await runSkillsCommand(
+      pythonPath,
       [
         "-c",
-        `
-import sys
-import zipfile
-
-zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])
-`,
+        PYTHON_EXTRACT_ZIP_SCRIPT,
         zipPath,
         outputDir,
       ],
-      {
-        timeout: 60_000,
-        maxBuffer: 8 * 1024 * 1024,
-      },
+      SKILLS_ZIP_COMMAND_TIMEOUT_MS,
     );
     return;
   }
 
   throw new Error(
-    "Neither unzip nor python3 is available to extract marketplace downloads",
+    "Neither unzip nor Python (python3/python) is available to extract marketplace downloads",
   );
 }
 
@@ -1340,34 +1408,19 @@ function locateUniqueSkillRoot(rootDir: string): string {
 }
 
 async function extractZipSafely(zipPath: string, outputDir: string): Promise<void> {
-  if (!(await commandExists("python3"))) {
-    throw new Error("python3 is required to safely inspect uploaded zip archives");
+  const pythonPath = resolvePythonCommand();
+  if (!pythonPath) {
+    throw new Error("python3 or python is required to safely inspect uploaded zip archives");
   }
-  await execFileAsync(
-    "python3",
+  await runSkillsCommand(
+    pythonPath,
     [
       "-c",
-      `
-import pathlib
-import sys
-import zipfile
-
-zip_path, output_dir = sys.argv[1], sys.argv[2]
-with zipfile.ZipFile(zip_path) as zf:
-    for member in zf.infolist():
-        name = member.filename
-        pure = pathlib.PurePosixPath(name)
-        if not name or name.startswith('/') or pure.is_absolute() or '..' in pure.parts:
-            raise SystemExit(f'unsafe zip entry: {name}')
-    zf.extractall(output_dir)
-`,
+      PYTHON_EXTRACT_ZIP_SAFELY_SCRIPT,
       zipPath,
       outputDir,
     ],
-    {
-      timeout: 60_000,
-      maxBuffer: 8 * 1024 * 1024,
-    },
+    SKILLS_ZIP_COMMAND_TIMEOUT_MS,
   );
 }
 
@@ -1859,12 +1912,16 @@ export function createSkillsService(config: TracevaneServerConfig): SkillsServic
     slug: string,
     workspaceDir: string,
   ): Promise<{ method: SkillsInstallMethod; output: string }> {
-    if (sourceId === "skillhub-tencent" && (await commandExists("skillhub"))) {
-      const result = await execFileAsync("skillhub", ["install", slug], {
-        cwd: workspaceDir,
-        timeout: 120_000,
-        maxBuffer: 8 * 1024 * 1024,
-      });
+    const cliName = sourceId === "skillhub-tencent" ? "skillhub" : "clawhub";
+    const cliPath = resolveSkillsCommand(cliName);
+
+    if (sourceId === "skillhub-tencent" && cliPath) {
+      const result = await runSkillsCommand(
+        cliPath,
+        ["install", slug],
+        SKILLS_MARKETPLACE_COMMAND_TIMEOUT_MS,
+        workspaceDir,
+      );
       return {
         method: "skillhub-cli",
         output:
@@ -1873,15 +1930,12 @@ export function createSkillsService(config: TracevaneServerConfig): SkillsServic
       };
     }
 
-    if (sourceId === "clawhub" && (await commandExists("clawhub"))) {
-      const result = await execFileAsync(
-        "clawhub",
+    if (sourceId === "clawhub" && cliPath) {
+      const result = await runSkillsCommand(
+        cliPath,
         ["install", slug, "--workdir", workspaceDir, "--no-input"],
-        {
-          cwd: workspaceDir,
-          timeout: 120_000,
-          maxBuffer: 8 * 1024 * 1024,
-        },
+        SKILLS_MARKETPLACE_COMMAND_TIMEOUT_MS,
+        workspaceDir,
       );
       return {
         method: "clawhub-cli",
