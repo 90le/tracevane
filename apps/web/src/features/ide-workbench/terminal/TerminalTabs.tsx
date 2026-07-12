@@ -488,18 +488,18 @@ function TerminalNewProfileMenu({
           onPointerDown={(event) => {
             event.preventDefault();
             event.stopPropagation();
-            onSelect({ profileId: "local-shell", shell: "bash", label: "Terminal" });
+            onSelect({ profileId: "local-shell", shell: null, label: "Terminal" });
           }}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
           }}
           data-ide-terminal-new-profile="local-shell"
-          data-terminal-shell="bash"
+          data-terminal-shell="system-default"
         >
           <TerminalIcon className="size-3.5 text-subtle" />
           <span className="min-w-0 flex-1 truncate">默认终端</span>
-          <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">bash</span>
+          <span className="rounded bg-panel-3 px-1 font-mono text-2xs text-muted">系统默认</span>
         </button>
       )}
       {unavailable.length ? (
@@ -625,7 +625,7 @@ function defaultTerminalProfile(profiles: TerminalProfileDescriptor[], defaultPr
   const launchable = normalizeLaunchableProfiles(profiles);
   const resolvedId = resolveDefaultProfileId(profiles, defaultProfileId);
   const profile = resolvedId ? launchable.find((item) => item.id === resolvedId) : null;
-  return profile ? profileToSelection(profile) : { profileId: "local-shell", shell: "bash", label: "Terminal" };
+  return profile ? profileToSelection(profile) : { profileId: "local-shell", shell: null, label: "Terminal" };
 }
 
 function profileToSelection(profile: TerminalProfileDescriptor): TerminalProfileSelection {

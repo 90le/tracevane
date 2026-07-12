@@ -253,7 +253,15 @@ function normalizeProfileId(value: string | null | undefined): string | null {
 
 function normalizeShell(value: string | null | undefined): string | null {
   const raw = String(value || "").trim();
-  return raw || "bash";
+  return raw || null;
+}
+
+function normalizePersistedShell(
+  profileId: string | null | undefined,
+  value: string | null | undefined,
+): string | null {
+  if (String(profileId || "").trim() === "local-shell") return null;
+  return normalizeShell(value);
 }
 
 function createStableId(): string {
@@ -738,7 +746,7 @@ function normalizePanes(value: Record<string, TerminalPaneRecord>): Record<strin
       title: String(pane.title || "Terminal"),
       createdAt: String(pane.createdAt || new Date().toISOString()),
       profileId: pane.profileId ?? null,
-      shell: pane.shell ?? null,
+      shell: normalizePersistedShell(pane.profileId, pane.shell),
       // createMode is intentionally ephemeral: it is only valid for a tab that
       // was just created by the current UI action. Persisted/localStorage or
       // server-restored layout metadata must never create a fresh PTY merely

@@ -1,4 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 import {
   getExternalLanguageServerProfiles,
@@ -141,7 +142,7 @@ export class ExternalLanguageServerGateway {
       state.pid = running.transport.pid;
       await this.request(profile.id, "initialize", {
         processId: process.pid,
-        rootUri: `file://${cwd}`,
+        rootUri: pathToFileURL(cwd).href,
         capabilities: {
           workspace: { configuration: true },
           textDocument: {

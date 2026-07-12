@@ -271,7 +271,7 @@ export function TerminalManagerDialog({
                             <span className="truncate" title={session.sessionId}>会话 ID：{session.sessionId}</span>
                             <span className="truncate" title={formatWorkspaceTitle(session)}>工作区：{formatWorkspaceLabel(session)}</span>
                             <span className="truncate" title={formatCwdTitle(session.cwd)}>目录：{formatCwd(session.cwd)}</span>
-                            <span className="truncate">终端配置：{session.shell || "bash"} · 更新：{formatTime(session.updatedAt)}</span>
+                            <span className="truncate">终端配置：{session.shell || "系统默认"} · 更新：{formatTime(session.updatedAt)}</span>
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-1">

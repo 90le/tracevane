@@ -320,7 +320,7 @@ export function createTracevaneServer(
       });
 
       server = null;
-      ctx.services.terminal.dispose();
+      await ctx.services.terminal.dispose();
       ctx.services.debug.dispose();
       ctx.logger.info("tracevane: HTTP server stopped");
     },

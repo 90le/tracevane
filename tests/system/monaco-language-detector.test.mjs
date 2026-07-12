@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+
+const tsxCliPath = createRequire(import.meta.url).resolve('tsx/cli');
 
 function detect(path, content) {
   const directory = mkdtempSync(join(tmpdir(), 'tracevane-language-detect-'));
@@ -11,7 +14,7 @@ function detect(path, content) {
   writeFileSync(inputPath, JSON.stringify({ path, content }));
   try {
     const script = `import { readFileSync } from 'node:fs';\nimport { detectLanguageForFile } from './apps/web/src/shared/editor-core/language.ts';\nconst input = JSON.parse(readFileSync(${JSON.stringify(inputPath)}, 'utf8'));\nconsole.log(detectLanguageForFile(input));\n`;
-    return execFileSync('node_modules/.bin/tsx', ['--eval', script], { encoding: 'utf8' }).trim();
+    return execFileSync(process.execPath, [tsxCliPath, '--eval', script], { encoding: 'utf8' }).trim();
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
