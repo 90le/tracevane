@@ -118,6 +118,31 @@ test("channel account plan opens only after planning succeeds", () => {
   assert.match(accounts, /onError: \(error\) => \{\s*setPendingCandidate\(null\);/);
 });
 
+test("channel account plan guards editor and delete interactions while pending", () => {
+  const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
+  const editor = accounts.slice(
+    accounts.indexOf("function AccountEditor"),
+    accounts.indexOf("export function V3AccountsView"),
+  );
+  const deleteDialog = accounts.slice(
+    accounts.indexOf("<Dialog open={deleteAccount != null}"),
+    accounts.indexOf("<V3PlanDialog"),
+  );
+
+  assert.match(editor, /if \(planning && !nextOpen\) return;\s*onOpenChange\(nextOpen\);/);
+  assert.match(editor, /<Dialog open=\{open\} onOpenChange=\{handleOpenChange\}>/);
+  assert.match(editor, /<DialogContent[^>]*showClose=\{!planning\}/);
+  assert.match(editor, /<Button variant="ghost" disabled=\{planning\} onClick=\{\(\) => handleOpenChange\(false\)\}>取消<\/Button>/);
+
+  assert.match(accounts, /const requestPlan = \(candidate: ChannelConnectorsV3Config\) => \{\s*if \(planMutation\.isPending\) return;/);
+  assert.match(accounts, /if \(open \|\| planMutation\.isPending\) return;\s*setDeleteAccount\(null\);/);
+  assert.match(deleteDialog, /<DialogContent showClose=\{!planMutation\.isPending\}>/);
+  assert.match(deleteDialog, /variant="ghost" disabled=\{planMutation\.isPending\}/);
+  assert.match(deleteDialog, /variant="danger" disabled=\{planMutation\.isPending\}/);
+  assert.match(deleteDialog, /planMutation\.isPending \? <Loader2 className="animate-spin" \/> : <Trash2 \/>/);
+  assert.match(deleteDialog, /planMutation\.isPending \? "正在检查…" : "检查并删除"/);
+});
+
 test("Feishu account creation renders a real local QR code and keeps manual fields editable", () => {
   const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
   assert.match(accounts, /QRCodeSVG/);
