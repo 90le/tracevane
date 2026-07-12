@@ -24,12 +24,21 @@ const baseKey = {
 };
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-driver-"));
+  const parent = path.join(os.tmpdir(), "tracevane CLI 会话测试");
+  fs.mkdirSync(parent, { recursive: true });
+  return fs.mkdtempSync(path.join(parent, "driver-"));
 }
 
 function writeExecutable(filePath, lines) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${lines.join("\n")}\n`, { mode: 0o755 });
+  const source = `${lines.join("\n")}\n`;
+  if (process.platform === "win32") {
+    const scriptFile = `${filePath}.cjs`;
+    fs.writeFileSync(scriptFile, source, "utf8");
+    fs.writeFileSync(`${filePath}.cmd`, `@echo off\r\n"${process.execPath}" "${scriptFile}" %*\r\n`, "utf8");
+    return;
+  }
+  fs.writeFileSync(filePath, source, { encoding: "utf8", mode: 0o755 });
 }
 
 async function waitForFilePattern(filePath, pattern, timeoutMs = 5000) {
@@ -615,8 +624,9 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
   writeExecutable(path.join(fakeBin, "sqlite3"), [
     "#!/usr/bin/env node",
     "const dbPath = process.argv.includes('-json') ? process.argv[process.argv.indexOf('-json') + 1] : (process.argv[2] || '');",
+    "const normalizedDbPath = dbPath.replace(/\\\\/g, '/');",
     "const query = process.argv[process.argv.length - 1] || '';",
-    "if (dbPath.endsWith('/opencode-data/opencode/opencode.db') && query.includes(\"id = 'opencode-session-created'\")) {",
+    "if (normalizedDbPath.endsWith('/opencode-data/opencode/opencode.db') && query.includes(\"id = 'opencode-session-created'\")) {",
     "  process.stdout.write(JSON.stringify([{ id: 'opencode-session-created' }]));",
     "} else {",
     "  process.stdout.write('[]');",
@@ -624,7 +634,7 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.TRACEVANE_TEST_CAPTURE = capturePath;
   try {
     const factory = createNativeCliSessionDriverFactory({
@@ -719,7 +729,7 @@ test("Channel Connectors native CLI session driver recovers OpenCode output from
   const originalPath = process.env.PATH || "";
   const originalHome = process.env.HOME;
   const originalDataHome = process.env.XDG_DATA_HOME;
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.HOME = root;
   process.env.XDG_DATA_HOME = dataHome;
   try {
@@ -799,7 +809,7 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.TRACEVANE_TEST_CAPTURE = capturePath;
   try {
     const factory = createNativeCliSessionDriverFactory({
@@ -884,7 +894,7 @@ test("Channel Connectors Claude persistent session treats error subtypes as fail
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   try {
     const factory = createNativeCliSessionDriverFactory({
       codexFactory: {
@@ -943,7 +953,7 @@ test("Channel Connectors Claude persistent session reports unknown structured ev
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   try {
     const factory = createNativeCliSessionDriverFactory({
       codexFactory: {
@@ -1009,7 +1019,7 @@ test("Channel Connectors Claude persistent session stop resolves the active turn
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.TRACEVANE_TEST_CAPTURE = capturePath;
   try {
     const factory = createNativeCliSessionDriverFactory({
@@ -1080,7 +1090,7 @@ test("Channel Connectors OpenCode persistent session stop aborts active process 
   const originalHome = process.env.HOME;
   const originalDataHome = process.env.XDG_DATA_HOME;
   const originalMarker = process.env.TRACEVANE_SQLITE_MARKER;
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.HOME = root;
   process.env.XDG_DATA_HOME = dataHome;
   process.env.TRACEVANE_SQLITE_MARKER = sqliteMarker;

@@ -1,4 +1,5 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import crossSpawn from "cross-spawn";
 import type { ChannelConnectorAgentId, ChannelConnectorPermissionMode } from "../../../../types/channel-connectors.js";
 import {
   buildChannelConnectorAgentProcessRequest,
@@ -6,6 +7,7 @@ import {
   commandResultProgressText,
   defaultChannelConnectorAgentProcessRunner,
   firstProgressTextValue,
+  terminateChannelConnectorAgentChild,
   truncateProgressText,
   type ChannelConnectorAgentPermissionDecision,
   type ChannelConnectorAgentPermissionRequest,
@@ -260,12 +262,13 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
     this.turnTimeoutMs = Number.isFinite(Number(input.turnTimeoutMs))
       ? Math.max(1, Number(input.turnTimeoutMs))
       : Math.max(Number(input.requestTimeoutMs) || 10_000, 10 * 60_000);
-    this.child = spawn(processRequest.command, processRequest.args, {
+    this.child = crossSpawn.spawn(processRequest.command, processRequest.args, {
       cwd: processRequest.cwd,
       env: {
         ...process.env,
         ...processRequest.env,
       },
+      shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child.stdout.setEncoding("utf8");
@@ -328,7 +331,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
 
   stop(reason: string): void {
     this.cancelActive(reason || "manual-stop");
-    if (!this.child.killed) this.child.kill(reason === "dispose" ? "SIGTERM" : "SIGTERM");
+    if (!this.child.killed) terminateChannelConnectorAgentChild(this.child, "SIGTERM");
   }
 
   dispose(reason: string): void {
@@ -338,7 +341,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
       // best effort
     }
     setTimeout(() => {
-      if (!this.child.killed) this.child.kill("SIGTERM");
+      if (!this.child.killed) terminateChannelConnectorAgentChild(this.child, "SIGTERM");
     }, reason === "idle-timeout" ? 250 : 0).unref();
   }
 

@@ -1,4 +1,5 @@
-import { spawn, spawnSync } from "node:child_process";
+import crossSpawn from "cross-spawn";
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -924,17 +925,29 @@ function uniquePathEntries(values: string[]): string {
   const output: string[] = [];
   for (const value of values) {
     const normalized = normalizeString(value);
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
+    const key = process.platform === "win32" ? normalized.toLowerCase() : normalized;
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
     output.push(normalized);
   }
-  return output.join(":");
+  return output.join(path.delimiter);
 }
 
 function cliPathEnv(): string {
   const home = normalizeString(process.env.HOME) || os.homedir();
+  const currentEntries = (process.env.PATH || "").split(path.delimiter);
+  if (process.platform === "win32") {
+    const appData = normalizeString(process.env.APPDATA) || path.join(home, "AppData", "Roaming");
+    return uniquePathEntries([
+      ...currentEntries,
+      path.join(appData, "npm"),
+      path.join(home, ".bun", "bin"),
+      path.join(home, ".deno", "bin"),
+      path.join(home, ".cargo", "bin"),
+    ]);
+  }
   return uniquePathEntries([
-    ...(process.env.PATH || "").split(":"),
+    ...currentEntries,
     path.join(home, ".local", "bin"),
     path.join(home, "bin"),
     path.join(home, ".npm-global", "bin"),
@@ -956,6 +969,22 @@ function mergeProcessEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
     PATH: cliPathEnv(),
     ...Object.fromEntries(Object.entries(extra).filter(([, value]) => value !== "")),
   };
+}
+
+export function terminateChannelConnectorAgentChild(
+  child: Pick<ChildProcess, "exitCode" | "signalCode" | "pid" | "kill">,
+  signal: NodeJS.Signals = "SIGTERM",
+): void {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === "win32" && child.pid) {
+    const result = crossSpawn.sync(
+      "taskkill.exe",
+      ["/PID", String(child.pid), "/T", "/F"],
+      { shell: false, stdio: "ignore", timeout: 5_000, windowsHide: true },
+    );
+    if (!result.error && result.status === 0) return;
+  }
+  child.kill(signal);
 }
 
 function tomlString(value: string): string {
@@ -2306,9 +2335,10 @@ export async function defaultChannelConnectorAgentProcessRunner(
       });
       return;
     }
-    const child = spawn(request.command, request.args, {
+    const child = crossSpawn.spawn(request.command, request.args, {
       cwd: request.cwd,
       env: mergeProcessEnv(request.env),
+      shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
     const isClaudeCode = request.agent === "claude-code";
@@ -2455,9 +2485,9 @@ export async function defaultChannelConnectorAgentProcessRunner(
       if (isClaudeResultLine(line)) closeStdin();
     };
     const terminateChild = (): void => {
-      child.kill("SIGTERM");
+      terminateChannelConnectorAgentChild(child, "SIGTERM");
       setTimeout(() => {
-        if (!settled) child.kill("SIGKILL");
+        if (!settled) terminateChannelConnectorAgentChild(child, "SIGKILL");
       }, 2000).unref();
     };
     const abortListener = (): void => {
@@ -2912,11 +2942,12 @@ function opencodeDbPath(env: NodeJS.ProcessEnv): string | null {
 }
 
 function runSqliteJson(dbPath: string, query: string, env: NodeJS.ProcessEnv): Record<string, unknown>[] {
-  const result = spawnSync("sqlite3", ["-json", dbPath, query], {
+  const result = crossSpawn.sync("sqlite3", ["-json", dbPath, query], {
     encoding: "utf8",
     env,
     timeout: 5000,
     maxBuffer: 1024 * 1024,
+    shell: false,
   });
   if (result.error || result.status !== 0) return [];
   try {

@@ -1,13 +1,17 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
+import crossSpawn from "cross-spawn";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import which from "which";
 
 const SCRIPT_TIMEOUT_MS = 180_000;
-const COMMAND_TIMEOUT_MS = 45_000;
+const commandTimeoutOverride = Number(process.env.TRACEVANE_GATEWAY_CLI_SMOKE_COMMAND_TIMEOUT_MS);
+const COMMAND_TIMEOUT_MS = Number.isSafeInteger(commandTimeoutOverride) && commandTimeoutOverride > 0
+  ? commandTimeoutOverride
+  : 45_000;
 const LOCAL_GATEWAY_KEY = "sk-local-cli-smoke";
 const UPSTREAM_KEY = "sk-upstream-cli-smoke";
 const DEFAULT_TARGET_MODEL = "gpt-5.4";
@@ -104,12 +108,24 @@ function createTracevaneConfig(root) {
 }
 
 function commandExists(command, env = process.env) {
-  const result = spawnSync("sh", ["-lc", `command -v ${shellQuote(command)}`], { encoding: "utf8", env });
-  return result.status === 0 ? result.stdout.trim() : null;
+  return which.sync(command, {
+    path: env.PATH,
+    pathExt: env.PATHEXT,
+    nothrow: true,
+  });
 }
 
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, "'\\''")}'`;
+function terminateOwnedCommand(child, signal = "SIGTERM") {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === "win32" && child.pid) {
+    const result = crossSpawn.sync(
+      "taskkill.exe",
+      ["/PID", String(child.pid), "/T", "/F"],
+      { shell: false, stdio: "ignore", timeout: 5_000, windowsHide: true },
+    );
+    if (!result.error && result.status === 0) return;
+  }
+  child.kill(signal);
 }
 
 function readRequestBody(req) {
@@ -936,8 +952,7 @@ function parseJsonFromOutput(output) {
 }
 
 async function runCommand(definition, requestStore) {
-  const executable = commandExists(definition.command, definition.env);
-  if (!executable) {
+  if (!commandExists(definition.command, definition.env)) {
     return {
       id: definition.id,
       status: "skipped",
@@ -948,9 +963,10 @@ async function runCommand(definition, requestStore) {
   }
   const beforeCount = requestStore.length;
   const startedAt = Date.now();
-  const child = spawn(executable, definition.args, {
+  const child = crossSpawn(definition.command, definition.args, {
     cwd: definition.env.HOME,
     env: definition.env,
+    shell: false,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "";
@@ -960,9 +976,9 @@ async function runCommand(definition, requestStore) {
   let timedOut = false;
   const timeout = setTimeout(() => {
     timedOut = true;
-    child.kill("SIGTERM");
+    terminateOwnedCommand(child, "SIGTERM");
     setTimeout(() => {
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      terminateOwnedCommand(child, "SIGKILL");
     }, 2_000).unref();
   }, COMMAND_TIMEOUT_MS);
   const exit = await new Promise((resolve) => {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,7 +12,7 @@ const distEntry = path.join(repoRoot, "dist/apps/api/index.js");
 const execFileAsync = promisify(execFile);
 
 const fakeCliSource = `#!/usr/bin/env node
-const app = process.argv[1].split(/[\\/]/).pop();
+const app = "__TRACEVANE_FAKE_APP__";
 const args = process.argv.slice(2);
 
 function argValue(name) {
@@ -75,8 +75,15 @@ const fakeNoRequestCliSource = `#!/usr/bin/env node
 console.log("GATEWAY_OK");
 `;
 
+const fakeHangingCliSource = `#!/usr/bin/env node
+import("node:fs").then(({ writeFileSync }) => {
+  writeFileSync(process.env.TRACEVANE_FAKE_CLI_PID_FILE, String(process.pid));
+  setInterval(() => {}, 1000);
+});
+`;
+
 const fakeToolRoundTripCliSource = `#!/usr/bin/env node
-const app = process.argv[1].split(/[\/]/).pop();
+const app = "__TRACEVANE_FAKE_APP__";
 const args = process.argv.slice(2);
 
 function argValue(name) {
@@ -159,8 +166,51 @@ main().catch((error) => {
 
 function writeFakeCli(binDir, name, source = fakeCliSource) {
   const file = path.join(binDir, name);
-  fs.writeFileSync(file, source, "utf8");
-  fs.chmodSync(file, 0o755);
+  const renderedSource = source.replaceAll("__TRACEVANE_FAKE_APP__", name);
+  if (process.platform === "win32") {
+    const scriptFile = `${file}.mjs`;
+    fs.writeFileSync(scriptFile, renderedSource, "utf8");
+    fs.writeFileSync(`${file}.cmd`, `@echo off\r\n"${process.execPath}" "${scriptFile}" %*\r\n`, "utf8");
+    return;
+  }
+  fs.writeFileSync(file, renderedSource, { encoding: "utf8", mode: 0o755 });
+}
+
+function makeTempRoot(prefix) {
+  const parent = path.join(os.tmpdir(), "tracevane CLI 测试");
+  fs.mkdirSync(parent, { recursive: true });
+  return fs.mkdtempSync(path.join(parent, prefix));
+}
+
+function processExists(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForProcessExit(pid, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    if (!processExists(pid)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for fake CLI process ${pid} to exit`);
+}
+
+function stopFixtureProcess(pid) {
+  if (!Number.isInteger(pid) || pid <= 0 || !processExists(pid)) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", timeout: 5_000 });
+    return;
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // The fixture may already have exited with the smoke process.
+  }
 }
 
 async function runCliSmoke(args, env = {}) {
@@ -189,7 +239,7 @@ test("gateway CLI smoke records diagnostic transport and request evidence", asyn
     return;
   }
 
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-cli-smoke-test-"));
+  const tempRoot = makeTempRoot("gateway-");
   t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
   const binDir = path.join(tempRoot, "bin");
   fs.mkdirSync(binDir, { recursive: true });
@@ -206,7 +256,7 @@ test("gateway CLI smoke records diagnostic transport and request evidence", asyn
     PATH: `${binDir}${path.delimiter}${process.env.PATH || ""}`,
   });
 
-  assert.equal(parsed.ok, true);
+  assert.equal(parsed.ok, true, JSON.stringify(parsed, null, 2));
   assert.deepEqual(parsed.modelRuns.map((run) => run.targetModel), ["gpt-5.4", "gpt-5.5"]);
 
   for (const run of parsed.modelRuns) {
@@ -244,7 +294,7 @@ test("gateway CLI diagnostic strict mode fails when transport evidence is missin
     return;
   }
 
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-cli-smoke-no-request-test-"));
+  const tempRoot = makeTempRoot("gateway-no-request-");
   t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
   const binDir = path.join(tempRoot, "bin");
   fs.mkdirSync(binDir, { recursive: true });
@@ -285,13 +335,63 @@ test("gateway CLI diagnostic strict mode fails when transport evidence is missin
   );
 });
 
+test("gateway CLI smoke timeout terminates the owned command shim process", async (t) => {
+  if (!fs.existsSync(distEntry)) {
+    t.skip("npm run build:api is required before the CLI smoke script system test");
+    return;
+  }
+
+  const tempRoot = makeTempRoot("gateway-timeout-");
+  const binDir = path.join(tempRoot, "挂起 shim bin");
+  const pidFile = path.join(tempRoot, "fake-cli.pid");
+  fs.mkdirSync(binDir, { recursive: true });
+  writeFakeCli(binDir, "codex", fakeHangingCliSource);
+  t.after(() => {
+    if (fs.existsSync(pidFile)) stopFixtureProcess(Number(fs.readFileSync(pidFile, "utf8")));
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [
+      scriptPath,
+      "--apps",
+      "codex-tool-diagnostic",
+      "--target-model",
+      "gpt-5.4",
+      "--strict",
+    ], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        PATH: `${binDir}${path.delimiter}${process.env.PATH || ""}`,
+        TRACEVANE_FAKE_CLI_PID_FILE: pidFile,
+        TRACEVANE_GATEWAY_CLI_SMOKE_COMMAND_TIMEOUT_MS: "250",
+      },
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 16,
+      timeout: 5_000,
+    }),
+    (error) => {
+      assert.equal(error.code, 1);
+      const parsed = JSON.parse(error.stdout);
+      const diagnostic = parsed.results.find((result) => result.id === "codex-tool-diagnostic");
+      assert.equal(diagnostic.timedOut, true);
+      assert.equal(diagnostic.transportOk, false);
+      return true;
+    },
+  );
+  const fixturePid = Number(fs.readFileSync(pidFile, "utf8"));
+  await waitForProcessExit(fixturePid);
+  assert.equal(processExists(fixturePid), false);
+});
+
 test("gateway CLI diagnostics mark recognized tool round trips as candidate support", async (t) => {
   if (!fs.existsSync(distEntry)) {
     t.skip("npm run build:api is required before the CLI smoke script system test");
     return;
   }
 
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-cli-smoke-roundtrip-test-"));
+  const tempRoot = makeTempRoot("gateway-roundtrip-");
   t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
   const binDir = path.join(tempRoot, "bin");
   fs.mkdirSync(binDir, { recursive: true });
@@ -308,7 +408,7 @@ test("gateway CLI diagnostics mark recognized tool round trips as candidate supp
     PATH: `${binDir}${path.delimiter}${process.env.PATH || ""}`,
   });
 
-  assert.equal(parsed.ok, true);
+  assert.equal(parsed.ok, true, JSON.stringify(parsed, null, 2));
 
   const codexDiagnostic = parsed.results.find((result) => result.id === "codex-tool-diagnostic");
   assert.equal(codexDiagnostic.status, "diagnostic");
