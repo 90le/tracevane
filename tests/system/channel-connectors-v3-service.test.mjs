@@ -1057,6 +1057,173 @@ test("V3 apply without mode keeps one discovered session or persistent owner", a
   }
 });
 
+test("V3 apply starts a stopped daemon and accepts the saved configuration", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-first-start-"));
+  try {
+    const config = createConfig(root);
+    ensureDaemonEntry(config);
+    const managerCalls = [];
+    const service = createChannelConnectorsService(config, {
+      homeDir: root,
+      managementEndpoint: "http://fixture.first-start.invalid",
+      manager: {
+        async manage(_definition, request) {
+          managerCalls.push(request);
+          const running = request.action === "start";
+          return managedResponse(request, {
+            manager: managerStatus({
+              mode: request.mode,
+              active: running,
+              state: running ? "running" : "stopped",
+              pid: running ? 9512 : null,
+            }),
+          });
+        },
+        async dispose() {
+          assert.fail("injected manager is caller-owned");
+        },
+      },
+      fetchImpl: async (url) => {
+        assert.equal(String(url), "http://fixture.first-start.invalid/status");
+        throw new TypeError("fetch failed");
+      },
+    });
+    const initial = service.getV3Config();
+    const persisted = service.saveV3Config(initial.config);
+    const candidate = structuredClone(persisted.config);
+    candidate.targets[0].name = "First start candidate";
+    const planned = service.planV3Config({
+      config: candidate,
+      expectedRevision: persisted.revision,
+    });
+
+    const result = await service.applyV3Config({
+      planId: planned.planId,
+      config: candidate,
+    });
+
+    assert.equal(result.accepted, true);
+    assert.equal(result.persisted, true);
+    assert.equal(result.rolledBack, false);
+    assert.equal(result.reload.status, "applied");
+    assert.deepEqual(managerCalls, [
+      { action: "status", mode: "session", apply: true },
+      { action: "status", mode: "persistent", apply: true },
+      { action: "status", mode: "session", apply: true },
+      { action: "start", mode: "session", apply: true },
+    ]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("V3 apply stops a degraded bootstrap before rolling back session or persistent config", async () => {
+  for (const ownerMode of ["session", "persistent"]) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), `tracevane-channel-bootstrap-rollback-${ownerMode}-`));
+    try {
+      const config = createConfig(root);
+      ensureDaemonEntry(config);
+      const managerCalls = [];
+      const service = createChannelConnectorsService(config, {
+        homeDir: root,
+        managementEndpoint: `http://fixture.bootstrap-rollback-${ownerMode}.invalid`,
+        manager: {
+          async manage(_definition, request) {
+            managerCalls.push(request);
+            if (request.action === "start") {
+              return managedResponse(request, {
+                ok: false,
+                manager: managerStatus({
+                  mode: request.mode,
+                  active: true,
+                  state: "degraded",
+                  pid: 9600,
+                  errorCode: "health-timeout",
+                  errorMessage: "fixture readiness timed out",
+                }),
+              });
+            }
+            return managedResponse(request, {
+              manager: managerStatus({ mode: request.mode }),
+            });
+          },
+          async dispose() {
+            assert.fail("injected manager is caller-owned");
+          },
+        },
+        fetchImpl: async () => {
+          throw new TypeError("fetch failed");
+        },
+      });
+      const initial = service.getV3Config();
+      const persisted = service.saveV3Config(initial.config);
+      const paths = resolveChannelConnectorsPaths(config, root);
+      const nativeBefore = fs.readFileSync(paths.nativeConfigPath, "utf8");
+      const candidate = structuredClone(persisted.config);
+      candidate.targets[0].name = `${ownerMode} degraded bootstrap`;
+      const planned = service.planV3Config({
+        config: candidate,
+        expectedRevision: persisted.revision,
+      });
+
+      const result = await service.applyV3Config({
+        planId: planned.planId,
+        config: candidate,
+        mode: ownerMode,
+        rollbackOnFailure: true,
+      });
+
+      assert.equal(result.accepted, false, ownerMode);
+      assert.equal(result.rolledBack, true, ownerMode);
+      assert.equal(fs.readFileSync(paths.nativeConfigPath, "utf8"), nativeBefore, ownerMode);
+      assert.deepEqual(managerCalls, [
+        { action: "status", mode: ownerMode, apply: true },
+        { action: "start", mode: ownerMode, apply: true },
+        { action: "stop", mode: ownerMode, apply: true },
+      ], ownerMode);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("offline agent-session GET degrades while management POST stays live-only", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-agent-offline-"));
+  try {
+    const config = createConfig(root);
+    const service = createChannelConnectorsService(config, {
+      homeDir: root,
+      managementEndpoint: "http://fixture.agent-offline.invalid",
+      manager: {
+        async manage(_definition, request) {
+          return managedResponse(request);
+        },
+        async dispose() {
+          assert.fail("injected manager is caller-owned");
+        },
+      },
+      fetchImpl: async () => {
+        throw new TypeError("fetch failed");
+      },
+    });
+
+    const status = await service.getAgentSessions();
+
+    assert.equal(status.ok, true);
+    assert.equal(status.runtimeReachable, false);
+    assert.equal(status.persistentDriverReady, false);
+    assert.equal(status.unavailableReason, "daemon_unreachable");
+    assert.deepEqual(status.activeSessions, []);
+    assert.deepEqual(status.recentEvents, []);
+    await assert.rejects(
+      () => service.manageAgentSessions({ action: "reap-idle" }),
+      /fetch failed/,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("V3 apply plan is consumed once before asynchronous owner discovery", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-plan-consume-"));
   let releaseOwner;

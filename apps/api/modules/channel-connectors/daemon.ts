@@ -1782,6 +1782,8 @@ function agentSessionDriverStatusResponse(
   return {
     ok: true,
     checkedAt: new Date().toISOString(),
+    runtimeReachable: true,
+    unavailableReason: null,
     ...state,
     policy: {
       ...channelAgentSessionDriverPool.policy(),

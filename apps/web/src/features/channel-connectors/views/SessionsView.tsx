@@ -305,6 +305,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   const recentEvents = data?.recentEvents ?? [];
   const visibleEvents = importantEvents(recentEvents);
   const policy = data?.policy;
+  const runtimeReachable = data?.runtimeReachable !== false;
   const defaultPolicy = React.useMemo(() => ({
     maxSessions: 8,
     maxConcurrentTurns: 4,
@@ -326,7 +327,9 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
     && policy?.maxSessions === policyDraft.maxSessions
     && policy?.busyStrategy === policyDraft.busyStrategy
     && policy?.queueMaxRecords === policyDraft.queueMaxRecords;
-  const policyBadge = !runtimePolicyLoaded
+  const policyBadge = !runtimeReachable
+    ? { variant: "warn" as const, label: "守护离线" }
+    : !runtimePolicyLoaded
     ? { variant: "warn" as const, label: "守护未连接" }
     : policyDirty
       ? { variant: "warn" as const, label: "未保存" }
@@ -504,6 +507,12 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
 
   return (
     <div className="grid gap-[18px]">
+      {!runtimeReachable ? (
+        <div className="flex items-start gap-2 rounded-sm border border-amber/30 bg-amber-soft px-4 py-3 text-sm text-amber" role="status">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span><strong>守护离线，会话运行态暂不可用。</strong>当前显示已保存的策略；启动消息守护后会恢复会话、事件与管理操作。</span>
+        </div>
+      ) : null}
       <Panel>
         <PanelHead
           title="全局并发 / 队列策略"
@@ -566,7 +575,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-sm text-muted">
-          <span>当前执行中 {policy?.activeTurns ?? 0}，队列中 {policy?.queuedTurns ?? 0}；运行策略 {policy?.maxConcurrentTurns ?? "—"} 并发 / {policy?.busyStrategy === "queue" ? "队列" : "拒绝"}。</span>
+          <span>{runtimeReachable ? `当前执行中 ${policy?.activeTurns ?? 0}，队列中 ${policy?.queuedTurns ?? 0}；运行策略 ${policy?.maxConcurrentTurns ?? "—"} 并发 / ${policy?.busyStrategy === "queue" ? "队列" : "拒绝"}。` : "消息守护离线；无法读取当前执行数和队列状态。"}</span>
           {policyEditing && (
             <span className="flex gap-2">
               <Button variant="outline" size="sm" disabled={pending} onClick={() => { setPolicyDraft(persistedPolicy); setPolicyEditing(false); }}>取消</Button>
@@ -591,7 +600,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => setConfirm({ kind: "reap" })}
-                disabled={pending}
+                disabled={pending || !runtimeReachable}
               >
                 <Recycle />
                 回收空闲

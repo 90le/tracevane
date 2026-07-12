@@ -1323,6 +1323,16 @@ async function requestDaemonAgentSessions(
   return body as ChannelConnectorAgentSessionDriverStatusResponse;
 }
 
+function isDaemonConnectionFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const cause = "cause" in error ? (error as Error & { cause?: unknown }).cause : null;
+  const causeCode = isRecord(cause) ? normalizeString(cause.code) : "";
+  return error.name === "TypeError" && (
+    /fetch failed|failed to fetch|network error/i.test(error.message)
+    || ["ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH", "ENETUNREACH"].includes(causeCode)
+  );
+}
+
 function buildRuntimeConfig(
   deliveryConfig: ChannelConnectorsV3Config,
   paths: ChannelConnectorsPaths,
@@ -3082,6 +3092,7 @@ export function createChannelConnectorsService(
     });
     let applyResult: ChannelConnectorsDaemonResponse | null = null;
     let applyError: unknown = null;
+    let bootstrapReload: ChannelConnectorsDaemonReloadResponse | null = null;
     try {
       applyResult = await manageDaemonService({
         action: "reload",
@@ -3089,15 +3100,62 @@ export function createChannelConnectorsService(
         apply: true,
         reloadMode: payload.reloadMode || "when-idle",
       }, req);
+      if (applyResult.skippedReason === "daemon_not_running") {
+        applyResult = await manageDaemonService({
+          action: "start",
+          mode: ownerMode,
+          apply: true,
+        }, req);
+        if (applyResult.manager.state === "running") {
+          const appliedAt = now().toISOString();
+          bootstrapReload = {
+            ok: true,
+            checkedAt: appliedAt,
+            status: "applied",
+            mode: payload.reloadMode || "when-idle",
+            activeRuns: 0,
+            activeTurns: 0,
+            configUpdatedAt: saved.updatedAt,
+            appliedAt,
+            restartRequiredReason: null,
+            error: null,
+          };
+        } else {
+          const startFailure = applyResult.manager.errorMessage
+            || applyResult.diagnostics[0]
+            || `Channel daemon did not start (state: ${applyResult.manager.state}).`;
+          let cleanupFailure: string | null = null;
+          try {
+            const cleanupResult = await manageDaemonService({
+              action: "stop",
+              mode: ownerMode,
+              apply: true,
+            }, req);
+            const stopped = cleanupResult.manager.active === false
+              && (cleanupResult.manager.state === "stopped" || cleanupResult.manager.state === "not-installed");
+            if (!stopped) {
+              cleanupFailure = cleanupResult.manager.errorMessage
+                || `bootstrap cleanup returned state ${cleanupResult.manager.state}`;
+            }
+          } catch (error) {
+            cleanupFailure = error instanceof Error ? error.message : String(error);
+          }
+          applyError = new Error(
+            cleanupFailure
+              ? `${startFailure} Bootstrap cleanup failed: ${cleanupFailure}`
+              : startFailure,
+          );
+        }
+      }
     } catch (error) {
       applyError = error;
     }
-    const reload = applyError
+    const reload = bootstrapReload ?? (applyError
       ? failedReload(payload.reloadMode || "when-idle", applyError)
       : applyResult?.reload ?? failedReload(
           payload.reloadMode || "when-idle",
           "Channel daemon reload returned no status.",
-        );
+        ));
     const accepted = reload.status === "applied"
       || reload.status === "pending"
       || reload.status === "restart-required";
@@ -4723,12 +4781,37 @@ export function createChannelConnectorsService(
   }
 
   async function getAgentSessions(): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
-    return requestDaemonAgentSessions(
-      null,
-      fetchImpl,
-      managementEndpoint(options.managementEndpoint),
-      managementToken,
-    );
+    try {
+      return await requestDaemonAgentSessions(
+        null,
+        fetchImpl,
+        managementEndpoint(options.managementEndpoint),
+        managementToken,
+      );
+    } catch (error) {
+      if (!isDaemonConnectionFailure(error)) throw error;
+      const snapshot = currentV3Config();
+      const policy = normalizeAgentSessionPolicy(snapshot.config.agentSessionPolicy);
+      return {
+        ok: true,
+        checkedAt: now().toISOString(),
+        defaultMode: "persistent",
+        implementation: "native-cli-session-drivers",
+        runtimeReachable: false,
+        persistentDriverReady: false,
+        unavailableReason: "daemon_unreachable",
+        policy: {
+          ...policy,
+          activeTurns: 0,
+          queuedTurns: 0,
+          fallbackOnCrash: true,
+        },
+        requestedPersistentBindings: [],
+        bindings: [],
+        activeSessions: [],
+        recentEvents: [],
+      };
+    }
   }
 
   async function manageAgentSessions(

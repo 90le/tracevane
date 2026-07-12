@@ -1472,7 +1472,9 @@ export interface ChannelConnectorAgentSessionDriverStatusResponse {
   checkedAt: string;
   defaultMode: "persistent";
   implementation: "native-cli-session-drivers";
-  persistentDriverReady: true;
+  runtimeReachable: boolean;
+  persistentDriverReady: boolean;
+  unavailableReason: "daemon_unreachable" | null;
   policy: {
     idleTimeoutMs: number;
     maxSessions: number;

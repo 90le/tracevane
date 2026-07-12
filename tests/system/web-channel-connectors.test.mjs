@@ -58,6 +58,11 @@ test("Channel Connectors browser data layer uses v3 plan and apply APIs", () => 
   assert.match(query, /useApplyChannelConnectorsV3ConfigMutation/);
   assert.match(query, /useChannelConnectorAccountSecretsQuery/);
   assert.match(query, /usePreviewChannelConnectorV3RoutingMutation/);
+  const applyMutation = query.slice(
+    query.indexOf("export function useApplyChannelConnectorsV3ConfigMutation"),
+    query.indexOf("export function usePreviewChannelConnectorV3RoutingMutation"),
+  );
+  assert.match(applyMutation, /channelConnectorsKeys\.agentSessions\(\)/);
 });
 
 test("v3 overview separates saved, connected, and real-ingress readiness", () => {
@@ -72,6 +77,7 @@ test("v3 overview separates saved, connected, and real-ingress readiness", () =>
   assert.match(overview, /goToView\("accounts"/);
   assert.match(overview, /goToView\("sessions"/);
   assert.match(overview, /goToView\("runtime"/);
+  assert.match(overview, /会话运行态暂不可用/);
 });
 
 test("Agent workspaces are reusable targets with explicit execution boundaries", () => {
@@ -210,6 +216,8 @@ test("sessions save global policy through v3 plan/apply and retain guarded contr
   assert.match(sessions, /reset-conversation/);
   assert.match(sessions, /需要关注的会话事件/);
   assert.match(sessions, /parseImSessionIdentity/);
+  assert.match(sessions, /守护离线，会话运行态暂不可用/);
+  assert.match(sessions, /disabled=\{pending \|\| !runtimeReachable\}/);
   assert.doesNotMatch(sessions, /useApplyChannelConnectorsConfigMutation/);
 });
 

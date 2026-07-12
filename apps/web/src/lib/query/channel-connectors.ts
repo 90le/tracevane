@@ -218,6 +218,7 @@ export function useApplyChannelConnectorsV3ConfigMutation(
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.status() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonConfig() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonServices() });
+      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.agentSessions() });
       options?.onSuccess?.(...args);
     },
   });
