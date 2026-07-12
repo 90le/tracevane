@@ -205,6 +205,11 @@ async function clickEditorAction(page, selector) {
   await page.locator(`[data-file-online-editor-action-menu] ${selector}`).click();
 }
 
+async function clickMinimizedDockAction(page, name) {
+  const dock = page.locator('[data-file-online-editor-minimized-dock]');
+  await dock.getByRole('button', { name, exact: true }).click();
+}
+
 async function openEditorMenuSection(page, selector) {
   const section = page.locator(`[data-file-online-editor-action-menu] ${selector}`);
   const isOpen = await section.evaluate((node) => node.closest('details')?.open ?? true);
@@ -293,7 +298,7 @@ async function run() {
 
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '恢复', exact: true }).click();
+    await clickMinimizedDockAction(page, '恢复');
     await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
     const tabCountAfterRestore = await tabs.count();
     if (tabCountAfterRestore !== 2) {
@@ -418,7 +423,7 @@ async function run() {
 
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '恢复', exact: true }).click();
+    await clickMinimizedDockAction(page, '恢复');
     await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
 
     await clickEditorAction(page, '[data-file-online-editor-save-current]');
@@ -517,7 +522,7 @@ async function run() {
     await page.waitForSelector('[data-code-editor-word-wrap="off"]', { timeout: 30_000 });
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await clickMinimizedDockAction(page, '关闭全部');
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
 
     await createTextFile(rootId, missingPath, 'missing online editor smoke\n');
@@ -528,7 +533,7 @@ async function run() {
     await page.waitForSelector('[data-file-online-editor-missing-state]', { timeout: 30_000 });
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await clickMinimizedDockAction(page, '关闭全部');
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
 
     await createTextFile(rootId, conflictPath, 'conflict original\n');
@@ -555,7 +560,7 @@ async function run() {
     }
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await clickMinimizedDockAction(page, '关闭全部');
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
 
     await createTextFile(rootId, saveFailPath, 'save failure original\n');
@@ -567,12 +572,11 @@ async function run() {
     await clickEditorAction(page, '[data-file-online-editor-save-current]');
     await page.waitForSelector('[data-file-online-editor-save-error]', { timeout: 30_000 });
     await page.waitForSelector('[data-file-online-editor-dirty-state="dirty"]', { timeout: 30_000 });
-    page.once('dialog', async (dialog) => {
-      await dialog.accept();
-    });
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await clickMinimizedDockAction(page, '关闭全部');
+    await page.waitForSelector('[data-action-dialog="file-manager-close-all-editors"]', { timeout: 30_000 });
+    await page.getByRole('button', { name: '关闭并放弃修改', exact: true }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
 
     for (let index = 0; index < capacityPaths.length; index += 1) {
@@ -589,7 +593,7 @@ async function run() {
     if (!capacityDockText?.includes(`${capacityPaths.length} 个标签`)) {
       throw new Error(`Online editor should keep all opened tabs in the minimized dock: ${capacityDockText}`);
     }
-    await page.getByRole('button', { name: '恢复', exact: true }).click();
+    await clickMinimizedDockAction(page, '恢复');
     await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
     const capacityTabCount = await page.locator('[data-file-online-editor-tabs] [data-file-online-editor-tab]').count();
     if (capacityTabCount !== capacityPaths.length) throw new Error(`Expected ${capacityPaths.length} scrollable tabs, found ${capacityTabCount}`);
@@ -602,7 +606,7 @@ async function run() {
     }
     await page.getByRole('button', { name: '最小化在线编辑器' }).click();
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { timeout: 30_000 });
-    await page.getByRole('button', { name: '关闭全部' }).click();
+    await clickMinimizedDockAction(page, '关闭全部');
     await page.waitForSelector('[data-file-online-editor-minimized-dock]', { state: 'detached', timeout: 30_000 });
 
     await page.reload({ waitUntil: 'domcontentloaded' });
