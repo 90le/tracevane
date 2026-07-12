@@ -39,6 +39,7 @@
     "dev:restart": "node scripts/dev-runtime.mjs restart",
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:web:smoke": "node scripts/dev-web-smoke.mjs",
+    "smoke:gateway:http-foundation": "npm run build && node scripts/test-gateway-http-foundation.mjs",
     "smoke:model-gateway:cli": "npm run build:api && node scripts/smoke-model-gateway-cli.mjs",
     "smoke:model-gateway:cli:strict": "npm run build:api && node scripts/smoke-model-gateway-cli.mjs --strict",
     "smoke:model-gateway:live": "npm run build:api && node scripts/smoke-model-gateway-live.mjs",

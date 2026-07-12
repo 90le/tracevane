@@ -12,8 +12,15 @@ function argument(name, fallback = null) {
 
 const base = argument("--base", "http://127.0.0.1:5176");
 const screenshotsDir = argument("--screenshots-dir");
-const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-  || "/home/binbin/.local/bin/google-chrome";
+const executablePath = process.env.PLAYWRIGHT_CHROME_EXECUTABLE
+  || process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+  || chromium.executablePath();
+if (!fs.existsSync(executablePath)) {
+  throw new Error(
+    `Playwright Chromium is not installed at ${JSON.stringify(executablePath)}. `
+      + "Run `npx playwright install chromium` before this smoke.",
+  );
+}
 const views = ["overview", "workspaces", "accounts", "sessions", "runtime"];
 const sizes = [
   ["desktop", 1440, 900],
@@ -22,9 +29,7 @@ const sizes = [
 const failures = [];
 
 if (screenshotsDir) fs.mkdirSync(screenshotsDir, { recursive: true });
-const browser = await chromium.launch({
-  ...(fs.existsSync(executablePath) ? { executablePath } : {}),
-});
+const browser = await chromium.launch({ executablePath });
 try {
   for (const [sizeName, width, height] of sizes) {
     const context = await browser.newContext({ viewport: { width, height } });
