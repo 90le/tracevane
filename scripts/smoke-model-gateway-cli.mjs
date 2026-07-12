@@ -332,6 +332,12 @@ function respondOpenAiResponses(res, body, options = {}) {
   sendJson(res, 200, openAiResponseBody(model, options));
 }
 
+function platformShellDiagnosticCommand(platform = process.platform) {
+  return platform === "win32"
+    ? ["cmd.exe", "/d", "/s", "/c", "echo GATEWAY_OK"]
+    : ["sh", "-c", "printf GATEWAY_OK"];
+}
+
 function openAiShellDiagnosticResponse(model) {
   return {
     id: "resp_cli_codex_tool_diagnostic",
@@ -346,7 +352,7 @@ function openAiShellDiagnosticResponse(model) {
       call_id: "codex_tool_diag_call",
       action: {
         type: "exec",
-        command: ["bash", "-lc", "printf GATEWAY_OK"],
+        command: platformShellDiagnosticCommand(),
         env: {},
         timeout_ms: 30000,
       },

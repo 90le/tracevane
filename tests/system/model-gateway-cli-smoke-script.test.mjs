@@ -11,6 +11,13 @@ const scriptPath = path.join(repoRoot, "scripts/smoke-model-gateway-cli.mjs");
 const distEntry = path.join(repoRoot, "dist/apps/api/index.js");
 const execFileAsync = promisify(execFile);
 
+test("gateway CLI diagnostic shell action is tokenized for Windows and POSIX", () => {
+  const source = fs.readFileSync(scriptPath, "utf8");
+  assert.match(source, /platform === "win32"[\s\S]*?\["cmd\.exe", "\/d", "\/s", "\/c", "echo GATEWAY_OK"\]/);
+  assert.match(source, /: \["sh", "-c", "printf GATEWAY_OK"\]/);
+  assert.doesNotMatch(source, /command: \["bash", "-lc", "printf GATEWAY_OK"\]/);
+});
+
 const fakeCliSource = `#!/usr/bin/env node
 const app = "__TRACEVANE_FAKE_APP__";
 const args = process.argv.slice(2);
