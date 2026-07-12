@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import { chromium } from '@playwright/test';
 
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
@@ -48,6 +49,16 @@ function hasTmux() {
 
 function cssAttr(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function normalizePortablePath(value) {
+  return String(value || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
+function relativePathFromRoot(rootAbsolutePath, targetAbsolutePath) {
+  const relative = path.relative(rootAbsolutePath, targetAbsolutePath);
+  if (!relative || path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) return '';
+  return normalizePortablePath(relative);
 }
 
 function nodeSelector(path) {
@@ -112,10 +123,10 @@ function createDefaultWorkbenchLayout() {
 }
 
 async function endSession(sessionId) {
-  await api('/api/terminal/session/end', {
+  await api('/api/terminal/end', {
     method: 'POST',
     body: JSON.stringify({ sid: sessionId }),
-  }).catch(() => undefined);
+  });
 }
 
 async function waitForRunnablePane(page, index = 0) {
@@ -265,8 +276,9 @@ async function splitActiveTerminalTab(page, direction) {
 
 async function run() {
   const summary = await api('/api/files/summary');
-  const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
-  if (!rootId) throw new Error('No file root is available for IDE terminal persistence smoke');
+  const root = summary.roots?.find((item) => item.id === summary.defaultRootId) ?? summary.roots?.[0];
+  const rootId = root?.id;
+  if (!rootId || !root.absolutePath) throw new Error('No file root is available for IDE terminal persistence smoke');
   await resetTerminalSessions();
   await api(`/api/ide-workbench/layouts/${encodeURIComponent(rootId)}`, {
     method: 'PUT',
@@ -274,7 +286,8 @@ async function run() {
   });
 
   const prefix = `tracevane-ide-terminal-persist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const smokeDir = `tmp/.${prefix}`;
+  const fixtureBase = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
+  const smokeDir = fixtureBase ? `${fixtureBase}/.${prefix}` : `.${prefix}`;
   const cleanupPaths = [smokeDir];
   await cleanup(rootId, cleanupPaths);
   await createDirectory(rootId, smokeDir);

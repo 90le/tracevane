@@ -124,8 +124,7 @@ async function run() {
 
   const prefix = `tracevane-ide-lsp-html-css-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const repoParentRelativePath = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
-  const smokeParent = repoParentRelativePath ? `${repoParentRelativePath}/tmp` : 'tmp';
-  const smokeDir = `${smokeParent}/.${prefix}`;
+  const smokeDir = repoParentRelativePath ? `${repoParentRelativePath}/.${prefix}` : `.${prefix}`;
   const htmlPath = `${smokeDir}/index.html`;
   const cssPath = `${smokeDir}/styles.css`;
   const scssPath = `${smokeDir}/theme.scss`;

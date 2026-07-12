@@ -491,7 +491,7 @@ async function runUiSmoke(rootId, otherRootId = null) {
     }
     await page.locator('[data-ide-terminal-xterm]').first().click();
     await page.getByLabel('新建文件').click({ timeout: 30_000 });
-    const explorerInput = page.locator('[data-ide-explorer-name-input]');
+    const explorerInput = page.locator('[data-action-dialog-input="explorer-name"]');
     await explorerInput.waitFor({ state: 'visible', timeout: 30_000 });
     await explorerInput.fill('');
     await page.keyboard.type('terminal-focus-explorer-input.txt');

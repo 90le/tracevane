@@ -122,8 +122,7 @@ async function run() {
 
   const prefix = `tracevane-ide-search-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const repoParentRelativePath = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
-  const smokeParent = repoParentRelativePath ? `${repoParentRelativePath}/tmp` : 'tmp';
-  const smokeDir = `${smokeParent}/.${prefix}`;
+  const smokeDir = repoParentRelativePath ? `${repoParentRelativePath}/.${prefix}` : `.${prefix}`;
   const firstPath = `${smokeDir}/search-target.ts`;
   const secondPath = `${smokeDir}/other.ts`;
   const needle = `tracevane_search_needle_${Date.now()}`;

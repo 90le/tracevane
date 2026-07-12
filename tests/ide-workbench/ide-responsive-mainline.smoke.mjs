@@ -168,8 +168,7 @@ async function run() {
 
   const prefix = `tracevane-ide-responsive-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const repoParentRelativePath = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
-  const smokeParent = repoParentRelativePath ? `${repoParentRelativePath}/tmp` : 'tmp';
-  const smokeDir = `${smokeParent}/.${prefix}`;
+  const smokeDir = repoParentRelativePath ? `${repoParentRelativePath}/.${prefix}` : `.${prefix}`;
   const filePath = `${smokeDir}/responsive-mainline.ts`;
   const needle = `responsive_mainline_${Date.now()}`;
   const layout = createDefaultWorkbenchLayout(smokeDir);
