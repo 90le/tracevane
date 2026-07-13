@@ -19,6 +19,14 @@ const resolverBashAvailable = childProcess.spawnSync(resolverBash, ['--version']
 const latestSha256 = 'a'.repeat(64);
 const requestedSha256 = 'b'.repeat(64);
 
+function toBashPath(value) {
+  const normalized = value.replace(/\\/g, '/');
+  if (process.platform === 'win32' && /^[A-Za-z]:\//.test(normalized)) {
+    return `/${normalized[0].toLowerCase()}${normalized.slice(2)}`;
+  }
+  return normalized;
+}
+
 function extractBashFunction(source, name, nextName) {
   const normalized = source.replace(/\r\n/g, '\n');
   const start = normalized.indexOf(`${name}() {`);
@@ -170,6 +178,8 @@ function createUninstallFixture({ collideInstallWithRetainedData = false, pathRe
     fs.mkdirSync(installDir, { recursive: true });
   }
   fs.writeFileSync(path.join(installDir, 'package.json'), '{"name":"tracevane"}\n');
+  fs.mkdirSync(path.join(installDir, 'dist'), { recursive: true });
+  fs.writeFileSync(path.join(installDir, 'dist', 'index.js'), 'export const fixture = true;\n');
   fs.writeFileSync(path.join(retainedDataDir, 'user-data.json'), '{"keep":true}\n');
   const config = {
     plugins: {
@@ -201,6 +211,9 @@ function createUninstallFixture({ collideInstallWithRetainedData = false, pathRe
 function runUninstallFixture(fixture, validateStatus = 0) {
   return runExtractedBash(
     [
+      ['copy_uninstall_extension_to_backup', 'quarantine_uninstall_extension'],
+      ['quarantine_uninstall_extension', 'restore_quarantined_extension'],
+      ['restore_quarantined_extension', 'classify_uninstall_path_relation'],
       ['classify_uninstall_path_relation', 'rollback_uninstall'],
       ['rollback_uninstall', 'handle_uninstall_error'],
       ['handle_uninstall_error', 'uninstall_tracevane'],
@@ -227,8 +240,10 @@ function runUninstallFixture(fixture, validateStatus = 0) {
       'ACTIVE_BACKUP_DIR=""',
       'CONFIG_BACKUP=""',
       'UNINSTALL_CONFIG_MUTATED=0',
-      'UNINSTALL_EXTENSION_MOVED=0',
+      'UNINSTALL_EXTENSION_QUARANTINED=0',
+      'UNINSTALL_EXTENSION_QUARANTINE=""',
       'UNINSTALL_EXTENSION_BACKUP=""',
+      'UNINSTALL_QUARANTINE_STATE_FILE=""',
       'UNINSTALL_ROLLBACK_DONE=0',
       'TRACEVANE_VERSION=""',
       'TRACEVANE_MODE=standalone',
@@ -238,9 +253,68 @@ function runUninstallFixture(fixture, validateStatus = 0) {
   );
 }
 
-function runUninstallUnexpectedRestartFailureFixture(fixture, { stamp = '20260713120000' } = {}) {
+function createFakeOpenclawExecutable(fixtureRoot, gatewayBehavior) {
+  const fakeBin = path.join(fixtureRoot, `fake-openclaw-${gatewayBehavior}`);
+  const executable = path.join(fakeBin, 'openclaw');
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const gatewayBody = gatewayBehavior === 'alive'
+    ? 'sleep 30\nexit 0'
+    : 'exit 23';
+  fs.writeFileSync(executable, [
+    '#!/usr/bin/env bash',
+    'if [[ "${1:-} ${2:-}" == "config validate" ]]; then exit 0; fi',
+    'if [[ "${1:-} ${2:-}" == "gateway run" ]]; then',
+    gatewayBody,
+    'fi',
+    'exit 0',
+    '',
+  ].join('\n'));
+  fs.chmodSync(executable, 0o755);
+  return fakeBin;
+}
+
+function runGatewayRestartFixture(gatewayBehavior) {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-restart-'));
+  const fakeBin = createFakeOpenclawExecutable(fixtureRoot, gatewayBehavior);
   return runExtractedBash(
     [
+      ['run_background', 'start_gateway_fallback'],
+      ['start_gateway_fallback', 'restart_gateway_after_change'],
+      ['restart_gateway_after_change', 'require_command'],
+    ],
+    [
+      `FAKE_BIN=${JSON.stringify(toBashPath(fakeBin))}`,
+      'PATH="$FAKE_BIN:$PATH"',
+      'export PATH',
+      'log() { printf "LOG: %s\\n" "$*" >&2; }',
+      'warn() { printf "WARN: %s\\n" "$*" >&2; }',
+      'record_warning() { RESULT_WARNINGS+=("$1"); warn "$1"; }',
+      'can_manage_gateway_service() { return 1; }',
+      'run_cmd_allow_fail() { "$@"; }',
+      `OPENCLAW_HOME_DIR=${JSON.stringify(path.join(fixtureRoot, '.openclaw').replace(/\\/g, '/'))}`,
+      'TRACEVANE_BACKGROUND_GRACE_SECONDS=1',
+      'DRY_RUN=0',
+      'BACKGROUND_PID=""',
+      'GATEWAY_SERVICE_READY=0',
+      'RESULT_WARNINGS=()',
+      'RESULT_HEALTH_CHECKS=()',
+      'if restart_gateway_after_change; then restart_status=0; else restart_status=$?; fi',
+      'printf "status=%s\\n" "$restart_status"',
+      'printf "health=%s\\n" "${RESULT_HEALTH_CHECKS[*]}"',
+      'printf "warnings=%s\\n" "${RESULT_WARNINGS[*]}"',
+      'printf "pid=%s\\n" "${BACKGROUND_PID:-}"',
+      'if [[ -n "${BACKGROUND_PID:-}" ]] && kill -0 "$BACKGROUND_PID" 2>/dev/null; then kill "$BACKGROUND_PID"; wait "$BACKGROUND_PID" 2>/dev/null || true; fi',
+    ].join('\n'),
+  );
+}
+
+function runUninstallUnexpectedRestartFailureFixture(fixture, { stamp = '20260713120000' } = {}) {
+  const fakeBin = createFakeOpenclawExecutable(fixture.fixtureRoot, 'failure');
+  return runExtractedBash(
+    [
+      ['run_background', 'start_gateway_fallback'],
+      ['start_gateway_fallback', 'restart_gateway_after_change'],
+      ['restart_gateway_after_change', 'require_command'],
       ['emit_result_json', 'append_result_warning'],
       ['append_result_warning', 'record_warning'],
       ['record_warning', 'append_degraded_feature'],
@@ -248,17 +322,26 @@ function runUninstallUnexpectedRestartFailureFixture(fixture, { stamp = '2026071
       ['sanitize_url_for_output', 'record_access_url'],
       ['record_access_url', 'die'],
       ['die', 'detect_platform'],
+      ['copy_uninstall_extension_to_backup', 'quarantine_uninstall_extension'],
+      ['quarantine_uninstall_extension', 'restore_quarantined_extension'],
+      ['restore_quarantined_extension', 'classify_uninstall_path_relation'],
       ['classify_uninstall_path_relation', 'rollback_uninstall'],
       ['rollback_uninstall', 'handle_uninstall_error'],
       ['handle_uninstall_error', 'uninstall_tracevane'],
       ['uninstall_tracevane', 'parse_args'],
     ],
     [
+      `FAKE_BIN=${JSON.stringify(toBashPath(fakeBin))}`,
+      'PATH="$FAKE_BIN:$PATH"',
+      'export PATH',
       'log() { printf "LOG: %s\\n" "$*" >&2; }',
       'warn() { printf "WARN: %s\\n" "$*" >&2; }',
-      'openclaw() { if [[ "\${1:-} \${2:-}" == "config validate" ]]; then return 0; fi; return 0; }',
-      'restart_gateway_after_change() { return 73; }',
+      'can_manage_gateway_service() { return 1; }',
+      'run_cmd_allow_fail() { "$@"; }',
       `date() { printf "%s\\n" ${JSON.stringify(stamp)}; }`,
+      'TRACEVANE_BACKGROUND_GRACE_SECONDS=1',
+      'BACKGROUND_PID=""',
+      'GATEWAY_SERVICE_READY=0',
       'JSON_OUTPUT=1',
       'RESULT_OUTPUT_FD=1',
       'RESULT_JSON_ATTEMPTED=0',
@@ -278,8 +361,10 @@ function runUninstallUnexpectedRestartFailureFixture(fixture, { stamp = '2026071
       'ACTIVE_BACKUP_DIR=""',
       'CONFIG_BACKUP=""',
       'UNINSTALL_CONFIG_MUTATED=0',
-      'UNINSTALL_EXTENSION_MOVED=0',
+      'UNINSTALL_EXTENSION_QUARANTINED=0',
+      'UNINSTALL_EXTENSION_QUARANTINE=""',
       'UNINSTALL_EXTENSION_BACKUP=""',
+      'UNINSTALL_QUARANTINE_STATE_FILE=""',
       'UNINSTALL_ROLLBACK_DONE=0',
       'TRACEVANE_VERSION=""',
       'TRACEVANE_MODE=standalone',
@@ -287,6 +372,65 @@ function runUninstallUnexpectedRestartFailureFixture(fixture, { stamp = '2026071
       'uninstall_tracevane',
     ].join('\n'),
   );
+}
+
+function runUninstallCopyFailureFixture(fixture) {
+  const copyAttemptMarker = path.join(fixture.fixtureRoot, 'copy-attempted');
+  const result = runExtractedBash(
+    [
+      ['emit_result_json', 'append_result_warning'],
+      ['append_result_warning', 'record_warning'],
+      ['record_warning', 'append_degraded_feature'],
+      ['append_degraded_feature', 'sanitize_url_for_output'],
+      ['sanitize_url_for_output', 'record_access_url'],
+      ['record_access_url', 'die'],
+      ['die', 'detect_platform'],
+      ['copy_uninstall_extension_to_backup', 'quarantine_uninstall_extension'],
+      ['quarantine_uninstall_extension', 'restore_quarantined_extension'],
+      ['restore_quarantined_extension', 'classify_uninstall_path_relation'],
+      ['classify_uninstall_path_relation', 'rollback_uninstall'],
+      ['rollback_uninstall', 'handle_uninstall_error'],
+      ['handle_uninstall_error', 'uninstall_tracevane'],
+      ['uninstall_tracevane', 'parse_args'],
+    ],
+    [
+      'log() { printf "LOG: %s\\n" "$*" >&2; }',
+      'warn() { printf "WARN: %s\\n" "$*" >&2; }',
+      'openclaw() { if [[ "\${1:-} \${2:-}" == "config validate" ]]; then return 0; fi; return 0; }',
+      'restart_gateway_after_change() { return 0; }',
+      `COPY_ATTEMPT_MARKER=${JSON.stringify(copyAttemptMarker.replace(/\\/g, '/'))}`,
+      'copy_uninstall_extension_to_backup() { mkdir -p "$2"; cp "$1/package.json" "$2/package.json"; printf "attempted\\n" > "$COPY_ATTEMPT_MARKER"; return 73; }',
+      'JSON_OUTPUT=1',
+      'RESULT_OUTPUT_FD=1',
+      'RESULT_JSON_ATTEMPTED=0',
+      'RESULT_JSON_EMITTING=0',
+      'RESULT_JSON_EMITTED=0',
+      'DRY_RUN=0',
+      'CHECK_RELEASE=0',
+      'UNINSTALL=1',
+      'RESULT_WARNINGS=()',
+      'RESULT_ACCESS_URLS=()',
+      'RESULT_HEALTH_CHECKS=()',
+      'DEGRADED_FEATURES=()',
+      `OPENCLAW_HOME_DIR=${JSON.stringify(fixture.openclawHome.replace(/\\/g, '/'))}`,
+      `OPENCLAW_CONFIG_FILE=${JSON.stringify(fixture.configPath.replace(/\\/g, '/'))}`,
+      `INSTALL_DIR=${JSON.stringify(fixture.installDir.replace(/\\/g, '/'))}`,
+      `BACKUP_ROOT=${JSON.stringify(path.join(fixture.openclawHome, 'backups', 'tracevane').replace(/\\/g, '/'))}`,
+      'ACTIVE_BACKUP_DIR=""',
+      'CONFIG_BACKUP=""',
+      'UNINSTALL_CONFIG_MUTATED=0',
+      'UNINSTALL_EXTENSION_QUARANTINED=0',
+      'UNINSTALL_EXTENSION_QUARANTINE=""',
+      'UNINSTALL_EXTENSION_BACKUP=""',
+      'UNINSTALL_QUARANTINE_STATE_FILE=""',
+      'UNINSTALL_ROLLBACK_DONE=0',
+      'TRACEVANE_VERSION=""',
+      'TRACEVANE_MODE=standalone',
+      'TRACEVANE_PLATFORM=Linux',
+      'uninstall_tracevane',
+    ].join('\n'),
+  );
+  return { result, copyAttemptMarker };
 }
 
 function runPortableJsonUninstallFixture(fixture) {
@@ -555,7 +699,11 @@ test('--uninstall --json unexpected restart failure rolls back config and extens
   assert.equal(payload.mode, 'uninstall');
   assert.equal((result.stdout.match(/"status":"error"/g) || []).length, 1);
   assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), fixture.originalConfig);
-  assert.equal(fs.existsSync(path.join(fixture.installDir, 'package.json')), true);
+  assert.equal(fs.readFileSync(path.join(fixture.installDir, 'package.json'), 'utf8'), '{"name":"tracevane"}\n');
+  assert.equal(fs.readFileSync(path.join(fixture.installDir, 'dist', 'index.js'), 'utf8'), 'export const fixture = true;\n');
+  assert.equal(fs.readFileSync(path.join(payload.backupPath, 'tracevane', 'package.json'), 'utf8'), '{"name":"tracevane"}\n');
+  assert.equal(fs.readFileSync(path.join(payload.backupPath, 'tracevane', 'dist', 'index.js'), 'utf8'), 'export const fixture = true;\n');
+  assert.equal(fs.readdirSync(fixture.extensionsDir).some((entry) => entry.startsWith('.tracevane-uninstall-')), false);
   assert.equal(fs.existsSync(path.join(fixture.retainedDataDir, 'user-data.json')), true);
 });
 
@@ -579,6 +727,53 @@ test('--uninstall --json allocates a new backup when the timestamp candidate exi
   assert.equal(fs.readFileSync(path.join(fixture.installDir, 'package.json'), 'utf8'), '{"name":"tracevane"}\n');
   assert.equal(fs.existsSync(path.join(fixture.installDir, 'tracevane', 'package.json')), false);
   assert.equal(fs.readFileSync(sentinelPath, 'utf8'), 'preexisting-backup\n');
+});
+
+test('uninstall uses verified copy plus same-filesystem quarantine instead of cross-filesystem mv', () => {
+  const source = fs.readFileSync(installer, 'utf8').replace(/\r\n/g, '\n');
+  const uninstall = extractBashFunction(source, 'uninstall_tracevane', 'parse_args');
+
+  assert.doesNotMatch(uninstall, /mv\s+"\$\{INSTALL_DIR\}"\s+"\$\{extension_backup_dir\}"/);
+  assert.match(source, /copy_uninstall_extension_to_backup\(\)/);
+  assert.match(source, /fs\.cpSync/);
+  assert.match(source, /quarantine_uninstall_extension\(\)/);
+  assert.match(source, /fs\.renameSync/);
+});
+
+test('--uninstall --json copy failure preserves exact source/config and removes partial extension backup', { skip: !resolverBashAvailable }, () => {
+  const fixture = createUninstallFixture();
+  const { result, copyAttemptMarker } = runUninstallCopyFailureFixture(fixture);
+
+  assert.notEqual(result.status, 0);
+  const payload = parseSingleJsonResult(result, 'error');
+  assert.equal((result.stdout.match(/"status":"error"/g) || []).length, 1);
+  assert.equal(fs.readFileSync(copyAttemptMarker, 'utf8'), 'attempted\n');
+  assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), fixture.originalConfig);
+  assert.equal(fs.readFileSync(path.join(fixture.installDir, 'package.json'), 'utf8'), '{"name":"tracevane"}\n');
+  assert.equal(fs.readFileSync(path.join(fixture.installDir, 'dist', 'index.js'), 'utf8'), 'export const fixture = true;\n');
+  assert.equal(fs.existsSync(path.join(payload.backupPath, 'openclaw.json')), true);
+  assert.equal(fs.existsSync(path.join(payload.backupPath, 'tracevane')), false);
+  assert.equal(fs.readdirSync(fixture.extensionsDir).some((entry) => entry.startsWith('.tracevane-uninstall-')), false);
+});
+
+test('actual Gateway fallback reports failure when the nohup child exits nonzero', { skip: !resolverBashAvailable }, () => {
+  const result = runGatewayRestartFixture('failure');
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /status=(?!0)\d+/);
+  assert.match(result.stdout, /health=gateway-restart:failed/);
+  assert.match(result.stdout, /warnings=.*后台拉起 Gateway 失败/);
+  assert.match(result.stderr, /exit 23|退出.*23|后台进程/);
+});
+
+test('actual Gateway fallback succeeds only while the nohup child remains alive', { skip: !resolverBashAvailable }, () => {
+  const result = runGatewayRestartFixture('alive');
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /status=0/);
+  assert.match(result.stdout, /health=gateway-restart:fallback/);
+  assert.match(result.stdout, /pid=\d+/);
+  assert.doesNotMatch(result.stdout, /gateway-restart:failed/);
 });
 
 test('ERR trap emits one error JSON result without recursive duplication', { skip: !resolverBashAvailable }, () => {

@@ -50,12 +50,15 @@ RESULT_WARNINGS=()
 DEGRADED_FEATURES=()
 RESULT_ACCESS_URLS=()
 RESULT_HEALTH_CHECKS=()
+BACKGROUND_PID=""
 ACTIVE_BACKUP_DIR=""
 CONFIG_BACKUP=""
 ROLLBACK_DONE=0
 UNINSTALL_CONFIG_MUTATED=0
-UNINSTALL_EXTENSION_MOVED=0
+UNINSTALL_EXTENSION_QUARANTINED=0
+UNINSTALL_EXTENSION_QUARANTINE=""
 UNINSTALL_EXTENSION_BACKUP=""
+UNINSTALL_QUARANTINE_STATE_FILE=""
 UNINSTALL_ROLLBACK_DONE=0
 
 read_local_release_defaults() {
@@ -507,18 +510,46 @@ can_manage_gateway_service() {
   return 1
 }
 
+run_background() {
+  local log_file="$1"
+  shift
+  local grace_seconds="${TRACEVANE_BACKGROUND_GRACE_SECONDS:-2}"
+  local child_status=0
+
+  nohup "$@" >"${log_file}" 2>&1 &
+  BACKGROUND_PID=$!
+  sleep "${grace_seconds}"
+
+  if kill -0 "${BACKGROUND_PID}" 2>/dev/null; then
+    return 0
+  fi
+
+  if wait "${BACKGROUND_PID}"; then
+    child_status=0
+  else
+    child_status=$?
+  fi
+  if [[ "${child_status}" -eq 0 ]]; then
+    warn "后台进程在启动宽限期内正常退出，未保持运行（pid ${BACKGROUND_PID}）"
+    return 1
+  fi
+  warn "后台进程在启动宽限期内退出（pid ${BACKGROUND_PID}，exit ${child_status}）"
+  return "${child_status}"
+}
+
 start_gateway_fallback() {
   local log_dir="${OPENCLAW_HOME_DIR}/logs"
   local log_file="${log_dir}/tracevane-gateway-fallback.log"
-  mkdir -p "${log_dir}"
+  if ! mkdir -p "${log_dir}"; then
+    warn "无法创建 Gateway 后台日志目录: ${log_dir}"
+    return 1
+  fi
   log "检测到当前环境无法管理用户级服务，改为后台拉起 Gateway（日志: ${log_file}）"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     printf '[dry-run] nohup openclaw gateway run --force --ws-log compact > %q 2>&1 &\n' "${log_file}"
     return 0
   fi
-  nohup openclaw gateway run --force --ws-log compact >"${log_file}" 2>&1 &
-  sleep 2
-  return 0
+  run_background "${log_file}" openclaw gateway run --force --ws-log compact
 }
 
 restart_gateway_after_change() {
@@ -551,10 +582,12 @@ restart_gateway_after_change() {
     else
       record_warning "后台拉起 Gateway 失败，请手工执行: openclaw gateway run --force"
       RESULT_HEALTH_CHECKS+=("gateway-restart:failed")
+      return 1
     fi
   else
     RESULT_HEALTH_CHECKS+=("gateway-restart:ok")
   fi
+  return 0
 }
 
 require_command() {
@@ -831,6 +864,137 @@ require_option_operand() {
   fi
 }
 
+copy_uninstall_extension_to_backup() {
+  node - "$1" "$2" <<'NODE'
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const source = process.argv[2];
+const destination = process.argv[3];
+
+function snapshot(root) {
+  const records = [];
+  function visit(absolutePath, relativePath) {
+    const stat = fs.lstatSync(absolutePath);
+    const record = { path: relativePath, mode: stat.mode & 0o777 };
+    if (stat.isDirectory()) {
+      record.type = 'directory';
+      records.push(record);
+      for (const entry of fs.readdirSync(absolutePath).sort()) {
+        visit(path.join(absolutePath, entry), relativePath ? `${relativePath}/${entry}` : entry);
+      }
+      return;
+    }
+    if (stat.isFile()) {
+      record.type = 'file';
+      record.size = stat.size;
+      record.sha256 = crypto.createHash('sha256').update(fs.readFileSync(absolutePath)).digest('hex');
+      records.push(record);
+      return;
+    }
+    if (stat.isSymbolicLink()) {
+      record.type = 'symlink';
+      record.target = fs.readlinkSync(absolutePath);
+      records.push(record);
+      return;
+    }
+    throw new Error(`unsupported extension entry: ${absolutePath}`);
+  }
+  visit(root, '');
+  return records;
+}
+
+if (fs.existsSync(destination)) {
+  throw new Error(`extension backup destination already exists: ${destination}`);
+}
+fs.cpSync(source, destination, {
+  recursive: true,
+  force: false,
+  errorOnExist: true,
+  preserveTimestamps: true,
+  verbatimSymlinks: true,
+});
+const sourceSnapshot = JSON.stringify(snapshot(source));
+const destinationSnapshot = JSON.stringify(snapshot(destination));
+if (sourceSnapshot !== destinationSnapshot) {
+  throw new Error('extension backup verification failed');
+}
+NODE
+}
+
+quarantine_uninstall_extension() {
+  node - "$1" "$2" <<'NODE'
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const source = path.resolve(process.argv[2]);
+const stateFile = process.argv[3];
+const parent = path.dirname(source);
+const stateTemp = `${stateFile}.tmp-${process.pid}`;
+const exists = (candidate) => {
+  try {
+    fs.lstatSync(candidate);
+    return true;
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return false;
+    throw error;
+  }
+};
+
+if (!exists(source)) throw new Error(`extension source missing before quarantine: ${source}`);
+for (let attempt = 0; attempt < 32; attempt += 1) {
+  const candidate = path.join(parent, `.tracevane-uninstall-${crypto.randomBytes(12).toString('hex')}`);
+  if (exists(candidate)) continue;
+  fs.writeFileSync(stateTemp, `${candidate}\n`, { mode: 0o600 });
+  fs.renameSync(stateTemp, stateFile);
+  try {
+    fs.renameSync(source, candidate);
+  } catch (error) {
+    if (exists(source) && !exists(candidate)) fs.rmSync(stateFile, { force: true });
+    throw error;
+  }
+  if (exists(source) || !exists(candidate)) {
+    throw new Error('extension quarantine verification failed');
+  }
+  process.stdout.write(candidate);
+  process.exit(0);
+}
+throw new Error('unable to allocate a unique extension quarantine path');
+NODE
+}
+
+restore_quarantined_extension() {
+  node - "$1" "$2" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+
+const quarantine = path.resolve(process.argv[2]);
+const installDir = path.resolve(process.argv[3]);
+const exists = (candidate) => {
+  try {
+    fs.lstatSync(candidate);
+    return true;
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return false;
+    throw error;
+  }
+};
+
+if (path.dirname(quarantine) !== path.dirname(installDir)
+  || !path.basename(quarantine).startsWith('.tracevane-uninstall-')) {
+  throw new Error(`invalid quarantine path: ${quarantine}`);
+}
+if (!exists(quarantine)) throw new Error(`quarantine missing: ${quarantine}`);
+if (exists(installDir)) throw new Error(`install path occupied during rollback: ${installDir}`);
+fs.renameSync(quarantine, installDir);
+if (!exists(installDir) || exists(quarantine)) {
+  throw new Error('extension rollback verification failed');
+}
+NODE
+}
+
 classify_uninstall_path_relation() {
   node - "$1" "$2" <<'NODE'
 const fs = require('node:fs');
@@ -868,7 +1032,7 @@ NODE
 rollback_uninstall() {
   local restore_tmp="${OPENCLAW_CONFIG_FILE}.tracevane-uninstall-restore.tmp"
   local rollback_failed=0
-  local expected_extension_backup="${ACTIVE_BACKUP_DIR}/tracevane"
+  local discovered_quarantine=""
 
   if [[ "${UNINSTALL_ROLLBACK_DONE}" -eq 1 ]]; then
     return 0
@@ -877,29 +1041,33 @@ rollback_uninstall() {
   trap - ERR
   set +e
 
-  if [[ "${UNINSTALL_EXTENSION_MOVED}" -eq 1 ]]; then
-    if [[ -z "${ACTIVE_BACKUP_DIR}" \
-      || "${UNINSTALL_EXTENSION_BACKUP}" != "${expected_extension_backup}" \
-      || ! -d "${ACTIVE_BACKUP_DIR}" ]]; then
-      warn "Tracevane 扩展备份路径与本次卸载不匹配，拒绝自动恢复: ${UNINSTALL_EXTENSION_BACKUP}"
-      rollback_failed=1
-    elif [[ -e "${INSTALL_DIR}" || -L "${INSTALL_DIR}" ]]; then
-      warn "无法恢复 Tracevane 扩展，目标路径已存在: ${INSTALL_DIR}"
-      rollback_failed=1
-    elif [[ ! -d "${UNINSTALL_EXTENSION_BACKUP}" && ! -L "${UNINSTALL_EXTENSION_BACKUP}" ]]; then
-      warn "无法恢复 Tracevane 扩展，备份目录不存在: ${UNINSTALL_EXTENSION_BACKUP}"
-      rollback_failed=1
-    elif mv "${UNINSTALL_EXTENSION_BACKUP}" "${INSTALL_DIR}"; then
-      if [[ ( -d "${INSTALL_DIR}" || -L "${INSTALL_DIR}" ) \
-        && ! -e "${UNINSTALL_EXTENSION_BACKUP}" \
-        && ! -L "${UNINSTALL_EXTENSION_BACKUP}" ]]; then
-        UNINSTALL_EXTENSION_MOVED=0
-      else
-        warn "Tracevane 扩展恢复后的目录形状不符合预期: ${INSTALL_DIR}"
-        rollback_failed=1
-      fi
+  if [[ "${UNINSTALL_EXTENSION_QUARANTINED}" -eq 0 \
+    && -n "${UNINSTALL_QUARANTINE_STATE_FILE}" \
+    && -f "${UNINSTALL_QUARANTINE_STATE_FILE}" ]]; then
+    IFS= read -r discovered_quarantine < "${UNINSTALL_QUARANTINE_STATE_FILE}" || true
+    if [[ -n "${discovered_quarantine}" \
+      && ! -e "${INSTALL_DIR}" \
+      && ! -L "${INSTALL_DIR}" \
+      && ( -e "${discovered_quarantine}" || -L "${discovered_quarantine}" ) ]]; then
+      UNINSTALL_EXTENSION_QUARANTINE="${discovered_quarantine}"
+      UNINSTALL_EXTENSION_QUARANTINED=1
+    elif [[ ( -e "${INSTALL_DIR}" || -L "${INSTALL_DIR}" ) \
+      && -n "${discovered_quarantine}" \
+      && ! -e "${discovered_quarantine}" \
+      && ! -L "${discovered_quarantine}" ]]; then
+      rm -f "${UNINSTALL_QUARANTINE_STATE_FILE}" >/dev/null 2>&1 || true
     else
-      warn "恢复 Tracevane 扩展失败: ${UNINSTALL_EXTENSION_BACKUP}"
+      warn "无法确定 Tracevane 隔离目录状态: ${discovered_quarantine:-unknown}"
+      rollback_failed=1
+    fi
+  fi
+
+  if [[ "${UNINSTALL_EXTENSION_QUARANTINED}" -eq 1 ]]; then
+    if restore_quarantined_extension "${UNINSTALL_EXTENSION_QUARANTINE}" "${INSTALL_DIR}"; then
+      UNINSTALL_EXTENSION_QUARANTINED=0
+      rm -f "${UNINSTALL_QUARANTINE_STATE_FILE}" >/dev/null 2>&1 || true
+    else
+      warn "从同文件系统隔离目录恢复 Tracevane 扩展失败: ${UNINSTALL_EXTENSION_QUARANTINE}"
       rollback_failed=1
     fi
   fi
@@ -978,6 +1146,7 @@ uninstall_tracevane() {
   extension_backup_dir="${uninstall_backup_dir}/tracevane"
   config_backup_path="${uninstall_backup_dir}/openclaw.json"
   UNINSTALL_EXTENSION_BACKUP="${extension_backup_dir}"
+  UNINSTALL_QUARANTINE_STATE_FILE="${uninstall_backup_dir}/extension-quarantine-path"
   cp "${OPENCLAW_CONFIG_FILE}" "${config_backup_path}"
   CONFIG_BACKUP="${config_backup_path}"
   ACTIVE_BACKUP_DIR="${uninstall_backup_dir}"
@@ -1027,19 +1196,32 @@ NODE
       fi
       die "扩展备份目标被占用，且无法恢复配置: ${extension_backup_dir}"
     fi
-    if ! mv "${INSTALL_DIR}" "${extension_backup_dir}"; then
+    if ! copy_uninstall_extension_to_backup "${INSTALL_DIR}" "${extension_backup_dir}"; then
+      rm -rf "${extension_backup_dir}" >/dev/null 2>&1 || record_warning "清理不完整的扩展备份失败: ${extension_backup_dir}"
       if rollback_uninstall; then
-        die "移动 Tracevane 扩展失败；已恢复原配置"
+        die "复制 Tracevane 扩展备份失败；源目录未移动，已恢复原配置"
       fi
-      die "移动 Tracevane 扩展失败，且无法从备份恢复配置: ${CONFIG_BACKUP}"
+      die "复制 Tracevane 扩展备份失败，且无法恢复配置: ${CONFIG_BACKUP}"
     fi
-    UNINSTALL_EXTENSION_MOVED=1
-    if [[ ( -e "${INSTALL_DIR}" || -L "${INSTALL_DIR}" ) \
-      || ( ! -d "${extension_backup_dir}" && ! -L "${extension_backup_dir}" ) ]]; then
+    if [[ ! -d "${extension_backup_dir}" && ! -L "${extension_backup_dir}" ]]; then
       if rollback_uninstall; then
-        die "扩展备份后的目录形状不符合预期；已恢复原配置和扩展"
+        die "扩展备份校验后的目录形状不符合预期；源目录未移动，已恢复原配置"
       fi
-      die "扩展备份后的目录形状不符合预期，且自动回滚不完整"
+      die "扩展备份校验后的目录形状不符合预期，且自动回滚不完整"
+    fi
+    if ! UNINSTALL_EXTENSION_QUARANTINE="$(quarantine_uninstall_extension "${INSTALL_DIR}" "${UNINSTALL_QUARANTINE_STATE_FILE}")"; then
+      if rollback_uninstall; then
+        die "隔离 Tracevane 扩展失败；已恢复原配置和扩展"
+      fi
+      die "隔离 Tracevane 扩展失败，且自动回滚不完整"
+    fi
+    UNINSTALL_EXTENSION_QUARANTINED=1
+    if [[ -e "${INSTALL_DIR}" || -L "${INSTALL_DIR}" \
+      || ( ! -e "${UNINSTALL_EXTENSION_QUARANTINE}" && ! -L "${UNINSTALL_EXTENSION_QUARANTINE}" ) ]]; then
+      if rollback_uninstall; then
+        die "扩展隔离后的目录形状不符合预期；已恢复原配置和扩展"
+      fi
+      die "扩展隔离后的目录形状不符合预期，且自动回滚不完整"
     fi
     RESULT_HEALTH_CHECKS+=("extension-backup:ok")
   else
@@ -1047,6 +1229,14 @@ NODE
   fi
 
   restart_gateway_after_change
+  if [[ "${UNINSTALL_EXTENSION_QUARANTINED}" -eq 1 ]]; then
+    if rm -rf "${UNINSTALL_EXTENSION_QUARANTINE}"; then
+      UNINSTALL_EXTENSION_QUARANTINED=0
+      rm -f "${UNINSTALL_QUARANTINE_STATE_FILE}" || true
+    else
+      record_warning "Gateway 已重启，但清理扩展隔离目录失败；已验证的备份仍保留在: ${extension_backup_dir}"
+    fi
+  fi
   append_result_warning "用户数据已保留在: ${retained_data_dir}"
   if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
     emit_result_json "ok"
@@ -1057,7 +1247,6 @@ NODE
     printf '保留用户数据: %s\n' "${retained_data_dir}"
   fi
   UNINSTALL_CONFIG_MUTATED=0
-  UNINSTALL_EXTENSION_MOVED=0
   trap - ERR
 }
 
