@@ -42,6 +42,9 @@ CHECK_RELEASE=0
 JSON_OUTPUT=0
 UNINSTALL=0
 RESULT_OUTPUT_FD=1
+RESULT_JSON_ATTEMPTED=0
+RESULT_JSON_EMITTING=0
+RESULT_JSON_EMITTED=0
 RESULT_WARNINGS=()
 DEGRADED_FEATURES=()
 RESULT_ACCESS_URLS=()
@@ -93,18 +96,40 @@ warn() {
 }
 
 emit_result_json() {
-  TRACEVANE_RESULT_STATUS="$1" \
-  TRACEVANE_RESULT_VERSION="${TRACEVANE_VERSION:-}" \
-  TRACEVANE_RESULT_MODE="${TRACEVANE_MODE:-}" \
-  TRACEVANE_RESULT_PLATFORM="${TRACEVANE_PLATFORM:-}" \
-  TRACEVANE_RESULT_INSTALL_DIR="${INSTALL_DIR}" \
-  TRACEVANE_RESULT_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}" \
-  TRACEVANE_RESULT_BACKUP_PATH="${ACTIVE_BACKUP_DIR:-${CONFIG_BACKUP:-}}" \
-  TRACEVANE_RESULT_ACCESS_URLS="$(printf '%s\n' "${RESULT_ACCESS_URLS[@]:-}")" \
-  TRACEVANE_RESULT_HEALTH_CHECKS="$(printf '%s\n' "${RESULT_HEALTH_CHECKS[@]:-}")" \
-  TRACEVANE_RESULT_WARNINGS="$(printf '%s\n' "${RESULT_WARNINGS[@]:-}")" \
-  TRACEVANE_RESULT_DEGRADED="$(printf '%s\n' "${DEGRADED_FEATURES[@]:-}")" \
-  node - >&"${RESULT_OUTPUT_FD}" <<'NODE'
+  local result_status="${1:-error}"
+  local result_install_dir="${INSTALL_DIR}"
+  local result_config_path="${OPENCLAW_CONFIG_FILE}"
+
+  if [[ "${RESULT_JSON_EMITTED:-0}" -eq 1 ]]; then
+    return 0
+  fi
+  if [[ "${RESULT_JSON_ATTEMPTED:-0}" -eq 1 || "${RESULT_JSON_EMITTING:-0}" -eq 1 ]]; then
+    return 1
+  fi
+  RESULT_JSON_ATTEMPTED=1
+  RESULT_JSON_EMITTING=1
+
+  if [[ "${CHECK_RELEASE:-0}" -eq 1 && "${UNINSTALL:-0}" -eq 0 ]]; then
+    result_install_dir=""
+    result_config_path=""
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    RESULT_JSON_EMITTING=0
+    return 1
+  fi
+
+  if TRACEVANE_RESULT_STATUS="${result_status}" \
+    TRACEVANE_RESULT_VERSION="${TRACEVANE_VERSION:-}" \
+    TRACEVANE_RESULT_MODE="${TRACEVANE_MODE:-}" \
+    TRACEVANE_RESULT_PLATFORM="${TRACEVANE_PLATFORM:-}" \
+    TRACEVANE_RESULT_INSTALL_DIR="${result_install_dir}" \
+    TRACEVANE_RESULT_CONFIG_PATH="${result_config_path}" \
+    TRACEVANE_RESULT_BACKUP_PATH="${ACTIVE_BACKUP_DIR:-${CONFIG_BACKUP:-}}" \
+    TRACEVANE_RESULT_ACCESS_URLS="$(printf '%s\n' "${RESULT_ACCESS_URLS[@]:-}")" \
+    TRACEVANE_RESULT_HEALTH_CHECKS="$(printf '%s\n' "${RESULT_HEALTH_CHECKS[@]:-}")" \
+    TRACEVANE_RESULT_WARNINGS="$(printf '%s\n' "${RESULT_WARNINGS[@]:-}")" \
+    TRACEVANE_RESULT_DEGRADED="$(printf '%s\n' "${DEGRADED_FEATURES[@]:-}")" \
+    node - >&"${RESULT_OUTPUT_FD}" <<'NODE'
 const lines = (name) => (process.env[name] || '').split('\n').filter(Boolean);
 process.stdout.write(`${JSON.stringify({
   status: process.env.TRACEVANE_RESULT_STATUS,
@@ -120,6 +145,14 @@ process.stdout.write(`${JSON.stringify({
   degradedFeatures: lines('TRACEVANE_RESULT_DEGRADED'),
 })}\n`);
 NODE
+  then
+    RESULT_JSON_EMITTED=1
+    RESULT_JSON_EMITTING=0
+    return 0
+  fi
+
+  RESULT_JSON_EMITTING=0
+  return 1
 }
 
 append_result_warning() {
@@ -147,24 +180,37 @@ append_degraded_feature() {
   DEGRADED_FEATURES+=("${candidate}")
 }
 
-record_access_url() {
+sanitize_url_for_output() {
   local candidate="${1:-}"
-  local normalized
-  local existing
   [[ -n "${candidate}" ]] || return 1
-  normalized="$(printf '%s' "${candidate}" | tr '[:upper:]' '[:lower:]')"
-  if [[ "${normalized}" =~ ://[^/]*@ ]] \
-    || [[ "${normalized}" =~ [\?\&](token|access_token|auth|authorization|api_key|apikey|signature|x-amz-signature)= ]]; then
+  if [[ "${candidate}" =~ ://[^/]*@ ]]; then
     return 1
   fi
+  candidate="${candidate%%#*}"
+  candidate="${candidate%%\?*}"
+  printf '%s' "${candidate}"
+}
+
+record_access_url() {
+  local candidate="${1:-}"
+  local sanitized
+  local existing
+  sanitized="$(sanitize_url_for_output "${candidate}")" || return 1
   for existing in "${RESULT_ACCESS_URLS[@]:-}"; do
-    [[ "${existing}" == "${candidate}" ]] && return 0
+    [[ "${existing}" == "${sanitized}" ]] && return 0
   done
-  RESULT_ACCESS_URLS+=("${candidate}")
+  RESULT_ACCESS_URLS+=("${sanitized}")
 }
 
 die() {
   printf '[tracevane-installer] ERROR: %s\n' "$*" >&2
+  trap - ERR
+  if [[ "${JSON_OUTPUT:-0}" -eq 1 \
+    && "${RESULT_JSON_ATTEMPTED:-0}" -eq 0 \
+    && "${RESULT_JSON_EMITTING:-0}" -eq 0 \
+    && "${RESULT_JSON_EMITTED:-0}" -eq 0 ]]; then
+    emit_result_json "error" || true
+  fi
   exit 1
 }
 
@@ -959,8 +1005,9 @@ if [[ ! "${TRACEVANE_PACKAGE_SHA256}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
   die "缺少有效的安装包 SHA-256；请使用官方 Release metadata，或同时传入 --package-sha256。"
 fi
 TRACEVANE_PACKAGE_SHA256="$(printf '%s' "${TRACEVANE_PACKAGE_SHA256}" | tr '[:upper:]' '[:lower:]')"
-PACKAGE_URL_DISPLAY="${TRACEVANE_PACKAGE_URL}"
-if ! record_access_url "${TRACEVANE_PACKAGE_URL}"; then
+if PACKAGE_URL_DISPLAY="$(sanitize_url_for_output "${TRACEVANE_PACKAGE_URL}")"; then
+  record_access_url "${TRACEVANE_PACKAGE_URL}" || true
+else
   PACKAGE_URL_DISPLAY="[credential-bearing URL redacted]"
   record_warning "安装包 URL 包含凭据；结果输出已隐藏该 URL。"
 fi
@@ -1153,20 +1200,26 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   printf '[dry-run] cd %q && npm rebuild @homebridge/node-pty-prebuilt-multiarch\n' "${INSTALL_DIR}"
   printf '[dry-run] node -e "require(\x27@homebridge/node-pty-prebuilt-multiarch\x27)"\n'
 else
+  NODE_PTY_STATE_FILE="${TMP_DIR}/node-pty-degraded"
+  rm -f "${NODE_PTY_STATE_FILE}"
   (
     cd "${INSTALL_DIR}"
     npm install --production --ignore-scripts
     npm rebuild @homebridge/node-pty-prebuilt-multiarch 2>&1 || warn "node-pty rebuild 失败，终端功能可能不可用。请确保已安装 build-essential 和 cmake。"
     if ! node -e "require('@homebridge/node-pty-prebuilt-multiarch')" 2>/dev/null; then
-      append_degraded_feature "terminal"
-      if [[ "${TRACEVANE_PLATFORM}" == "Darwin" ]]; then
-        record_warning "node-pty 原生模块加载失败（Node ABI $(node -e 'process.stdout.write(process.versions.modules)')）；终端功能不可用。请确认 Xcode Command Line Tools 已安装。"
-      else
-        record_warning "node-pty 原生模块加载失败（Node ABI $(node -e 'process.stdout.write(process.versions.modules)')）；终端功能不可用。请确认 build-essential 和 cmake 已安装。"
-      fi
-      warn "可稍后手工执行: cd ${INSTALL_DIR} && npm rebuild @homebridge/node-pty-prebuilt-multiarch"
+      printf 'terminal\n' > "${NODE_PTY_STATE_FILE}"
     fi
   )
+  if [[ -f "${NODE_PTY_STATE_FILE}" ]]; then
+    append_degraded_feature "terminal"
+    if [[ "${TRACEVANE_PLATFORM}" == "Darwin" ]]; then
+      record_warning "node-pty 原生模块加载失败（Node ABI $(node -e 'process.stdout.write(process.versions.modules)')）；终端功能不可用。请确认 Xcode Command Line Tools 已安装。"
+    else
+      record_warning "node-pty 原生模块加载失败（Node ABI $(node -e 'process.stdout.write(process.versions.modules)')）；终端功能不可用。请确认 build-essential 和 cmake 已安装。"
+    fi
+    warn "可稍后手工执行: cd ${INSTALL_DIR} && npm rebuild @homebridge/node-pty-prebuilt-multiarch"
+    rm -f "${NODE_PTY_STATE_FILE}"
+  fi
 fi
 
 CONFIG_BACKUP="${OPENCLAW_CONFIG_FILE}.bak.$(date +%Y%m%d%H%M%S)"
