@@ -224,9 +224,9 @@ test("Overview view exposes a route cockpit for route and client readiness", () 
   assert.match(overview, /客户端接入风险/);
   assert.match(overview, /运行中状态看\s*CLI Agents/);
   assert.match(overview, /appConnectionIssues/);
-  assert.match(overview, /connection\.id !== "codex"/);
-  assert.match(overview, /账户直连/);
-  assert.match(overview, /configuredConnectionCount\}\/\{gatewayManagedConnections\.length/);
+  assert.doesNotMatch(overview, /connection\.id !== "codex"/);
+  assert.doesNotMatch(overview, /账户直连/);
+  assert.match(overview, /configuredConnectionCount\}\/\{appConnections\.length/);
   assert.match(overview, /配置写入 \/ 回滚/);
   assert.match(overview, /检查全部/);
   assert.match(overview, /检查路由/);
@@ -391,9 +391,10 @@ test("App Connections view links client config rows to active route diagnostics"
   assert.match(apps, /connection\.appScope/);
   assert.match(apps, /connection\.protocol/);
   assert.match(apps, /connection\.endpoint/);
-  assert.match(apps, /connection\.id === "codex" && !connection\.canApply/);
-  assert.match(apps, /账户直连/);
-  assert.match(apps, /gatewayManagedConnections/);
+  assert.doesNotMatch(apps, /保持账户直连/);
+  assert.doesNotMatch(apps, /gatewayManagedConnections/);
+  assert.match(apps, /connection\.configured \? "重新应用" : "应用"/);
+  assert.match(apps, /connections\.filter\(\(connection\) => connection\.configured\)/);
   assert.match(apps, /实际路由/);
   assert.match(apps, /formatModelBudgetPair/);
   assert.match(apps, /<Table className="table-fixed">/);

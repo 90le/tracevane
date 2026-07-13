@@ -207,9 +207,6 @@ function appConnectionBadge(connection: ModelGatewayAppConnection): {
   variant: "ok" | "warn" | "mute";
   label: string;
 } {
-  if (connection.id === "codex" && !connection.canApply) {
-    return { variant: "mute", label: "账户直连" };
-  }
   if (connection.configured) return { variant: "ok", label: "已应用" };
   if (connection.issues.length > 0) return { variant: "warn", label: "待处理" };
   return { variant: "mute", label: "未应用" };
@@ -342,13 +339,10 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const checkableRoutes = activeRoutes.filter((route) =>
     Boolean(route.resolvedProviderId),
   );
-  const gatewayManagedConnections = appConnections.filter(
-    (connection) => connection.id !== "codex",
-  );
-  const configuredConnectionCount = gatewayManagedConnections.filter(
+  const configuredConnectionCount = appConnections.filter(
     (connection) => connection.configured,
   ).length;
-  const appConnectionIssues = gatewayManagedConnections.filter(
+  const appConnectionIssues = appConnections.filter(
     (connection) => !connection.configured || connection.issues.length > 0,
   );
 
@@ -376,7 +370,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const accountsTotal = accountSummary?.total ?? 0;
   const accountsAttention = accountSummary?.attention ?? 0;
   const clientConfigured = configuredConnectionCount;
-  const clientTotal = gatewayManagedConnections.length;
+  const clientTotal = appConnections.length;
 
   const degraded =
     (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
@@ -865,7 +859,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
               <div className="rounded-sm border border-line bg-panel-2 p-3">
                 <span className="text-xs text-subtle">配置状态</span>
                 <div className="mt-1 text-xl font-semibold text-ink-strong">
-                  {configuredConnectionCount}/{gatewayManagedConnections.length}
+                  {configuredConnectionCount}/{appConnections.length}
                 </div>
                 <span className="text-xs text-muted">
                   本地客户端配置均已应用；实际路由以模型路由总览为准，进程运行态看

@@ -7002,7 +7002,7 @@ test("model gateway app connections preview and apply client config files with r
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
+  const service = createModelGatewayService(config, { homeDir });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -7333,7 +7333,7 @@ function createSupervisorLifecycleHarness(
   };
 }
 
-test("model gateway preserves direct Codex login and bulk apply excludes Codex", () => {
+test("model gateway applies and rolls back Codex config without changing login credentials", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
@@ -7346,40 +7346,56 @@ test("model gateway preserves direct Codex login and bulk apply excludes Codex",
       baseUrl: "https://provider.example.test/v1",
       apiFormat: "openai_chat",
       authStrategy: "bearer",
-      models: { defaultModel: "gpt-main", models: [{ id: "gpt-main" }] },
+      models: { defaultModel: "gpt-main", models: [{ id: "gpt-main" }, { id: "gpt-alt" }] },
     },
     secret: { apiKey: "sk-upstream-managed-clients" },
   });
   service.updateClientAuth(undefined, { apiKey: "sk-local-managed-clients" });
+  service.updateAppConnectionProfile(undefined, {
+    profile: { appModels: { codex: "gpt-alt" } },
+  });
+
   const codexPath = path.join(homeDir, ".codex", "config.toml");
+  const authPath = path.join(homeDir, ".codex", "auth.json");
   fs.mkdirSync(path.dirname(codexPath), { recursive: true });
   const directLoginConfig = 'model = "gpt-5.6-terra"\nmodel_reasoning_effort = "low"\n';
+  const authContents = '{"tokens":{"access_token":"user-owned"}}\n';
   fs.writeFileSync(codexPath, directLoginConfig, "utf8");
+  fs.writeFileSync(authPath, authContents, "utf8");
 
   const listed = service.listAppConnections();
   const codex = listed.connections.find((connection) => connection.id === "codex");
-  assert.equal(codex.canApply, false);
-  assert.ok(codex.issues.some((issue) => /direct Codex account login/i.test(issue)));
-  assert.throws(
-    () => service.applyAppConnection(undefined, { appId: "codex" }),
-    (error) => error instanceof ModelGatewayServiceError
-      && error.code === "model_gateway_codex_direct_login_preserved"
-      && error.statusCode === 409,
-  );
-  assert.equal(fs.readFileSync(codexPath, "utf8"), directLoginConfig);
+  assert.deepEqual(codex.issues, []);
+  assert.equal(codex.canApply, true);
 
-  const applied = service.applyAppConnections(undefined);
-  assert.deepEqual(applied.applied.map((item) => item.connection.id), ["claude-code", "opencode", "openclaw"]);
-  assert.equal(applied.applied.every((item) => item.applied), true);
+  const single = service.applyAppConnection(undefined, { appId: "codex" });
+  assert.equal(single.applied, true);
+  assert.ok(single.backupPath && fs.existsSync(single.backupPath));
+  assert.equal(single.connection.configured, true);
+  const appliedConfig = fs.readFileSync(codexPath, "utf8");
+  assert.match(appliedConfig, /model = "gpt-alt"/);
+  assert.match(appliedConfig, /model_provider = "tracevane_gateway"/);
+  assert.match(appliedConfig, /\[model_providers\.tracevane_gateway\]/);
+  assert.equal(fs.readFileSync(authPath, "utf8"), authContents);
+
+  const rollback = service.rollbackAppConnection(undefined, { appId: "codex" });
+  assert.equal(rollback.rolledBack, true);
   assert.equal(fs.readFileSync(codexPath, "utf8"), directLoginConfig);
-  assert.equal(fs.existsSync(path.join(homeDir, ".codex", "tracevane-gateway-models.json")), false);
+  assert.equal(fs.readFileSync(authPath, "utf8"), authContents);
+
+  const bulk = service.applyAppConnections(undefined);
+  assert.deepEqual(
+    bulk.applied.map((item) => item.connection.id),
+    ["codex", "claude-code", "opencode", "openclaw"],
+  );
+  assert.equal(bulk.applied.every((item) => item.applied), true);
 });
 
 function setupAppConnectionService() {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
+  const service = createModelGatewayService(config, { homeDir });
   service.upsertProvider(undefined, {
     provider: {
       id: "gateway-main",
@@ -7735,7 +7751,7 @@ test("model gateway app connections keep Codex reasoning effort for Gateway mode
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
+  const service = createModelGatewayService(config, { homeDir });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -7810,7 +7826,7 @@ test("model gateway app connections resolve budgets from each selected app model
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
+  const service = createModelGatewayService(config, { homeDir });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -7873,7 +7889,7 @@ test("model gateway app connections derive Codex auto compact from selected Code
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
+  const service = createModelGatewayService(config, { homeDir });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -7945,7 +7961,7 @@ test("model gateway app connections keep per-model catalog budgets for mixed age
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
+  const service = createModelGatewayService(config, { homeDir });
 
   service.upsertProvider(undefined, {
     provider: {
@@ -8171,7 +8187,7 @@ test("model gateway app connections require a local client key before apply", ()
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
-  const service = createModelGatewayService(config, { homeDir, manageCodexCli: true });
+  const service = createModelGatewayService(config, { homeDir });
 
   service.upsertProvider(undefined, {
     provider: {

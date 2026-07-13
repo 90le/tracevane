@@ -6661,7 +6661,6 @@ export interface ModelGatewayService {
 export interface ModelGatewayServiceOptions {
   runtimeHost?: "tracevane-api" | "local-daemon";
   homeDir?: string;
-  manageCodexCli?: boolean;
   listener?: {
     host?: string;
     port?: number;
@@ -6681,7 +6680,6 @@ export function createModelGatewayService(
   const codexHistory = new CodexChatHistoryStore(paths.codexHistory);
   const runtimeHost = options.runtimeHost || "tracevane-api";
   const homeDir = options.homeDir || resolveModelGatewaySupervisorHome(config);
-  const manageCodexCli = options.manageCodexCli === true;
   const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
   const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
   const daemonServiceManager = options.daemonServiceManager ?? createServiceManager({
@@ -10154,9 +10152,6 @@ export function createModelGatewayService(
       ? redactConnectionPreviewContent(spec.format, readTextIfExists(spec.targetPath) ?? "")
       : null;
     const issues = [
-      ...(spec.id === "codex" && !manageCodexCli
-        ? ["Tracevane preserves direct Codex account login and does not apply Gateway configuration to Codex CLI."]
-        : []),
       ...(readRegistry().clientAuth.enabled && options.key
         ? []
         : ["Gateway client key is not enabled or missing; generate or save a local Gateway key before applying app connections."]),
@@ -10228,13 +10223,6 @@ export function createModelGatewayService(
         "model_gateway_app_connection_invalid",
         "A valid app connection id is required.",
         400,
-      );
-    }
-    if (appId === "codex" && !manageCodexCli) {
-      throw new ModelGatewayServiceError(
-        "model_gateway_codex_direct_login_preserved",
-        "Tracevane preserves direct Codex account login and does not apply Gateway configuration to Codex CLI.",
-        409,
       );
     }
     const key = readGatewayClientSecret();
@@ -10418,12 +10406,10 @@ export function createModelGatewayService(
   ): ModelGatewayApplyAppConnectionsResponse {
     requireManagement(req);
     const profile = updateStoredAppConnectionProfile(payload);
-    const applied = appConnectionSpecs()
-      .filter((spec) => manageCodexCli || spec.id !== "codex")
-      .map((spec) => applyAppConnection(req, {
+    const applied = appConnectionSpecs().map((spec) => applyAppConnection(req, {
       appId: spec.id,
       profile,
-      }));
+    }));
     return {
       ok: true,
       checkedAt: nowIso(),
