@@ -12,7 +12,7 @@
 
 ## 发布包内容
 
-`./pack.sh` 生成的发布目录包含：
+`./pack.sh` 生成的发布目录包含（维护者发布到 GitHub Releases）：
 
 ```txt
 tracevane-<version>/
@@ -85,7 +85,7 @@ openclaw gateway restart
 ### 2. 下载并检查安装脚本
 
 ```bash
-curl -fsSL https://tracevane.90le.cn/install-tracevane.sh -o /tmp/install-tracevane.sh
+curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
 sed -n '1,180p' /tmp/install-tracevane.sh
 chmod +x /tmp/install-tracevane.sh
 ```
@@ -129,7 +129,7 @@ Gateway 单口模式：
 
 ```bash
 cd ~/.openclaw/extensions
-curl -fsSL https://tracevane.90le.cn/tracevane-latest.json -o /tmp/tracevane-latest.json
+curl -fL https://github.com/90le/tracevane/releases/latest/download/tracevane-latest.json -o /tmp/tracevane-latest.json
 PACKAGE_URL="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.packageUrl)")"
 VERSION="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.version || m.latestVersion)")"
 SHA256="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.sha256 || m.packageSha256 || m.checksum?.sha256 || '')")"

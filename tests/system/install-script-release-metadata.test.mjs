@@ -250,6 +250,16 @@ test('release surfaces use the current OpenClaw minimum host version', () => {
   assert.doesNotMatch(packScript, /2026\.4\.8/);
 });
 
+test('public install docs and landing prompts use GitHub release assets and stable prompt contracts', () => {
+  const files = ['../../DEPLOY.md', '../../docs/installation.md', '../../docs/agent-installation.md', '../../docs/troubleshooting.md', '../../index.html'];
+  const text = files.map((file) => fs.readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
+  assert.match(text, /github\.com\/90le\/tracevane\/releases\/latest\/download\/install-tracevane\.sh/);
+  assert.doesNotMatch(text, /tracevane\.90le\.cn\/install-tracevane\.sh/);
+  for (const id of ['promptStandaloneShort', 'promptGatewayShort', 'promptStandaloneAudit', 'promptGatewayAudit']) assert.match(text, new RegExp(`id=["']${id}["']`));
+  for (const token of ['--check-release', '--dry-run', '--json', '--uninstall', 'healthChecks', '3760', 'package-sha256', 'WSL']) assert.match(text, new RegExp(token, 'i'));
+  assert.match(text, /curl \| bash/);
+});
+
 function extractConfigWriterScript(installerSource) {
   const normalizedInstallerSource = installerSource.replace(/\r\n/g, '\n');
   const marker = 'log "写入 OpenClaw 配置"';

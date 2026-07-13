@@ -163,6 +163,8 @@
           <span>gateway mount · /tracevane</span>
           <span>min OpenClaw · <b id="minVersionLabel">2026.5.28</b></span>
         </div>
+        <article class="prompt-card"><div class="prompt-header"><h3>Standalone Audit</h3><button class="copy-btn" type="button" onclick="copyPrompt('promptStandaloneAudit',this)">复制 Prompt</button></div><div class="prompt-body"><pre id="promptStandaloneAudit">审计 standalone：验证平台，审阅本地脚本，先 --dry-run；披露 changed paths，失败提供 rollback 证据，原始 JSON 返回 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，并 redaction token/credential。禁止 curl | bash 或绕过 checksum、TLS、config、health。</pre></div></article>
+        <article class="prompt-card"><div class="prompt-header"><h3>Gateway Audit</h3><button class="copy-btn" type="button" onclick="copyPrompt('promptGatewayAudit',this)">复制 Prompt</button></div><div class="prompt-body"><pre id="promptGatewayAudit">审计 gateway：验证平台，审阅本地脚本，先 --dry-run；披露 changed paths、rollback 证据，验证 gateway 与 3760 fallback health，原始 JSON 返回全部字段并 redaction token/credential。禁止 curl | bash 或任何校验绕过。</pre></div></article>
       </div>
 
       <aside class="control-card reveal" aria-label="Tracevane 控制平面摘要">
@@ -293,12 +295,12 @@
       </div>
       <div class="prompt-grid">
         <article class="prompt-card">
-          <div class="prompt-header"><h3>独立端口 <span class="badge">STANDALONE</span></h3><button class="copy-btn" type="button" onclick="copyPrompt('prompt1',this)">复制 Prompt</button></div>
-          <div class="prompt-body"><pre id="prompt1">请在我的 OpenClaw 环境里安装 Tracevane，使用非单口模式（standalone，独立端口 3760）。
+          <div class="prompt-header"><h3>独立端口 <span class="badge">STANDALONE</span></h3><button class="copy-btn" type="button" onclick="copyPrompt('promptStandaloneShort',this)">复制 Prompt</button></div>
+          <div class="prompt-body"><pre id="promptStandaloneShort">请在我的 OpenClaw 环境里安装 Tracevane，使用非单口模式（standalone，独立端口 3760）。
 
 请按下面步骤执行，不要使用在线脚本直通执行：
 
-1. 先下载 https://tracevane.90le.cn/install-tracevane.sh 到本地当前目录
+1. 先下载 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 到本地当前目录
 2. 可选执行：sed -n '1,160p' ./install-tracevane.sh
 3. 执行：chmod +x ./install-tracevane.sh
 4. 执行：./install-tracevane.sh --mode standalone
@@ -321,12 +323,12 @@
 - 健康检查结果</pre></div>
         </article>
         <article class="prompt-card">
-          <div class="prompt-header"><h3>单口挂载 <span class="badge">GATEWAY</span></h3><button class="copy-btn" type="button" onclick="copyPrompt('prompt2',this)">复制 Prompt</button></div>
-          <div class="prompt-body"><pre id="prompt2">请在我的 OpenClaw 环境里安装 Tracevane，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /tracevane，同时保留本机 3760 standalone 入口）。
+          <div class="prompt-header"><h3>单口挂载 <span class="badge">GATEWAY</span></h3><button class="copy-btn" type="button" onclick="copyPrompt('promptGatewayShort',this)">复制 Prompt</button></div>
+          <div class="prompt-body"><pre id="promptGatewayShort">请在我的 OpenClaw 环境里安装 Tracevane，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /tracevane，同时保留本机 3760 standalone 入口）。
 
 请按下面步骤执行，不要使用在线脚本直通执行：
 
-1. 先下载 https://tracevane.90le.cn/install-tracevane.sh 到本地当前目录
+1. 先下载 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 到本地当前目录
 2. 可选执行：sed -n '1,160p' ./install-tracevane.sh
 3. 执行：chmod +x ./install-tracevane.sh
 4. 执行：./install-tracevane.sh --mode gateway
