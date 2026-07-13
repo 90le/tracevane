@@ -86,9 +86,11 @@ function runPortableInstaller(args, { env = {}, validateStatus = 0 } = {}) {
     'uname() { if [[ "\${1:-}" == "-s" ]]; then printf "Linux\\n"; else command uname "$@"; fi; }',
     `openclaw() { if [[ "\${1:-} \${2:-}" == "config validate" ]]; then return ${validateStatus}; fi; printf "2026.5.28\\n"; }`,
     'date() { if [[ -n "\${TRACEVANE_TEST_DATE_OUTPUT:-}" ]]; then printf "%s\\n" "$TRACEVANE_TEST_DATE_OUTPUT"; else command date "$@"; fi; }',
+    'mktemp() { if [[ -n "\${TRACEVANE_TEST_MKTEMP_OUTPUT:-}" ]]; then printf "%s\\n" "$TRACEVANE_TEST_MKTEMP_OUTPUT"; else command mktemp "$@"; fi; }',
     'export -f uname',
     'export -f openclaw',
     'export -f date',
+    'export -f mktemp',
     'bash "$@"',
   ].join('\n');
   return childProcess.spawnSync(
@@ -143,18 +145,30 @@ function runExtractedBash(functions, body, env = {}) {
   });
 }
 
-function createUninstallFixture({ collideInstallWithRetainedData = false } = {}) {
+function createUninstallFixture({ collideInstallWithRetainedData = false, pathRelation = 'separate' } = {}) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-uninstall-'));
-  const openclawHome = path.join(fixtureRoot, '.openclaw');
-  const extensionsDir = collideInstallWithRetainedData
-    ? openclawHome
-    : path.join(openclawHome, 'extensions');
+  const relation = collideInstallWithRetainedData ? 'equal' : pathRelation;
+  let openclawHome = path.join(fixtureRoot, '.openclaw');
+  let extensionsDir = path.join(openclawHome, 'extensions');
+  if (relation === 'equal') {
+    extensionsDir = openclawHome;
+  } else if (relation === 'install-ancestor') {
+    openclawHome = path.join(fixtureRoot, 'tracevane', '.openclaw');
+    extensionsDir = fixtureRoot;
+  } else if (relation === 'retained-ancestor') {
+    extensionsDir = path.join(openclawHome, 'tracevane', 'extensions');
+  }
   const installDir = path.join(extensionsDir, 'tracevane');
   const retainedDataDir = path.join(openclawHome, 'tracevane');
   const configPath = path.join(openclawHome, 'openclaw.json');
   const otherExtension = path.join(extensionsDir, 'other');
-  fs.mkdirSync(installDir, { recursive: true });
   fs.mkdirSync(retainedDataDir, { recursive: true });
+  if (relation === 'symlink-equivalent') {
+    fs.mkdirSync(extensionsDir, { recursive: true });
+    fs.symlinkSync(retainedDataDir, installDir, process.platform === 'win32' ? 'junction' : 'dir');
+  } else {
+    fs.mkdirSync(installDir, { recursive: true });
+  }
   fs.writeFileSync(path.join(installDir, 'package.json'), '{"name":"tracevane"}\n');
   fs.writeFileSync(path.join(retainedDataDir, 'user-data.json'), '{"keep":true}\n');
   const config = {
@@ -224,7 +238,7 @@ function runUninstallFixture(fixture, validateStatus = 0) {
   );
 }
 
-function runUninstallUnexpectedRestartFailureFixture(fixture) {
+function runUninstallUnexpectedRestartFailureFixture(fixture, { stamp = '20260713120000' } = {}) {
   return runExtractedBash(
     [
       ['emit_result_json', 'append_result_warning'],
@@ -244,6 +258,7 @@ function runUninstallUnexpectedRestartFailureFixture(fixture) {
       'warn() { printf "WARN: %s\\n" "$*" >&2; }',
       'openclaw() { if [[ "\${1:-} \${2:-}" == "config validate" ]]; then return 0; fi; return 0; }',
       'restart_gateway_after_change() { return 73; }',
+      `date() { printf "%s\\n" ${JSON.stringify(stamp)}; }`,
       'JSON_OUTPUT=1',
       'RESULT_OUTPUT_FD=1',
       'RESULT_JSON_ATTEMPTED=0',
@@ -272,6 +287,30 @@ function runUninstallUnexpectedRestartFailureFixture(fixture) {
       'uninstall_tracevane',
     ].join('\n'),
   );
+}
+
+function runPortableJsonUninstallFixture(fixture) {
+  return runPortableInstaller([
+    '--json',
+    '--uninstall',
+    '--config', fixture.configPath.replace(/\\/g, '/'),
+    '--extensions-dir', fixture.extensionsDir.replace(/\\/g, '/'),
+  ], {
+    env: { OPENCLAW_HOME_DIR: fixture.openclawHome.replace(/\\/g, '/') },
+  });
+}
+
+function assertRetainedDataCollisionRefusal(fixture, result) {
+  assert.notEqual(result.status, 0);
+  const payload = parseSingleJsonResult(result, 'error');
+  assert.equal(payload.mode, 'uninstall');
+  assert.equal(payload.backupPath, '');
+  assert.ok(payload.warnings.some((warning) => /重叠|保留用户数据/.test(warning)));
+  assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), fixture.originalConfig);
+  assert.equal(fs.readFileSync(path.join(fixture.retainedDataDir, 'user-data.json'), 'utf8'), '{"keep":true}\n');
+  assert.equal(fs.existsSync(path.join(fixture.installDir, 'package.json')), true);
+  assert.equal(fs.existsSync(path.join(fixture.openclawHome, 'backups')), false);
+  return payload;
 }
 
 test('emit_result_json strips every package URL query and fragment without a key whitelist', { skip: !resolverBashAvailable }, () => {
@@ -465,6 +504,7 @@ test('--uninstall --json initial config backup copy failure emits one error resu
     env: {
       OPENCLAW_HOME_DIR: fixture.openclawHome.replace(/\\/g, '/'),
       TRACEVANE_TEST_DATE_OUTPUT: stamp,
+      TRACEVANE_TEST_MKTEMP_OUTPUT: backupDir.replace(/\\/g, '/'),
     },
   });
 
@@ -479,27 +519,31 @@ test('--uninstall --json initial config backup copy failure emits one error resu
 
 test('--uninstall --json refuses an install path colliding with retained data without mutation', { skip: !resolverBashAvailable }, () => {
   const fixture = createUninstallFixture({ collideInstallWithRetainedData: true });
-  const retainedDataPath = path.join(fixture.retainedDataDir, 'user-data.json');
-
-  const result = runPortableInstaller([
-    '--json',
-    '--uninstall',
-    '--config', fixture.configPath.replace(/\\/g, '/'),
-    '--extensions-dir', fixture.extensionsDir.replace(/\\/g, '/'),
-  ], {
-    env: { OPENCLAW_HOME_DIR: fixture.openclawHome.replace(/\\/g, '/') },
-  });
-
-  assert.notEqual(result.status, 0);
-  const payload = parseSingleJsonResult(result, 'error');
-  assert.equal(payload.mode, 'uninstall');
+  const result = runPortableJsonUninstallFixture(fixture);
+  const payload = assertRetainedDataCollisionRefusal(fixture, result);
   assert.equal(payload.installDir, fixture.installDir.replace(/\\/g, '/'));
-  assert.equal(payload.backupPath, '');
-  assert.ok(payload.warnings.some((warning) => /重叠|保留用户数据/.test(warning)));
-  assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), fixture.originalConfig);
-  assert.equal(fs.readFileSync(retainedDataPath, 'utf8'), '{"keep":true}\n');
-  assert.equal(fs.existsSync(path.join(fixture.installDir, 'package.json')), true);
-  assert.equal(fs.existsSync(path.join(fixture.openclawHome, 'backups')), false);
+});
+
+test('--uninstall --json refuses an install ancestor of retained data without mutation', { skip: !resolverBashAvailable }, () => {
+  const fixture = createUninstallFixture({ pathRelation: 'install-ancestor' });
+  assertRetainedDataCollisionRefusal(fixture, runPortableJsonUninstallFixture(fixture));
+});
+
+test('--uninstall --json refuses an install descendant of retained data without mutation', { skip: !resolverBashAvailable }, () => {
+  const fixture = createUninstallFixture({ pathRelation: 'retained-ancestor' });
+  assertRetainedDataCollisionRefusal(fixture, runPortableJsonUninstallFixture(fixture));
+});
+
+test('--uninstall --json refuses a symlink-equivalent retained-data path without mutation', { skip: !resolverBashAvailable }, (t) => {
+  let fixture;
+  try {
+    fixture = createUninstallFixture({ pathRelation: 'symlink-equivalent' });
+  } catch (error) {
+    t.skip(`directory link unavailable: ${error.message}`);
+    return;
+  }
+  assertRetainedDataCollisionRefusal(fixture, runPortableJsonUninstallFixture(fixture));
+  assert.equal(fs.lstatSync(fixture.installDir).isSymbolicLink(), true);
 });
 
 test('--uninstall --json unexpected restart failure rolls back config and extension once', { skip: !resolverBashAvailable }, () => {
@@ -513,6 +557,28 @@ test('--uninstall --json unexpected restart failure rolls back config and extens
   assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), fixture.originalConfig);
   assert.equal(fs.existsSync(path.join(fixture.installDir, 'package.json')), true);
   assert.equal(fs.existsSync(path.join(fixture.retainedDataDir, 'user-data.json')), true);
+});
+
+test('--uninstall --json allocates a new backup when the timestamp candidate exists and rolls back exact shape', { skip: !resolverBashAvailable }, () => {
+  const fixture = createUninstallFixture();
+  const stamp = '20260713120000';
+  const timestampCandidate = path.join(fixture.openclawHome, 'backups', 'tracevane', `uninstall-${stamp}`);
+  const preexistingExtensionDir = path.join(timestampCandidate, 'tracevane');
+  const sentinelPath = path.join(preexistingExtensionDir, 'preexisting.txt');
+  fs.mkdirSync(preexistingExtensionDir, { recursive: true });
+  fs.writeFileSync(sentinelPath, 'preexisting-backup\n');
+
+  const result = runUninstallUnexpectedRestartFailureFixture(fixture, { stamp });
+
+  assert.notEqual(result.status, 0);
+  const payload = parseSingleJsonResult(result, 'error');
+  assert.equal((result.stdout.match(/"status":"error"/g) || []).length, 1);
+  assert.notEqual(path.resolve(payload.backupPath), path.resolve(timestampCandidate));
+  assert.match(path.basename(payload.backupPath), new RegExp(`^uninstall-${stamp}-`));
+  assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), fixture.originalConfig);
+  assert.equal(fs.readFileSync(path.join(fixture.installDir, 'package.json'), 'utf8'), '{"name":"tracevane"}\n');
+  assert.equal(fs.existsSync(path.join(fixture.installDir, 'tracevane', 'package.json')), false);
+  assert.equal(fs.readFileSync(sentinelPath, 'utf8'), 'preexisting-backup\n');
 });
 
 test('ERR trap emits one error JSON result without recursive duplication', { skip: !resolverBashAvailable }, () => {
@@ -668,6 +734,21 @@ test('--help preserves human stdout behavior without JSON mode', { skip: !resolv
   assert.match(result.stdout, /Tracevane 一键安装脚本/);
   assert.doesNotMatch(result.stdout, /"status":/);
 });
+
+for (const args of [['--help', '--json'], ['--json', '--help']]) {
+  test(`${args.join(' ')} emits one help JSON result and no human stdout`, { skip: !resolverBashAvailable }, () => {
+    const result = runPortableInstaller(args);
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const payload = parseSingleJsonResult(result, 'ok');
+    assert.equal(payload.installDir, '');
+    assert.equal(payload.configPath, '');
+    assert.equal(payload.backupPath, '');
+    assert.deepEqual(payload.healthChecks, ['help']);
+    assert.doesNotMatch(result.stdout, /Tracevane 一键安装脚本|用法:/);
+    assert.match(result.stderr, /Tracevane 一键安装脚本|用法:/);
+  });
+}
 
 test('uninstall removes only Tracevane config and install files while preserving user data', { skip: !resolverBashAvailable }, () => {
   const fixture = createUninstallFixture();

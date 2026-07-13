@@ -41,6 +41,7 @@ SKIP_UPGRADE=0
 CHECK_RELEASE=0
 JSON_OUTPUT=0
 UNINSTALL=0
+HELP_REQUESTED=0
 RESULT_OUTPUT_FD=1
 RESULT_JSON_ATTEMPTED=0
 RESULT_JSON_EMITTING=0
@@ -113,7 +114,8 @@ emit_result_json() {
   RESULT_JSON_ATTEMPTED=1
   RESULT_JSON_EMITTING=1
 
-  if [[ "${CHECK_RELEASE:-0}" -eq 1 && "${UNINSTALL:-0}" -eq 0 ]]; then
+  if [[ "${HELP_REQUESTED:-0}" -eq 1 \
+    || ( "${CHECK_RELEASE:-0}" -eq 1 && "${UNINSTALL:-0}" -eq 0 ) ]]; then
     result_install_dir=""
     result_config_path=""
   fi
@@ -866,6 +868,7 @@ NODE
 rollback_uninstall() {
   local restore_tmp="${OPENCLAW_CONFIG_FILE}.tracevane-uninstall-restore.tmp"
   local rollback_failed=0
+  local expected_extension_backup="${ACTIVE_BACKUP_DIR}/tracevane"
 
   if [[ "${UNINSTALL_ROLLBACK_DONE}" -eq 1 ]]; then
     return 0
@@ -875,14 +878,26 @@ rollback_uninstall() {
   set +e
 
   if [[ "${UNINSTALL_EXTENSION_MOVED}" -eq 1 ]]; then
-    if [[ -e "${INSTALL_DIR}" || -L "${INSTALL_DIR}" ]]; then
+    if [[ -z "${ACTIVE_BACKUP_DIR}" \
+      || "${UNINSTALL_EXTENSION_BACKUP}" != "${expected_extension_backup}" \
+      || ! -d "${ACTIVE_BACKUP_DIR}" ]]; then
+      warn "Tracevane 扩展备份路径与本次卸载不匹配，拒绝自动恢复: ${UNINSTALL_EXTENSION_BACKUP}"
+      rollback_failed=1
+    elif [[ -e "${INSTALL_DIR}" || -L "${INSTALL_DIR}" ]]; then
       warn "无法恢复 Tracevane 扩展，目标路径已存在: ${INSTALL_DIR}"
       rollback_failed=1
-    elif [[ ! -d "${UNINSTALL_EXTENSION_BACKUP}" ]]; then
+    elif [[ ! -d "${UNINSTALL_EXTENSION_BACKUP}" && ! -L "${UNINSTALL_EXTENSION_BACKUP}" ]]; then
       warn "无法恢复 Tracevane 扩展，备份目录不存在: ${UNINSTALL_EXTENSION_BACKUP}"
       rollback_failed=1
     elif mv "${UNINSTALL_EXTENSION_BACKUP}" "${INSTALL_DIR}"; then
-      UNINSTALL_EXTENSION_MOVED=0
+      if [[ ( -d "${INSTALL_DIR}" || -L "${INSTALL_DIR}" ) \
+        && ! -e "${UNINSTALL_EXTENSION_BACKUP}" \
+        && ! -L "${UNINSTALL_EXTENSION_BACKUP}" ]]; then
+        UNINSTALL_EXTENSION_MOVED=0
+      else
+        warn "Tracevane 扩展恢复后的目录形状不符合预期: ${INSTALL_DIR}"
+        rollback_failed=1
+      fi
     else
       warn "恢复 Tracevane 扩展失败: ${UNINSTALL_EXTENSION_BACKUP}"
       rollback_failed=1
@@ -918,6 +933,7 @@ handle_uninstall_error() {
 
 uninstall_tracevane() {
   local uninstall_stamp
+  local uninstall_backup_template
   local uninstall_backup_dir
   local extension_backup_dir
   local config_backup_path
@@ -936,15 +952,12 @@ uninstall_tracevane() {
   fi
 
   uninstall_stamp="$(date +%Y%m%d%H%M%S)"
-  uninstall_backup_dir="${BACKUP_ROOT}/uninstall-${uninstall_stamp}"
-  extension_backup_dir="${uninstall_backup_dir}/tracevane"
-  config_backup_path="${uninstall_backup_dir}/openclaw.json"
-  UNINSTALL_EXTENSION_BACKUP="${extension_backup_dir}"
+  uninstall_backup_template="${BACKUP_ROOT}/uninstall-${uninstall_stamp}-XXXXXX"
 
   if [[ "${DRY_RUN}" -eq 1 ]]; then
-    ACTIVE_BACKUP_DIR="${uninstall_backup_dir}"
-    log "[dry-run] 将备份配置到 ${uninstall_backup_dir}/openclaw.json"
-    log "[dry-run] 将从配置中移除 Tracevane 并移动扩展到 ${extension_backup_dir}"
+    log "[dry-run] 将创建唯一备份目录 ${uninstall_backup_template}"
+    log "[dry-run] 将备份配置到新目录中的 openclaw.json"
+    log "[dry-run] 将从配置中移除 Tracevane 并移动扩展到新目录中的 tracevane"
     RESULT_HEALTH_CHECKS+=("uninstall:dry-run")
     append_result_warning "用户数据将保留在: ${retained_data_dir}"
     if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
@@ -957,7 +970,14 @@ uninstall_tracevane() {
   fi
 
   [[ -f "${OPENCLAW_CONFIG_FILE}" ]] || die "找不到 OpenClaw 配置文件: ${OPENCLAW_CONFIG_FILE}"
-  mkdir -p "${uninstall_backup_dir}"
+  mkdir -p "${BACKUP_ROOT}"
+  uninstall_backup_dir="$(mktemp -d "${uninstall_backup_template}")"
+  if [[ -z "${uninstall_backup_dir}" || ! -d "${uninstall_backup_dir}" ]]; then
+    die "无法创建唯一卸载备份目录: ${uninstall_backup_template}"
+  fi
+  extension_backup_dir="${uninstall_backup_dir}/tracevane"
+  config_backup_path="${uninstall_backup_dir}/openclaw.json"
+  UNINSTALL_EXTENSION_BACKUP="${extension_backup_dir}"
   cp "${OPENCLAW_CONFIG_FILE}" "${config_backup_path}"
   CONFIG_BACKUP="${config_backup_path}"
   ACTIVE_BACKUP_DIR="${uninstall_backup_dir}"
@@ -1001,6 +1021,12 @@ NODE
   RESULT_HEALTH_CHECKS+=("config-validate:ok")
 
   if [[ -d "${INSTALL_DIR}" ]]; then
+    if [[ -e "${extension_backup_dir}" || -L "${extension_backup_dir}" ]]; then
+      if rollback_uninstall; then
+        die "唯一备份目录中的扩展目标已被占用；已恢复原配置"
+      fi
+      die "扩展备份目标被占用，且无法恢复配置: ${extension_backup_dir}"
+    fi
     if ! mv "${INSTALL_DIR}" "${extension_backup_dir}"; then
       if rollback_uninstall; then
         die "移动 Tracevane 扩展失败；已恢复原配置"
@@ -1008,6 +1034,13 @@ NODE
       die "移动 Tracevane 扩展失败，且无法从备份恢复配置: ${CONFIG_BACKUP}"
     fi
     UNINSTALL_EXTENSION_MOVED=1
+    if [[ ( -e "${INSTALL_DIR}" || -L "${INSTALL_DIR}" ) \
+      || ( ! -d "${extension_backup_dir}" && ! -L "${extension_backup_dir}" ) ]]; then
+      if rollback_uninstall; then
+        die "扩展备份后的目录形状不符合预期；已恢复原配置和扩展"
+      fi
+      die "扩展备份后的目录形状不符合预期，且自动回滚不完整"
+    fi
     RESULT_HEALTH_CHECKS+=("extension-backup:ok")
   else
     RESULT_HEALTH_CHECKS+=("extension-backup:not-installed")
@@ -1112,7 +1145,12 @@ parse_args() {
         shift
         ;;
       -h|--help)
+        HELP_REQUESTED=1
         usage
+        if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
+          RESULT_HEALTH_CHECKS+=("help")
+          emit_result_json "ok"
+        fi
         exit 0
         ;;
       *)
