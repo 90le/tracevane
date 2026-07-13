@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Copy, File, Folder } from "lucide-react";
+import { File, Folder } from "lucide-react";
 
 import { Button } from "@/design/ui/button";
 import {

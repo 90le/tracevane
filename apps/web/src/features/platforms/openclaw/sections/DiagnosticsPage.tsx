@@ -6,7 +6,7 @@ import { Button } from "@/design/ui/button";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton } from "@/shared/states/Skeleton";
 import { useSystemDiagnosticsQuery } from "@/lib/query/platform-read";
-import { BoundaryBadge, DetailRail, EvidenceRow, RefreshButton, ResponsiveTable, SelectableRow, StatusPill, WorkbenchToolbar, statusTone, useSelectedKey } from "../components";
+import { BoundaryBadge, DetailRail, EvidenceRow, RefreshButton, ResponsiveTable, SelectableRow, StatusPill, WorkbenchToolbar, useSelectedKey } from "../components";
 import { StatTile } from "../../_shared";
 
 function levelLabel(level: string | undefined): string {

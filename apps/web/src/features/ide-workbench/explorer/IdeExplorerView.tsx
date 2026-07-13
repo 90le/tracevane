@@ -35,7 +35,6 @@ import {
 import type { FileEntrySummary, FilesUploadConflictPolicy } from "@/features/file-manager/file-tools/types";
 import {
   createExplorerClipboardFromEntries,
-  createExplorerTransferPayload,
   assertExplorerTransferAllowed,
   explorerDirname,
   explorerPasteDestinationForEntry,
@@ -49,7 +48,6 @@ import {
   useExplorerCommands,
   useExplorerDirectory,
   useExplorerTreeState,
-  writeExplorerTransferPayload,
   type ExplorerClipboardState as SharedExplorerClipboardState,
 } from "@/shared/explorer-core";
 import type { ExplorerEntry } from "@/shared/explorer-core";

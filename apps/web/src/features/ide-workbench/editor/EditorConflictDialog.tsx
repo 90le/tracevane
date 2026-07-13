@@ -1,4 +1,3 @@
-import * as React from "react";
 import { AlertTriangle, RefreshCw, ShieldAlert } from "lucide-react";
 
 import { Button } from "@/design/ui/button";

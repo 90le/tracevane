@@ -57,7 +57,6 @@ import {
 } from "@/lib/query/channel-connectors";
 import {
   CHANNEL_CONNECTOR_DEFAULT_FEISHU_API_URL,
-  CHANNEL_CONNECTOR_DEFAULT_LARK_API_URL,
   CHANNEL_CONNECTOR_DEFAULT_OCTO_API_URL,
   type ChannelConnectorAccount,
   type ChannelConnectorAccountLifecycle,
@@ -86,12 +85,6 @@ const MANAGED_ADVANCED_KEYS = new Set([
   "octoUploadStrategy",
   "octoDirectUploadMinBytes",
 ]);
-
-function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
 
 function textValue(source: Record<string, unknown>, key: string, fallback = ""): string {
   const value = source[key];

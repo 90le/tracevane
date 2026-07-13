@@ -16,7 +16,6 @@ import {
   GripVertical,
   Pencil,
   HardDrive,
-  History,
   Plus,
   Trash2,
   RefreshCw,
@@ -1597,8 +1596,6 @@ function FavoriteBookmarkManager({
 }
 
 export function FileManagerNavigationBar({
-  roots,
-  onChangeRoot,
   directoryPath,
   parentPath,
   breadcrumbs,
@@ -1607,7 +1604,6 @@ export function FileManagerNavigationBar({
   pathSuggestions,
   pathSuggestionsOpen,
   activePathSuggestionIndex,
-  quickLocations,
   favoriteTree,
   favoriteCount,
   recentLocations,
@@ -1639,14 +1635,6 @@ export function FileManagerNavigationBar({
   onClearRecentLocations,
   filterInputRef,
   onFilterTextChange,
-  onToggleShowHidden,
-  rootId,
-  viewMode,
-  onNewFile,
-  onNewDirectory,
-  onUpload,
-  onChangeViewMode,
-  onRefresh,
   currentLocation,
 }: FileManagerNavigationBarProps) {
   const suggestionListId = React.useId();

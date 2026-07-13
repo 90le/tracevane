@@ -763,7 +763,6 @@ export function FileListPanel({
   onMarqueeSelect,
   onTogglePath,
   onClearSelection,
-  onFocusRelative,
   onToggleAllVisible,
   onSelectAllVisible,
   onSortChange,

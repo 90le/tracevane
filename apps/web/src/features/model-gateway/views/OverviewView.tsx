@@ -428,9 +428,6 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const clientConfigured = configuredConnectionCount;
   const clientTotal = appConnections.length;
 
-  const degraded =
-    (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
-
   const rememberRouteSmokeResult = (
     route: ModelGatewayActiveRouteStatus,
     result: RouteSmokeResult,

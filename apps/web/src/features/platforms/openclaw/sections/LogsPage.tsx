@@ -1,6 +1,5 @@
 import * as React from "react";
 import { FileText } from "lucide-react";
-import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton } from "@/shared/states/Skeleton";

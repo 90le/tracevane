@@ -49,12 +49,6 @@ function defaultPermissionMode(entries: FileEntrySummary[]): string {
 type TransferConflictPolicy = "fail" | "overwrite" | "skip" | "rename";
 type UnarchiveConflictPolicy = "fail" | "overwrite" | "skip" | "rename";
 
-interface TransferConflictDecision {
-  overwrite?: boolean;
-  nextName?: string;
-  skip?: boolean;
-}
-
 export type FileManagerDialog =
   | { kind: "newFile" }
   | { kind: "newDir" }

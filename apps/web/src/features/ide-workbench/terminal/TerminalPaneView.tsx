@@ -50,7 +50,6 @@ export function TerminalPaneView({
   shell,
   createMode = "resume",
   active,
-  compact = false,
   showHeader = true,
   onFocus,
   onClose,
@@ -480,7 +479,7 @@ export function TerminalPaneView({
       data-terminal-profile-id={profileId || undefined}
       data-terminal-shell={shell || undefined}
       data-active-terminal-pane={active ? "true" : "false"}
-      onPointerDown={(event) => {
+      onPointerDown={() => {
         onFocus(paneId);
       }}
       onContextMenuCapture={(event) => {

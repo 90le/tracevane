@@ -423,11 +423,6 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
     }
     const stashRef = String(ref || "").trim();
     if (!stashRef) return;
-    const confirmText = kind === "drop"
-      ? `删除 ${stashRef}？此操作不可撤销。`
-      : kind === "pop"
-        ? `弹出 ${stashRef}？这会应用并删除该 stash，可能和当前工作区冲突。继续？`
-        : `应用 ${stashRef} 到当前工作区？可能产生冲突。继续？`;
     if (!confirmed) {
       setConfirmAction({ kind: "stash", action: kind, ref: stashRef });
       return;
@@ -606,7 +601,6 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
   }, [historyDetailByHash, historyDetailLoadingHash, rootId, status]);
 
   const copyHistoryMessage = React.useCallback(async (
-    commit: GitGraphPayload["commits"][number],
     detail: GitCommitDetailPayload | undefined,
   ) => {
     if (!detail) {
@@ -1068,7 +1062,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
                             onBranchFrom={() => void runHistoryMutation("branch-from", commit)}
                             onRevert={() => void runHistoryMutation("revert", commit)}
                             onCopyHash={() => void copyText(commit.hash, "提交哈希")}
-                            onCopyMessage={() => void copyHistoryMessage(commit, detail)}
+                            onCopyMessage={() => void copyHistoryMessage(detail)}
                             onCopyFiles={() => void copyHistoryFiles(detail)}
                             onFillCommit={() => setCommitMessage(detail?.subject || commit.subject || commit.shortHash)}
                           />

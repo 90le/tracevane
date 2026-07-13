@@ -567,7 +567,6 @@ const ACK_SCOPE_OPTIONS = [opt("group-mentions", "仅群聊 @ 场景"), opt("all
 const QUEUE_MODE_OPTIONS = [opt("collect", "合并收集"), opt("parallel", "并行处理"), opt("serial", "串行排队")];
 const QUEUE_DROP_OPTIONS = [opt("summarize", "超限后总结压缩"), opt("drop-oldest", "丢弃最早消息"), opt("reject-new", "拒绝新消息")];
 const BOOLEAN_AUTO_OPTIONS = [opt("auto", "自动"), opt("on", "开启"), opt("off", "关闭")];
-const SESSION_RESET_OPTIONS = [opt("idle", "空闲后重置"), opt("daily", "每天固定时间重置")];
 const OWNER_DISPLAY_OPTIONS = [opt("raw", "原样显示"), opt("hash", "哈希脱敏"), opt("hidden", "隐藏")];
 const NODE_MANAGER_OPTIONS = [opt("", "自动选择"), opt("npm", "npm"), opt("pnpm", "pnpm"), opt("yarn", "yarn"), opt("bun", "bun")];
 const BROWSER_SNAPSHOT_OPTIONS = [opt("", "跟随默认"), opt("efficient", "高效快照"), opt("full", "完整快照")];

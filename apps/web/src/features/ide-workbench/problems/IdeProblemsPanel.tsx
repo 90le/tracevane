@@ -1,4 +1,3 @@
-import * as React from "react";
 import { AlertCircle, Circle, Eraser, Info, Lightbulb, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";

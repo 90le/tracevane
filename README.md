@@ -85,6 +85,26 @@ Run the development environment:
 npm run dev:restart
 ```
 
+The development launcher is supported on Windows, macOS, and Linux; it starts
+the API and web server in the background, records PID/log files under
+`.tmp/dev-runtime`, and restarts either process if it exits. It requires a
+single native Node/npm environment for the checkout. Do not share a
+`node_modules` directory between Windows and WSL/Linux because optional native
+dependencies are platform-specific. If you change environments, remove
+`node_modules` and `apps/web/node_modules`, then run `npm ci` in the selected
+environment.
+
+If the default web port is occupied, select another port without stopping an
+unrelated process:
+
+```powershell
+$env:TRACEVANE_WEB_PORT = "5180"; npm run dev:restart
+```
+
+```bash
+TRACEVANE_WEB_PORT=5180 npm run dev:restart
+```
+
 Useful focused commands:
 
 ```bash

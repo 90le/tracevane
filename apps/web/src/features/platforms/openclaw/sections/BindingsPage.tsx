@@ -218,11 +218,6 @@ export function BindingsPage() {
       onError: (error) => toast.error("保存失败", { description: error.message }),
     });
   };
-  const remove = () => {
-    if (!selected) return;
-    setDeleteTarget(selected);
-  };
-
   return <div className="grid gap-[18px]">
     <section className="rounded-md border border-line bg-panel shadow-sm">
       <WorkbenchToolbar title="OpenClaw 原生绑定" description="这里配置 Bot / Account 到 Agent 或 ACP 的 OpenClaw 原生路由关系；编辑在抽屉完成，不使用左右分栏。">

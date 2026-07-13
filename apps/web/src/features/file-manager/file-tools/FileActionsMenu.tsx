@@ -15,7 +15,6 @@ import {
   Package,
   Pencil,
   TerminalSquare,
-  Trash2,
   Upload,
 } from "lucide-react";
 
