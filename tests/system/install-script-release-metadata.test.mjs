@@ -4,6 +4,7 @@ import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   injectInstallerDefaultVersion,
@@ -130,7 +131,7 @@ test('build scripts clean generated output before compiling fresh artifacts', ()
 
   const result = childProcess.spawnSync(
     process.execPath,
-    [new URL('../../scripts/clean-build-output.mjs', import.meta.url).pathname, 'all'],
+    [fileURLToPath(new URL('../../scripts/clean-build-output.mjs', import.meta.url)), 'all'],
     {
       encoding: 'utf8',
       env: {
@@ -170,16 +171,17 @@ test('release surfaces use the current OpenClaw minimum host version', () => {
 });
 
 function extractConfigWriterScript(installerSource) {
+  const normalizedInstallerSource = installerSource.replace(/\r\n/g, '\n');
   const marker = 'log "写入 OpenClaw 配置"';
-  const markerIndex = installerSource.indexOf(marker);
+  const markerIndex = normalizedInstallerSource.indexOf(marker);
   assert.notEqual(markerIndex, -1);
 
-  const start = installerSource.indexOf("const fs = require('node:fs');", markerIndex);
+  const start = normalizedInstallerSource.indexOf("const fs = require('node:fs');", markerIndex);
   assert.notEqual(start, -1);
 
-  const end = installerSource.indexOf('\nNODE\nfi\n\nif [[ "${DRY_RUN}" -eq 0 ]]; then\n  log "校验 OpenClaw 配置"', start);
+  const end = normalizedInstallerSource.indexOf('\nNODE\nfi\n\nif [[ "${DRY_RUN}" -eq 0 ]]; then\n  log "校验 OpenClaw 配置"', start);
   assert.notEqual(end, -1);
-  return installerSource.slice(start, end);
+  return normalizedInstallerSource.slice(start, end);
 }
 
 test('installer config writer prunes retired product residue instead of preserving compatibility', () => {
@@ -276,7 +278,7 @@ test('installer config writer prunes retired product residue instead of preservi
   });
   assert.deepEqual(nextConfig.plugins.load.paths, [
     path.join(tmpRoot, 'extensions', 'keep'),
-    installDir,
+    installDir.replace(/\\/g, '/'),
   ]);
   assert.equal(nextConfig.gateway.bind, 'lan');
   assert.equal(nextConfig.gateway.controlUi.enabled, true);
