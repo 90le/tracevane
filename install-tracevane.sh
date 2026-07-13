@@ -60,6 +60,7 @@ UNINSTALL_EXTENSION_QUARANTINE=""
 UNINSTALL_EXTENSION_BACKUP=""
 UNINSTALL_QUARANTINE_STATE_FILE=""
 UNINSTALL_ROLLBACK_DONE=0
+UNINSTALL_TRANSACTION_COMMITTED=0
 
 read_local_release_defaults() {
   local package_path="${SCRIPT_DIR}/package.json"
@@ -1099,6 +1100,21 @@ handle_uninstall_error() {
   die "卸载失败（line ${line_no}，exit ${exit_code}），且自动回滚不完整；请检查备份"
 }
 
+handle_committed_uninstall_error() {
+  local line_no="${1:-unknown}"
+  local exit_code="${2:-1}"
+  trap - ERR
+  die "卸载已提交，但结果输出失败（line ${line_no}，exit ${exit_code}）；配置和扩展保持已卸载状态，请检查备份: ${ACTIVE_BACKUP_DIR:-unknown}"
+}
+
+commit_uninstall_transaction() {
+  UNINSTALL_CONFIG_MUTATED=0
+  UNINSTALL_EXTENSION_QUARANTINED=0
+  UNINSTALL_ROLLBACK_DONE=1
+  UNINSTALL_TRANSACTION_COMMITTED=1
+  trap 'handle_committed_uninstall_error "$LINENO" "$?"' ERR
+}
+
 uninstall_tracevane() {
   local uninstall_stamp
   local uninstall_backup_template
@@ -1145,7 +1161,7 @@ uninstall_tracevane() {
   fi
   extension_backup_dir="${uninstall_backup_dir}/tracevane"
   config_backup_path="${uninstall_backup_dir}/openclaw.json"
-  UNINSTALL_EXTENSION_BACKUP="${extension_backup_dir}"
+  UNINSTALL_EXTENSION_BACKUP=""
   UNINSTALL_QUARANTINE_STATE_FILE="${uninstall_backup_dir}/extension-quarantine-path"
   cp "${OPENCLAW_CONFIG_FILE}" "${config_backup_path}"
   CONFIG_BACKUP="${config_backup_path}"
@@ -1190,6 +1206,7 @@ NODE
   RESULT_HEALTH_CHECKS+=("config-validate:ok")
 
   if [[ -d "${INSTALL_DIR}" ]]; then
+    UNINSTALL_EXTENSION_BACKUP="${extension_backup_dir}"
     if [[ -e "${extension_backup_dir}" || -L "${extension_backup_dir}" ]]; then
       if rollback_uninstall; then
         die "唯一备份目录中的扩展目标已被占用；已恢复原配置"
@@ -1226,16 +1243,22 @@ NODE
     RESULT_HEALTH_CHECKS+=("extension-backup:ok")
   else
     RESULT_HEALTH_CHECKS+=("extension-backup:not-installed")
+    append_result_warning "Tracevane 扩展未安装；未创建扩展备份。"
   fi
 
   restart_gateway_after_change
   if [[ "${UNINSTALL_EXTENSION_QUARANTINED}" -eq 1 ]]; then
     if rm -rf "${UNINSTALL_EXTENSION_QUARANTINE}"; then
       UNINSTALL_EXTENSION_QUARANTINED=0
-      rm -f "${UNINSTALL_QUARANTINE_STATE_FILE}" || true
+      if ! rm -f "${UNINSTALL_QUARANTINE_STATE_FILE}"; then
+        record_warning "扩展隔离目录已清理，但无法删除事务状态文件: ${UNINSTALL_QUARANTINE_STATE_FILE}"
+      fi
     else
       record_warning "Gateway 已重启，但清理扩展隔离目录失败；已验证的备份仍保留在: ${extension_backup_dir}"
     fi
+  fi
+  if [[ "${UNINSTALL_EXTENSION_QUARANTINED}" -eq 0 ]]; then
+    commit_uninstall_transaction
   fi
   append_result_warning "用户数据已保留在: ${retained_data_dir}"
   if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
@@ -1243,10 +1266,16 @@ NODE
   else
     printf '\n=== Tracevane 卸载完成 ===\n'
     printf '配置备份: %s\n' "${CONFIG_BACKUP}"
-    printf '扩展备份: %s\n' "${extension_backup_dir}"
+    if [[ -n "${UNINSTALL_EXTENSION_BACKUP}" ]]; then
+      printf '扩展备份: %s\n' "${UNINSTALL_EXTENSION_BACKUP}"
+    else
+      printf '扩展备份: 未安装（无需备份）\n'
+    fi
     printf '保留用户数据: %s\n' "${retained_data_dir}"
   fi
-  UNINSTALL_CONFIG_MUTATED=0
+  if [[ "${UNINSTALL_TRANSACTION_COMMITTED}" -eq 0 ]]; then
+    commit_uninstall_transaction
+  fi
   trap - ERR
 }
 
