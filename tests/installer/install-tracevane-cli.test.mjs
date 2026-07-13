@@ -446,6 +446,77 @@ test('failed JSON emission is attempted once and does not recurse through die', 
   assert.equal((result.stderr.match(/expected failure/g) || []).length, 1);
 });
 
+test('--unknown-option --json emits one deterministic argument error result', { skip: !resolverBashAvailable }, () => {
+  const result = runPortableInstaller(['--unknown-option', '--json']);
+
+  assert.notEqual(result.status, 0);
+  parseSingleJsonResult(result, 'error');
+  assert.doesNotMatch(result.stdout, /未知参数|unknown-option/);
+  assert.match(result.stderr, /未知参数.*--unknown-option/);
+});
+
+test('--json --unknown-option emits the same deterministic argument error result', { skip: !resolverBashAvailable }, () => {
+  const result = runPortableInstaller(['--json', '--unknown-option']);
+
+  assert.notEqual(result.status, 0);
+  parseSingleJsonResult(result, 'error');
+  assert.doesNotMatch(result.stdout, /未知参数|unknown-option/);
+  assert.match(result.stderr, /未知参数.*--unknown-option/);
+});
+
+test('--json --mode reports its missing operand through one error result', { skip: !resolverBashAvailable }, () => {
+  const result = runPortableInstaller(['--json', '--mode']);
+
+  assert.notEqual(result.status, 0);
+  parseSingleJsonResult(result, 'error');
+  assert.doesNotMatch(result.stdout, /缺少参数值|--mode/);
+  assert.match(result.stderr, /--mode.*缺少参数值/);
+});
+
+test('--mode --json treats the exact flag as a flag, not a mode operand', { skip: !resolverBashAvailable }, () => {
+  const result = runPortableInstaller([
+    '--mode', '--json',
+    '--version', '0.1.72',
+    '--package-url', 'https://packages.example/tracevane-0.1.72.tar.gz?jwt=do-not-print-argument-secret',
+    '--package-sha256', latestSha256,
+  ]);
+
+  assert.notEqual(result.status, 0);
+  parseSingleJsonResult(result, 'error');
+  assert.doesNotMatch(result.stdout, /缺少参数值|--mode|do-not-print/);
+  assert.match(result.stderr, /--mode.*缺少参数值/);
+});
+
+test('--json --config reports another missing value option through one error result', { skip: !resolverBashAvailable }, () => {
+  const result = runPortableInstaller(['--json', '--config']);
+
+  assert.notEqual(result.status, 0);
+  parseSingleJsonResult(result, 'error');
+  assert.doesNotMatch(result.stdout, /缺少参数值|--config/);
+  assert.match(result.stderr, /--config.*缺少参数值/);
+});
+
+test('JSON pre-scan matches only the exact flag and preserves normal operands', { skip: !resolverBashAvailable }, () => {
+  const result = runPortableInstaller([
+    '--mode', 'invalid',
+    '--version', '0.1.72',
+    '--package-url', 'https://packages.example/releases/--json-artifact.tar.gz',
+    '--package-sha256', latestSha256,
+  ]);
+
+  assert.notEqual(result.status, 0);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /--mode/);
+});
+
+test('--help preserves human stdout behavior without JSON mode', { skip: !resolverBashAvailable }, () => {
+  const result = runPortableInstaller(['--help']);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /Tracevane 一键安装脚本/);
+  assert.doesNotMatch(result.stdout, /"status":/);
+});
+
 test('uninstall removes only Tracevane config and install files while preserving user data', { skip: !resolverBashAvailable }, () => {
   const fixture = createUninstallFixture();
   const result = runUninstallFixture(fixture);

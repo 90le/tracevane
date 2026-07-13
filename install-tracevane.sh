@@ -808,6 +808,23 @@ NODE
   run_cmd_allow_fail openclaw doctor --repair --non-interactive --yes || true
 }
 
+pre_scan_json_output() {
+  local argument
+  for argument in "$@"; do
+    if [[ "${argument}" == "--json" ]]; then
+      JSON_OUTPUT=1
+      return 0
+    fi
+  done
+}
+
+require_option_operand() {
+  local option="${1:-option}"
+  if [[ $# -lt 2 || "${2:-}" == --* ]]; then
+    die "${option} 缺少参数值"
+  fi
+}
+
 uninstall_tracevane() {
   local uninstall_stamp
   local uninstall_backup_dir
@@ -905,51 +922,62 @@ parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --mode)
-        TRACEVANE_MODE="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_MODE="$2"
         shift 2
         ;;
       --version)
-        TRACEVANE_VERSION="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_VERSION="$2"
         VERSION_EXPLICIT=1
         shift 2
         ;;
       --release-base)
-        TRACEVANE_RELEASE_BASE="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_RELEASE_BASE="$2"
         shift 2
         ;;
       --site-base)
-        TRACEVANE_RELEASE_BASE="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_RELEASE_BASE="$2"
         warn "--site-base 已弃用；请改用 --release-base。"
         shift 2
         ;;
       --package-url)
-        TRACEVANE_PACKAGE_URL="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_PACKAGE_URL="$2"
         PACKAGE_URL_EXPLICIT=1
         shift 2
         ;;
       --package-sha256)
-        TRACEVANE_PACKAGE_SHA256="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_PACKAGE_SHA256="$2"
         shift 2
         ;;
       --api-port)
-        TRACEVANE_API_PORT="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_API_PORT="$2"
         shift 2
         ;;
       --base-path)
-        TRACEVANE_GATEWAY_BASE_PATH="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_GATEWAY_BASE_PATH="$2"
         shift 2
         ;;
       --gateway-bind)
-        TRACEVANE_GATEWAY_BIND="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_GATEWAY_BIND="$2"
         GATEWAY_BIND_EXPLICIT=1
         shift 2
         ;;
       --config)
-        OPENCLAW_CONFIG_FILE="${2:-}"
+        require_option_operand "$@"
+        OPENCLAW_CONFIG_FILE="$2"
         shift 2
         ;;
       --extensions-dir)
-        TRACEVANE_EXTENSIONS_DIR="${2:-}"
+        require_option_operand "$@"
+        TRACEVANE_EXTENSIONS_DIR="$2"
         INSTALL_DIR="${TRACEVANE_EXTENSIONS_DIR}/tracevane"
         shift 2
         ;;
@@ -984,12 +1012,13 @@ parse_args() {
   done
 }
 
-parse_args "$@"
+pre_scan_json_output "$@"
 if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
   exec 3>&1
   RESULT_OUTPUT_FD=3
   exec 1>&2
 fi
+parse_args "$@"
 detect_platform
 if [[ "${UNINSTALL}" -eq 1 ]]; then
   require_command node
