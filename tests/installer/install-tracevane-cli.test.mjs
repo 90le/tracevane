@@ -85,8 +85,10 @@ function runPortableInstaller(args, { env = {}, validateStatus = 0 } = {}) {
   const wrapper = [
     'uname() { if [[ "\${1:-}" == "-s" ]]; then printf "Linux\\n"; else command uname "$@"; fi; }',
     `openclaw() { if [[ "\${1:-} \${2:-}" == "config validate" ]]; then return ${validateStatus}; fi; printf "2026.5.28\\n"; }`,
+    'date() { if [[ -n "\${TRACEVANE_TEST_DATE_OUTPUT:-}" ]]; then printf "%s\\n" "$TRACEVANE_TEST_DATE_OUTPUT"; else command date "$@"; fi; }',
     'export -f uname',
     'export -f openclaw',
+    'export -f date',
     'bash "$@"',
   ].join('\n');
   return childProcess.spawnSync(
@@ -141,10 +143,12 @@ function runExtractedBash(functions, body, env = {}) {
   });
 }
 
-function createUninstallFixture() {
+function createUninstallFixture({ collideInstallWithRetainedData = false } = {}) {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-uninstall-'));
   const openclawHome = path.join(fixtureRoot, '.openclaw');
-  const extensionsDir = path.join(openclawHome, 'extensions');
+  const extensionsDir = collideInstallWithRetainedData
+    ? openclawHome
+    : path.join(openclawHome, 'extensions');
   const installDir = path.join(extensionsDir, 'tracevane');
   const retainedDataDir = path.join(openclawHome, 'tracevane');
   const configPath = path.join(openclawHome, 'openclaw.json');
@@ -182,7 +186,12 @@ function createUninstallFixture() {
 
 function runUninstallFixture(fixture, validateStatus = 0) {
   return runExtractedBash(
-    [['uninstall_tracevane', 'parse_args']],
+    [
+      ['classify_uninstall_path_relation', 'rollback_uninstall'],
+      ['rollback_uninstall', 'handle_uninstall_error'],
+      ['handle_uninstall_error', 'uninstall_tracevane'],
+      ['uninstall_tracevane', 'parse_args'],
+    ],
     [
       'log() { printf "LOG: %s\\n" "$*" >&2; }',
       'warn() { printf "WARN: %s\\n" "$*" >&2; }',
@@ -203,6 +212,60 @@ function runUninstallFixture(fixture, validateStatus = 0) {
       `BACKUP_ROOT=${JSON.stringify(path.join(fixture.openclawHome, 'backups', 'tracevane').replace(/\\/g, '/'))}`,
       'ACTIVE_BACKUP_DIR=""',
       'CONFIG_BACKUP=""',
+      'UNINSTALL_CONFIG_MUTATED=0',
+      'UNINSTALL_EXTENSION_MOVED=0',
+      'UNINSTALL_EXTENSION_BACKUP=""',
+      'UNINSTALL_ROLLBACK_DONE=0',
+      'TRACEVANE_VERSION=""',
+      'TRACEVANE_MODE=standalone',
+      'TRACEVANE_PLATFORM=Linux',
+      'uninstall_tracevane',
+    ].join('\n'),
+  );
+}
+
+function runUninstallUnexpectedRestartFailureFixture(fixture) {
+  return runExtractedBash(
+    [
+      ['emit_result_json', 'append_result_warning'],
+      ['append_result_warning', 'record_warning'],
+      ['record_warning', 'append_degraded_feature'],
+      ['append_degraded_feature', 'sanitize_url_for_output'],
+      ['sanitize_url_for_output', 'record_access_url'],
+      ['record_access_url', 'die'],
+      ['die', 'detect_platform'],
+      ['classify_uninstall_path_relation', 'rollback_uninstall'],
+      ['rollback_uninstall', 'handle_uninstall_error'],
+      ['handle_uninstall_error', 'uninstall_tracevane'],
+      ['uninstall_tracevane', 'parse_args'],
+    ],
+    [
+      'log() { printf "LOG: %s\\n" "$*" >&2; }',
+      'warn() { printf "WARN: %s\\n" "$*" >&2; }',
+      'openclaw() { if [[ "\${1:-} \${2:-}" == "config validate" ]]; then return 0; fi; return 0; }',
+      'restart_gateway_after_change() { return 73; }',
+      'JSON_OUTPUT=1',
+      'RESULT_OUTPUT_FD=1',
+      'RESULT_JSON_ATTEMPTED=0',
+      'RESULT_JSON_EMITTING=0',
+      'RESULT_JSON_EMITTED=0',
+      'DRY_RUN=0',
+      'CHECK_RELEASE=0',
+      'UNINSTALL=1',
+      'RESULT_WARNINGS=()',
+      'RESULT_ACCESS_URLS=()',
+      'RESULT_HEALTH_CHECKS=()',
+      'DEGRADED_FEATURES=()',
+      `OPENCLAW_HOME_DIR=${JSON.stringify(fixture.openclawHome.replace(/\\/g, '/'))}`,
+      `OPENCLAW_CONFIG_FILE=${JSON.stringify(fixture.configPath.replace(/\\/g, '/'))}`,
+      `INSTALL_DIR=${JSON.stringify(fixture.installDir.replace(/\\/g, '/'))}`,
+      `BACKUP_ROOT=${JSON.stringify(path.join(fixture.openclawHome, 'backups', 'tracevane').replace(/\\/g, '/'))}`,
+      'ACTIVE_BACKUP_DIR=""',
+      'CONFIG_BACKUP=""',
+      'UNINSTALL_CONFIG_MUTATED=0',
+      'UNINSTALL_EXTENSION_MOVED=0',
+      'UNINSTALL_EXTENSION_BACKUP=""',
+      'UNINSTALL_ROLLBACK_DONE=0',
       'TRACEVANE_VERSION=""',
       'TRACEVANE_MODE=standalone',
       'TRACEVANE_PLATFORM=Linux',
@@ -361,6 +424,95 @@ test('--uninstall --json validation failure restores state and emits one error r
   assert.equal(fs.existsSync(path.join(fixture.installDir, 'package.json')), true);
   assert.equal(fs.existsSync(path.join(fixture.retainedDataDir, 'user-data.json')), true);
   assert.match(result.stderr, /配置校验失败|配置验证失败|校验失败/);
+});
+
+test('--uninstall --json backup directory setup failure emits one error result before mutation', { skip: !resolverBashAvailable }, () => {
+  const fixture = createUninstallFixture();
+  fs.writeFileSync(path.join(fixture.openclawHome, 'backups'), 'not-a-directory\n');
+
+  const result = runPortableInstaller([
+    '--json',
+    '--uninstall',
+    '--config', fixture.configPath.replace(/\\/g, '/'),
+    '--extensions-dir', fixture.extensionsDir.replace(/\\/g, '/'),
+  ], {
+    env: { OPENCLAW_HOME_DIR: fixture.openclawHome.replace(/\\/g, '/') },
+  });
+
+  assert.notEqual(result.status, 0);
+  const payload = parseSingleJsonResult(result, 'error');
+  assert.equal(payload.mode, 'uninstall');
+  assert.equal(payload.backupPath, '');
+  assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), fixture.originalConfig);
+  assert.equal(fs.existsSync(path.join(fixture.installDir, 'package.json')), true);
+  assert.equal(fs.existsSync(path.join(fixture.retainedDataDir, 'user-data.json')), true);
+});
+
+test('--uninstall --json initial config backup copy failure emits one error result before mutation', { skip: !resolverBashAvailable }, () => {
+  const fixture = createUninstallFixture();
+  const stamp = '20260713120000';
+  const backupDir = path.join(fixture.openclawHome, 'backups', 'tracevane', `uninstall-${stamp}`);
+  const collidingConfigPath = path.join(backupDir, 'openclaw.json');
+  fs.mkdirSync(backupDir, { recursive: true });
+  fs.writeFileSync(collidingConfigPath, fixture.originalConfig);
+
+  const result = runPortableInstaller([
+    '--json',
+    '--uninstall',
+    '--config', collidingConfigPath.replace(/\\/g, '/'),
+    '--extensions-dir', fixture.extensionsDir.replace(/\\/g, '/'),
+  ], {
+    env: {
+      OPENCLAW_HOME_DIR: fixture.openclawHome.replace(/\\/g, '/'),
+      TRACEVANE_TEST_DATE_OUTPUT: stamp,
+    },
+  });
+
+  assert.notEqual(result.status, 0);
+  const payload = parseSingleJsonResult(result, 'error');
+  assert.equal(payload.mode, 'uninstall');
+  assert.equal(payload.backupPath, '');
+  assert.equal(fs.readFileSync(collidingConfigPath, 'utf8'), fixture.originalConfig);
+  assert.equal(fs.existsSync(path.join(fixture.installDir, 'package.json')), true);
+  assert.equal(fs.existsSync(path.join(fixture.retainedDataDir, 'user-data.json')), true);
+});
+
+test('--uninstall --json refuses an install path colliding with retained data without mutation', { skip: !resolverBashAvailable }, () => {
+  const fixture = createUninstallFixture({ collideInstallWithRetainedData: true });
+  const retainedDataPath = path.join(fixture.retainedDataDir, 'user-data.json');
+
+  const result = runPortableInstaller([
+    '--json',
+    '--uninstall',
+    '--config', fixture.configPath.replace(/\\/g, '/'),
+    '--extensions-dir', fixture.extensionsDir.replace(/\\/g, '/'),
+  ], {
+    env: { OPENCLAW_HOME_DIR: fixture.openclawHome.replace(/\\/g, '/') },
+  });
+
+  assert.notEqual(result.status, 0);
+  const payload = parseSingleJsonResult(result, 'error');
+  assert.equal(payload.mode, 'uninstall');
+  assert.equal(payload.installDir, fixture.installDir.replace(/\\/g, '/'));
+  assert.equal(payload.backupPath, '');
+  assert.ok(payload.warnings.some((warning) => /重叠|保留用户数据/.test(warning)));
+  assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), fixture.originalConfig);
+  assert.equal(fs.readFileSync(retainedDataPath, 'utf8'), '{"keep":true}\n');
+  assert.equal(fs.existsSync(path.join(fixture.installDir, 'package.json')), true);
+  assert.equal(fs.existsSync(path.join(fixture.openclawHome, 'backups')), false);
+});
+
+test('--uninstall --json unexpected restart failure rolls back config and extension once', { skip: !resolverBashAvailable }, () => {
+  const fixture = createUninstallFixture();
+  const result = runUninstallUnexpectedRestartFailureFixture(fixture);
+
+  assert.notEqual(result.status, 0);
+  const payload = parseSingleJsonResult(result, 'error');
+  assert.equal(payload.mode, 'uninstall');
+  assert.equal((result.stdout.match(/"status":"error"/g) || []).length, 1);
+  assert.equal(fs.readFileSync(fixture.configPath, 'utf8'), fixture.originalConfig);
+  assert.equal(fs.existsSync(path.join(fixture.installDir, 'package.json')), true);
+  assert.equal(fs.existsSync(path.join(fixture.retainedDataDir, 'user-data.json')), true);
 });
 
 test('ERR trap emits one error JSON result without recursive duplication', { skip: !resolverBashAvailable }, () => {

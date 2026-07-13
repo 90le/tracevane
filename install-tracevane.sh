@@ -52,6 +52,10 @@ RESULT_HEALTH_CHECKS=()
 ACTIVE_BACKUP_DIR=""
 CONFIG_BACKUP=""
 ROLLBACK_DONE=0
+UNINSTALL_CONFIG_MUTATED=0
+UNINSTALL_EXTENSION_MOVED=0
+UNINSTALL_EXTENSION_BACKUP=""
+UNINSTALL_ROLLBACK_DONE=0
 
 read_local_release_defaults() {
   local package_path="${SCRIPT_DIR}/package.json"
@@ -825,21 +829,120 @@ require_option_operand() {
   fi
 }
 
+classify_uninstall_path_relation() {
+  node - "$1" "$2" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+
+function canonicalize(candidate) {
+  let current = path.resolve(candidate);
+  const missingSegments = [];
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    missingSegments.unshift(path.basename(current));
+    current = parent;
+  }
+  const canonicalParent = fs.existsSync(current) ? fs.realpathSync(current) : current;
+  return path.resolve(canonicalParent, ...missingSegments);
+}
+
+function contains(parent, candidate) {
+  const relative = path.relative(parent, candidate);
+  return relative === ''
+    || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
+}
+
+const installDir = canonicalize(process.argv[2]);
+const retainedDataDir = canonicalize(process.argv[3]);
+process.stdout.write(
+  contains(installDir, retainedDataDir) || contains(retainedDataDir, installDir)
+    ? 'overlap'
+    : 'separate',
+);
+NODE
+}
+
+rollback_uninstall() {
+  local restore_tmp="${OPENCLAW_CONFIG_FILE}.tracevane-uninstall-restore.tmp"
+  local rollback_failed=0
+
+  if [[ "${UNINSTALL_ROLLBACK_DONE}" -eq 1 ]]; then
+    return 0
+  fi
+  UNINSTALL_ROLLBACK_DONE=1
+  trap - ERR
+  set +e
+
+  if [[ "${UNINSTALL_EXTENSION_MOVED}" -eq 1 ]]; then
+    if [[ -e "${INSTALL_DIR}" || -L "${INSTALL_DIR}" ]]; then
+      warn "无法恢复 Tracevane 扩展，目标路径已存在: ${INSTALL_DIR}"
+      rollback_failed=1
+    elif [[ ! -d "${UNINSTALL_EXTENSION_BACKUP}" ]]; then
+      warn "无法恢复 Tracevane 扩展，备份目录不存在: ${UNINSTALL_EXTENSION_BACKUP}"
+      rollback_failed=1
+    elif mv "${UNINSTALL_EXTENSION_BACKUP}" "${INSTALL_DIR}"; then
+      UNINSTALL_EXTENSION_MOVED=0
+    else
+      warn "恢复 Tracevane 扩展失败: ${UNINSTALL_EXTENSION_BACKUP}"
+      rollback_failed=1
+    fi
+  fi
+
+  if [[ "${UNINSTALL_CONFIG_MUTATED}" -eq 1 ]]; then
+    rm -f "${restore_tmp}" >/dev/null 2>&1 || true
+    if [[ -f "${CONFIG_BACKUP}" ]] \
+      && cp "${CONFIG_BACKUP}" "${restore_tmp}" \
+      && mv "${restore_tmp}" "${OPENCLAW_CONFIG_FILE}"
+    then
+      UNINSTALL_CONFIG_MUTATED=0
+    else
+      rm -f "${restore_tmp}" >/dev/null 2>&1 || true
+      warn "恢复 OpenClaw 配置失败: ${CONFIG_BACKUP}"
+      rollback_failed=1
+    fi
+  fi
+
+  set -e
+  return "${rollback_failed}"
+}
+
+handle_uninstall_error() {
+  local line_no="${1:-unknown}"
+  local exit_code="${2:-1}"
+  if rollback_uninstall; then
+    die "卸载失败（line ${line_no}，exit ${exit_code}）；已有更改已回滚"
+  fi
+  die "卸载失败（line ${line_no}，exit ${exit_code}），且自动回滚不完整；请检查备份"
+}
+
 uninstall_tracevane() {
   local uninstall_stamp
   local uninstall_backup_dir
   local extension_backup_dir
-  local restore_tmp
+  local config_backup_path
+  local path_relation
   local retained_data_dir="${OPENCLAW_HOME_DIR}/tracevane"
+
+  trap 'handle_uninstall_error "$LINENO" "$?"' ERR
+  TRACEVANE_MODE="uninstall"
+  path_relation="$(classify_uninstall_path_relation "${INSTALL_DIR}" "${retained_data_dir}")"
+  if [[ "${path_relation}" == "overlap" ]]; then
+    append_result_warning "安装目录与保留用户数据目录重叠；安全卸载已停止，配置和文件均未更改。"
+    die "安装目录与保留用户数据目录重叠: ${INSTALL_DIR}；请将扩展安装到独立目录后重试"
+  fi
+  if [[ "${path_relation}" != "separate" ]]; then
+    die "无法确认安装目录与保留用户数据目录是否安全分离"
+  fi
 
   uninstall_stamp="$(date +%Y%m%d%H%M%S)"
   uninstall_backup_dir="${BACKUP_ROOT}/uninstall-${uninstall_stamp}"
   extension_backup_dir="${uninstall_backup_dir}/tracevane"
-  restore_tmp="${OPENCLAW_CONFIG_FILE}.tracevane-uninstall-restore.tmp"
-  TRACEVANE_MODE="uninstall"
-  ACTIVE_BACKUP_DIR="${uninstall_backup_dir}"
+  config_backup_path="${uninstall_backup_dir}/openclaw.json"
+  UNINSTALL_EXTENSION_BACKUP="${extension_backup_dir}"
 
   if [[ "${DRY_RUN}" -eq 1 ]]; then
+    ACTIVE_BACKUP_DIR="${uninstall_backup_dir}"
     log "[dry-run] 将备份配置到 ${uninstall_backup_dir}/openclaw.json"
     log "[dry-run] 将从配置中移除 Tracevane 并移动扩展到 ${extension_backup_dir}"
     RESULT_HEALTH_CHECKS+=("uninstall:dry-run")
@@ -849,13 +952,16 @@ uninstall_tracevane() {
     else
       printf 'Tracevane 卸载 dry-run 完成；用户数据将保留在: %s\n' "${retained_data_dir}"
     fi
+    trap - ERR
     return 0
   fi
 
   [[ -f "${OPENCLAW_CONFIG_FILE}" ]] || die "找不到 OpenClaw 配置文件: ${OPENCLAW_CONFIG_FILE}"
   mkdir -p "${uninstall_backup_dir}"
-  CONFIG_BACKUP="${uninstall_backup_dir}/openclaw.json"
-  cp "${OPENCLAW_CONFIG_FILE}" "${CONFIG_BACKUP}"
+  cp "${OPENCLAW_CONFIG_FILE}" "${config_backup_path}"
+  CONFIG_BACKUP="${config_backup_path}"
+  ACTIVE_BACKUP_DIR="${uninstall_backup_dir}"
+  UNINSTALL_CONFIG_MUTATED=1
 
   if ! node - "${OPENCLAW_CONFIG_FILE}" "${INSTALL_DIR}" <<'NODE'
 const fs = require('node:fs');
@@ -879,28 +985,29 @@ fs.writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 
 fs.renameSync(temporaryPath, configPath);
 NODE
   then
-    rm -f "${OPENCLAW_CONFIG_FILE}.tracevane-uninstall.tmp"
-    if ! cp "${CONFIG_BACKUP}" "${restore_tmp}" || ! mv "${restore_tmp}" "${OPENCLAW_CONFIG_FILE}"; then
-      die "卸载配置写入失败，且无法从备份恢复: ${CONFIG_BACKUP}"
+    rm -f "${OPENCLAW_CONFIG_FILE}.tracevane-uninstall.tmp" || true
+    if rollback_uninstall; then
+      die "无法安全更新 OpenClaw 配置；已恢复原配置"
     fi
-    die "无法安全更新 OpenClaw 配置；已恢复原配置"
+    die "卸载配置写入失败，且无法从备份恢复: ${CONFIG_BACKUP}"
   fi
 
   if ! openclaw config validate; then
-    if ! cp "${CONFIG_BACKUP}" "${restore_tmp}" || ! mv "${restore_tmp}" "${OPENCLAW_CONFIG_FILE}"; then
-      die "卸载后的配置校验失败，且无法从备份恢复: ${CONFIG_BACKUP}"
+    if rollback_uninstall; then
+      die "卸载后的配置校验失败；已恢复原配置"
     fi
-    die "卸载后的配置校验失败；已恢复原配置"
+    die "卸载后的配置校验失败，且无法从备份恢复: ${CONFIG_BACKUP}"
   fi
   RESULT_HEALTH_CHECKS+=("config-validate:ok")
 
   if [[ -d "${INSTALL_DIR}" ]]; then
     if ! mv "${INSTALL_DIR}" "${extension_backup_dir}"; then
-      if ! cp "${CONFIG_BACKUP}" "${restore_tmp}" || ! mv "${restore_tmp}" "${OPENCLAW_CONFIG_FILE}"; then
-        die "移动 Tracevane 扩展失败，且无法从备份恢复配置: ${CONFIG_BACKUP}"
+      if rollback_uninstall; then
+        die "移动 Tracevane 扩展失败；已恢复原配置"
       fi
-      die "移动 Tracevane 扩展失败；已恢复原配置"
+      die "移动 Tracevane 扩展失败，且无法从备份恢复配置: ${CONFIG_BACKUP}"
     fi
+    UNINSTALL_EXTENSION_MOVED=1
     RESULT_HEALTH_CHECKS+=("extension-backup:ok")
   else
     RESULT_HEALTH_CHECKS+=("extension-backup:not-installed")
@@ -916,6 +1023,9 @@ NODE
     printf '扩展备份: %s\n' "${extension_backup_dir}"
     printf '保留用户数据: %s\n' "${retained_data_dir}"
   fi
+  UNINSTALL_CONFIG_MUTATED=0
+  UNINSTALL_EXTENSION_MOVED=0
+  trap - ERR
 }
 
 parse_args() {
