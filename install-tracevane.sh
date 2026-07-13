@@ -39,6 +39,13 @@ BACKUP_ROOT="${OPENCLAW_HOME_DIR}/backups/tracevane"
 DRY_RUN=0
 SKIP_UPGRADE=0
 CHECK_RELEASE=0
+JSON_OUTPUT=0
+UNINSTALL=0
+RESULT_OUTPUT_FD=1
+RESULT_WARNINGS=()
+DEGRADED_FEATURES=()
+RESULT_ACCESS_URLS=()
+RESULT_HEALTH_CHECKS=()
 ACTIVE_BACKUP_DIR=""
 CONFIG_BACKUP=""
 ROLLBACK_DONE=0
@@ -83,6 +90,77 @@ log() {
 
 warn() {
   printf '[tracevane-installer] WARN: %s\n' "$*" >&2
+}
+
+emit_result_json() {
+  TRACEVANE_RESULT_STATUS="$1" \
+  TRACEVANE_RESULT_VERSION="${TRACEVANE_VERSION:-}" \
+  TRACEVANE_RESULT_MODE="${TRACEVANE_MODE:-}" \
+  TRACEVANE_RESULT_PLATFORM="${TRACEVANE_PLATFORM:-}" \
+  TRACEVANE_RESULT_INSTALL_DIR="${INSTALL_DIR}" \
+  TRACEVANE_RESULT_CONFIG_PATH="${OPENCLAW_CONFIG_FILE}" \
+  TRACEVANE_RESULT_BACKUP_PATH="${ACTIVE_BACKUP_DIR:-${CONFIG_BACKUP:-}}" \
+  TRACEVANE_RESULT_ACCESS_URLS="$(printf '%s\n' "${RESULT_ACCESS_URLS[@]:-}")" \
+  TRACEVANE_RESULT_HEALTH_CHECKS="$(printf '%s\n' "${RESULT_HEALTH_CHECKS[@]:-}")" \
+  TRACEVANE_RESULT_WARNINGS="$(printf '%s\n' "${RESULT_WARNINGS[@]:-}")" \
+  TRACEVANE_RESULT_DEGRADED="$(printf '%s\n' "${DEGRADED_FEATURES[@]:-}")" \
+  node - >&"${RESULT_OUTPUT_FD}" <<'NODE'
+const lines = (name) => (process.env[name] || '').split('\n').filter(Boolean);
+process.stdout.write(`${JSON.stringify({
+  status: process.env.TRACEVANE_RESULT_STATUS,
+  version: process.env.TRACEVANE_RESULT_VERSION,
+  mode: process.env.TRACEVANE_RESULT_MODE,
+  platform: process.env.TRACEVANE_RESULT_PLATFORM,
+  installDir: process.env.TRACEVANE_RESULT_INSTALL_DIR,
+  configPath: process.env.TRACEVANE_RESULT_CONFIG_PATH,
+  accessUrls: lines('TRACEVANE_RESULT_ACCESS_URLS'),
+  healthChecks: lines('TRACEVANE_RESULT_HEALTH_CHECKS'),
+  backupPath: process.env.TRACEVANE_RESULT_BACKUP_PATH,
+  warnings: lines('TRACEVANE_RESULT_WARNINGS'),
+  degradedFeatures: lines('TRACEVANE_RESULT_DEGRADED'),
+})}\n`);
+NODE
+}
+
+append_result_warning() {
+  local candidate="${1:-}"
+  local existing
+  [[ -n "${candidate}" ]] || return 0
+  for existing in "${RESULT_WARNINGS[@]:-}"; do
+    [[ "${existing}" == "${candidate}" ]] && return 0
+  done
+  RESULT_WARNINGS+=("${candidate}")
+}
+
+record_warning() {
+  append_result_warning "$1"
+  warn "$1"
+}
+
+append_degraded_feature() {
+  local candidate="${1:-}"
+  local existing
+  [[ -n "${candidate}" ]] || return 0
+  for existing in "${DEGRADED_FEATURES[@]:-}"; do
+    [[ "${existing}" == "${candidate}" ]] && return 0
+  done
+  DEGRADED_FEATURES+=("${candidate}")
+}
+
+record_access_url() {
+  local candidate="${1:-}"
+  local normalized
+  local existing
+  [[ -n "${candidate}" ]] || return 1
+  normalized="$(printf '%s' "${candidate}" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${normalized}" =~ ://[^/]*@ ]] \
+    || [[ "${normalized}" =~ [\?\&](token|access_token|auth|authorization|api_key|apikey|signature|x-amz-signature)= ]]; then
+    return 1
+  fi
+  for existing in "${RESULT_ACCESS_URLS[@]:-}"; do
+    [[ "${existing}" == "${candidate}" ]] && return 0
+  done
+  RESULT_ACCESS_URLS+=("${candidate}")
 }
 
 die() {
@@ -133,6 +211,8 @@ Tracevane 一键安装脚本
   --extensions-dir <path>       扩展目录，默认 ~/.openclaw/extensions
   --skip-upgrade                不自动升级 OpenClaw
   --check-release               只解析 metadata 并检查安装包 URL，不安装
+  --json                        仅向 stdout 输出一个机器可读的结果对象
+  --uninstall                   安全卸载 Tracevane，保留 ~/.openclaw/tracevane 用户数据
   --dry-run                     仅打印将执行的动作，不落盘
   -h, --help                    显示帮助
 EOF
@@ -387,6 +467,42 @@ start_gateway_fallback() {
   nohup openclaw gateway run --force --ws-log compact >"${log_file}" 2>&1 &
   sleep 2
   return 0
+}
+
+restart_gateway_after_change() {
+  GATEWAY_SERVICE_READY=0
+  if can_manage_gateway_service; then
+    log "安装或刷新 OpenClaw Gateway service"
+    if run_cmd_allow_fail openclaw gateway install --force; then
+      GATEWAY_SERVICE_READY=1
+    else
+      record_warning "Gateway service 安装失败，将尝试降级为后台直接运行 Gateway。"
+    fi
+  else
+    record_warning "未检测到可用的用户级服务管理器（systemd/launchd/schtasks），将直接后台运行 Gateway。"
+  fi
+
+  if [[ "${GATEWAY_SERVICE_READY}" -eq 1 ]]; then
+    log "重启 OpenClaw Gateway service"
+    if ! run_cmd_allow_fail openclaw gateway restart --safe; then
+      record_warning "Gateway safe restart 失败，尝试普通 restart。"
+      if ! run_cmd_allow_fail openclaw gateway restart; then
+        record_warning "Gateway service 重启失败，将尝试降级为后台直接运行 Gateway。"
+        GATEWAY_SERVICE_READY=0
+      fi
+    fi
+  fi
+
+  if [[ "${GATEWAY_SERVICE_READY}" -eq 0 ]]; then
+    if start_gateway_fallback; then
+      RESULT_HEALTH_CHECKS+=("gateway-restart:fallback")
+    else
+      record_warning "后台拉起 Gateway 失败，请手工执行: openclaw gateway run --force"
+      RESULT_HEALTH_CHECKS+=("gateway-restart:failed")
+    fi
+  else
+    RESULT_HEALTH_CHECKS+=("gateway-restart:ok")
+  fi
 }
 
 require_command() {
@@ -646,6 +762,99 @@ NODE
   run_cmd_allow_fail openclaw doctor --repair --non-interactive --yes || true
 }
 
+uninstall_tracevane() {
+  local uninstall_stamp
+  local uninstall_backup_dir
+  local extension_backup_dir
+  local restore_tmp
+  local retained_data_dir="${OPENCLAW_HOME_DIR}/tracevane"
+
+  uninstall_stamp="$(date +%Y%m%d%H%M%S)"
+  uninstall_backup_dir="${BACKUP_ROOT}/uninstall-${uninstall_stamp}"
+  extension_backup_dir="${uninstall_backup_dir}/tracevane"
+  restore_tmp="${OPENCLAW_CONFIG_FILE}.tracevane-uninstall-restore.tmp"
+  TRACEVANE_MODE="uninstall"
+  ACTIVE_BACKUP_DIR="${uninstall_backup_dir}"
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    log "[dry-run] 将备份配置到 ${uninstall_backup_dir}/openclaw.json"
+    log "[dry-run] 将从配置中移除 Tracevane 并移动扩展到 ${extension_backup_dir}"
+    RESULT_HEALTH_CHECKS+=("uninstall:dry-run")
+    append_result_warning "用户数据将保留在: ${retained_data_dir}"
+    if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
+      emit_result_json "ok"
+    else
+      printf 'Tracevane 卸载 dry-run 完成；用户数据将保留在: %s\n' "${retained_data_dir}"
+    fi
+    return 0
+  fi
+
+  [[ -f "${OPENCLAW_CONFIG_FILE}" ]] || die "找不到 OpenClaw 配置文件: ${OPENCLAW_CONFIG_FILE}"
+  mkdir -p "${uninstall_backup_dir}"
+  CONFIG_BACKUP="${uninstall_backup_dir}/openclaw.json"
+  cp "${OPENCLAW_CONFIG_FILE}" "${CONFIG_BACKUP}"
+
+  if ! node - "${OPENCLAW_CONFIG_FILE}" "${INSTALL_DIR}" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const configPath = process.argv[2];
+const installDir = path.resolve(process.argv[3]);
+const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+const plugins = config.plugins && typeof config.plugins === 'object' ? config.plugins : {};
+if (plugins.entries && typeof plugins.entries === 'object') {
+  delete plugins.entries.tracevane;
+}
+if (plugins.load && Array.isArray(plugins.load.paths)) {
+  plugins.load.paths = plugins.load.paths.filter((entry) => {
+    if (typeof entry !== 'string') return true;
+    return path.resolve(entry) !== installDir;
+  });
+}
+config.plugins = plugins;
+const temporaryPath = `${configPath}.tracevane-uninstall.tmp`;
+fs.writeFileSync(temporaryPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+fs.renameSync(temporaryPath, configPath);
+NODE
+  then
+    rm -f "${OPENCLAW_CONFIG_FILE}.tracevane-uninstall.tmp"
+    if ! cp "${CONFIG_BACKUP}" "${restore_tmp}" || ! mv "${restore_tmp}" "${OPENCLAW_CONFIG_FILE}"; then
+      die "卸载配置写入失败，且无法从备份恢复: ${CONFIG_BACKUP}"
+    fi
+    die "无法安全更新 OpenClaw 配置；已恢复原配置"
+  fi
+
+  if ! openclaw config validate; then
+    if ! cp "${CONFIG_BACKUP}" "${restore_tmp}" || ! mv "${restore_tmp}" "${OPENCLAW_CONFIG_FILE}"; then
+      die "卸载后的配置校验失败，且无法从备份恢复: ${CONFIG_BACKUP}"
+    fi
+    die "卸载后的配置校验失败；已恢复原配置"
+  fi
+  RESULT_HEALTH_CHECKS+=("config-validate:ok")
+
+  if [[ -d "${INSTALL_DIR}" ]]; then
+    if ! mv "${INSTALL_DIR}" "${extension_backup_dir}"; then
+      if ! cp "${CONFIG_BACKUP}" "${restore_tmp}" || ! mv "${restore_tmp}" "${OPENCLAW_CONFIG_FILE}"; then
+        die "移动 Tracevane 扩展失败，且无法从备份恢复配置: ${CONFIG_BACKUP}"
+      fi
+      die "移动 Tracevane 扩展失败；已恢复原配置"
+    fi
+    RESULT_HEALTH_CHECKS+=("extension-backup:ok")
+  else
+    RESULT_HEALTH_CHECKS+=("extension-backup:not-installed")
+  fi
+
+  restart_gateway_after_change
+  append_result_warning "用户数据已保留在: ${retained_data_dir}"
+  if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
+    emit_result_json "ok"
+  else
+    printf '\n=== Tracevane 卸载完成 ===\n'
+    printf '配置备份: %s\n' "${CONFIG_BACKUP}"
+    printf '扩展备份: %s\n' "${extension_backup_dir}"
+    printf '保留用户数据: %s\n' "${retained_data_dir}"
+  fi
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -706,6 +915,14 @@ parse_args() {
         CHECK_RELEASE=1
         shift
         ;;
+      --json)
+        JSON_OUTPUT=1
+        shift
+        ;;
+      --uninstall)
+        UNINSTALL=1
+        shift
+        ;;
       --dry-run)
         DRY_RUN=1
         shift
@@ -722,7 +939,18 @@ parse_args() {
 }
 
 parse_args "$@"
+if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
+  exec 3>&1
+  RESULT_OUTPUT_FD=3
+  exec 1>&2
+fi
 detect_platform
+if [[ "${UNINSTALL}" -eq 1 ]]; then
+  require_command node
+  require_command openclaw
+  uninstall_tracevane
+  exit 0
+fi
 trap 'handle_install_error "$LINENO" "$?"' ERR
 
 resolve_requested_release
@@ -731,6 +959,12 @@ if [[ ! "${TRACEVANE_PACKAGE_SHA256}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
   die "缺少有效的安装包 SHA-256；请使用官方 Release metadata，或同时传入 --package-sha256。"
 fi
 TRACEVANE_PACKAGE_SHA256="$(printf '%s' "${TRACEVANE_PACKAGE_SHA256}" | tr '[:upper:]' '[:lower:]')"
+PACKAGE_URL_DISPLAY="${TRACEVANE_PACKAGE_URL}"
+if ! record_access_url "${TRACEVANE_PACKAGE_URL}"; then
+  PACKAGE_URL_DISPLAY="[credential-bearing URL redacted]"
+  record_warning "安装包 URL 包含凭据；结果输出已隐藏该 URL。"
+fi
+RESULT_HEALTH_CHECKS+=("release-metadata:ok")
 
 TRACEVANE_GATEWAY_BASE_PATH="$(normalize_base_path "${TRACEVANE_GATEWAY_BASE_PATH}")"
 
@@ -744,15 +978,24 @@ if [[ "${CHECK_RELEASE}" -eq 1 ]]; then
   log "Tracevane release metadata OK"
   log "版本: ${TRACEVANE_VERSION}"
   log "最低 OpenClaw: ${OPENCLAW_MIN_VERSION}"
-  log "安装包: ${TRACEVANE_PACKAGE_URL}"
+  log "安装包: ${PACKAGE_URL_DISPLAY}"
   log "安装包 SHA-256: ${TRACEVANE_PACKAGE_SHA256}"
   if probe_url "${TRACEVANE_PACKAGE_URL}"; then
     log "安装包 URL 可访问"
+    RESULT_HEALTH_CHECKS+=("package-url:ok")
   else
-    die "安装包 URL 不可访问: ${TRACEVANE_PACKAGE_URL}"
+    die "安装包 URL 不可访问: ${PACKAGE_URL_DISPLAY}"
+  fi
+  if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
+    INSTALL_DIR=""
+    OPENCLAW_CONFIG_FILE=""
+    ACTIVE_BACKUP_DIR=""
+    CONFIG_BACKUP=""
+    emit_result_json "ok"
   fi
   exit 0
 fi
+RESULT_ACCESS_URLS=()
 require_command npm
 require_command tar
 require_command openclaw
@@ -804,8 +1047,12 @@ if [[ "${DRY_RUN}" -eq 0 ]]; then
 fi
 
 ARCHIVE_PATH="${TMP_DIR}/tracevane.tar.gz"
-log "下载安装包: ${TRACEVANE_PACKAGE_URL}"
-download_file "${TRACEVANE_PACKAGE_URL}" "${ARCHIVE_PATH}"
+log "下载安装包: ${PACKAGE_URL_DISPLAY}"
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+  printf '[dry-run] download %q -> %q\n' "${PACKAGE_URL_DISPLAY}" "${ARCHIVE_PATH}"
+else
+  download_file "${TRACEVANE_PACKAGE_URL}" "${ARCHIVE_PATH}"
+fi
 log "校验安装包 SHA-256"
 verify_package_checksum "${ARCHIVE_PATH}" "${TRACEVANE_PACKAGE_SHA256}"
 
@@ -911,10 +1158,12 @@ else
     npm install --production --ignore-scripts
     npm rebuild @homebridge/node-pty-prebuilt-multiarch 2>&1 || warn "node-pty rebuild 失败，终端功能可能不可用。请确保已安装 build-essential 和 cmake。"
     if ! node -e "require('@homebridge/node-pty-prebuilt-multiarch')" 2>/dev/null; then
-      warn "node-pty 原生模块加载失败（Node ABI $(node -e 'process.stdout.write(process.versions.modules)')）"
-      warn "终端功能将不可用。常见原因："
-      warn "  1. Node.js 版本过新，prebuilt 尚未支持（当前 Node $(node --version)）"
-      warn "  2. 缺少编译工具：sudo apt install build-essential cmake（Debian/Ubuntu）或 xcode-select --install（macOS）"
+      append_degraded_feature "terminal"
+      if [[ "${TRACEVANE_PLATFORM}" == "Darwin" ]]; then
+        record_warning "node-pty 原生模块加载失败（Node ABI $(node -e 'process.stdout.write(process.versions.modules)')）；终端功能不可用。请确认 Xcode Command Line Tools 已安装。"
+      else
+        record_warning "node-pty 原生模块加载失败（Node ABI $(node -e 'process.stdout.write(process.versions.modules)')）；终端功能不可用。请确认 build-essential 和 cmake 已安装。"
+      fi
       warn "可稍后手工执行: cd ${INSTALL_DIR} && npm rebuild @homebridge/node-pty-prebuilt-multiarch"
     fi
   )
@@ -1206,36 +1455,20 @@ GATEWAY_PORT="$(read_config_json_field "config.gateway?.port ?? 31879")"
 GATEWAY_AUTH_MODE="$(read_config_json_field "config.gateway?.auth?.mode ?? 'token'")"
 GATEWAY_TOKEN="$(read_config_json_field "config.gateway?.auth?.token ?? ''")"
 
-GATEWAY_SERVICE_READY=0
-if can_manage_gateway_service; then
-  log "安装或刷新 OpenClaw Gateway service"
-  if run_cmd_allow_fail openclaw gateway install --force; then
-    GATEWAY_SERVICE_READY=1
-  else
-    warn "Gateway service 安装失败，将尝试降级为后台直接运行 Gateway。"
-  fi
-else
-  warn "未检测到可用的用户级服务管理器（systemd/launchd/schtasks），将直接后台运行 Gateway。"
-fi
-
-if [[ "${GATEWAY_SERVICE_READY}" -eq 1 ]]; then
-  log "重启 OpenClaw Gateway service"
-  if ! run_cmd_allow_fail openclaw gateway restart --safe; then
-    warn "Gateway safe restart 失败，尝试普通 restart。"
-    if ! run_cmd_allow_fail openclaw gateway restart; then
-      warn "Gateway service 重启失败，将尝试降级为后台直接运行 Gateway。"
-      GATEWAY_SERVICE_READY=0
-    fi
-  fi
-fi
-
-if [[ "${GATEWAY_SERVICE_READY}" -eq 0 ]]; then
-  start_gateway_fallback || warn "后台拉起 Gateway 失败，请手工执行: openclaw gateway run --force"
-fi
+restart_gateway_after_change
 
 if [[ "${DRY_RUN}" -eq 1 ]]; then
   trap - ERR
   log "dry-run 模式跳过健康检查"
+  RESULT_HEALTH_CHECKS+=("health:dry-run")
+  if [[ "${TRACEVANE_MODE}" == "standalone" ]]; then
+    record_access_url "http://HOST:${TRACEVANE_API_PORT}/" || true
+  else
+    record_access_url "http://HOST:${GATEWAY_PORT}${TRACEVANE_GATEWAY_BASE_PATH}/" || true
+  fi
+  if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
+    emit_result_json "ok"
+  fi
   exit 0
 fi
 
@@ -1264,16 +1497,16 @@ else
   HEALTH_URL="http://127.0.0.1:${GATEWAY_PORT}${TRACEVANE_GATEWAY_BASE_PATH}/api/system/health"
   ACCESS_URL="http://HOST:${GATEWAY_PORT}${TRACEVANE_GATEWAY_BASE_PATH}/"
   STANDALONE_HEALTH_URL="http://127.0.0.1:${TRACEVANE_API_PORT}/api/system/health"
-  if [[ "${GATEWAY_AUTH_MODE}" == "token" && -n "${GATEWAY_TOKEN}" ]]; then
-    HEALTH_URL="${HEALTH_URL}?token=${GATEWAY_TOKEN}"
-    ACCESS_URL="${ACCESS_URL}?token=${GATEWAY_TOKEN}"
-  fi
+fi
+HEALTH_REQUEST_URL="${HEALTH_URL}"
+if [[ "${TRACEVANE_MODE}" == "gateway" && "${GATEWAY_AUTH_MODE}" == "token" && -n "${GATEWAY_TOKEN}" ]]; then
+  HEALTH_REQUEST_URL="${HEALTH_URL}?token=${GATEWAY_TOKEN}"
 fi
 
 log "执行健康检查: ${HEALTH_URL}"
 HEALTH_OK=0
 HEALTH_BODY=""
-if HEALTH_BODY="$(probe_health "${HEALTH_URL}")"; then
+if HEALTH_BODY="$(probe_health "${HEALTH_REQUEST_URL}")"; then
   HEALTH_OK=1
 fi
 
@@ -1284,6 +1517,28 @@ if [[ -n "${STANDALONE_HEALTH_URL}" ]]; then
   if STANDALONE_HEALTH_BODY="$(probe_health "${STANDALONE_HEALTH_URL}" 8 2)"; then
     STANDALONE_HEALTH_OK=1
   fi
+fi
+
+record_access_url "${ACCESS_URL}" || true
+if [[ "${HEALTH_OK}" -eq 1 ]]; then
+  RESULT_HEALTH_CHECKS+=("primary-health:ok")
+else
+  RESULT_HEALTH_CHECKS+=("primary-health:failed")
+  record_warning "健康检查未通过，请手工执行: openclaw gateway health 或通过浏览器访问 ${HEALTH_URL}"
+fi
+if [[ -n "${STANDALONE_HEALTH_URL}" ]]; then
+  if [[ "${STANDALONE_HEALTH_OK}" -eq 1 ]]; then
+    RESULT_HEALTH_CHECKS+=("standalone-health:ok")
+  else
+    RESULT_HEALTH_CHECKS+=("standalone-health:failed")
+    record_warning "3760 回退入口健康检查未通过，请确认 Tracevane standalone transport 已启用: ${STANDALONE_HEALTH_URL}"
+  fi
+fi
+
+if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
+  emit_result_json "ok"
+  trap - ERR
+  exit 0
 fi
 
 printf '\n'
@@ -1304,15 +1559,11 @@ printf '访问地址: %s\n' "${ACCESS_URL}"
 printf '健康检查: %s\n' "$([[ "${HEALTH_OK}" -eq 1 ]] && printf '成功' || printf '失败')"
 if [[ "${HEALTH_OK}" -eq 1 ]]; then
   printf '健康检查响应: %s\n' "${HEALTH_BODY}"
-else
-  warn "健康检查未通过，请手工执行: openclaw gateway health 或通过浏览器访问 ${HEALTH_URL}"
 fi
 if [[ -n "${STANDALONE_HEALTH_URL}" ]]; then
   printf '3760 回退健康检查: %s\n' "$([[ "${STANDALONE_HEALTH_OK}" -eq 1 ]] && printf '成功' || printf '失败')"
   if [[ "${STANDALONE_HEALTH_OK}" -eq 1 ]]; then
     printf '3760 健康检查响应: %s\n' "${STANDALONE_HEALTH_BODY}"
-  else
-    warn "3760 回退入口健康检查未通过，请确认 Tracevane standalone transport 已启用: ${STANDALONE_HEALTH_URL}"
   fi
 fi
 trap - ERR

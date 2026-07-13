@@ -125,6 +125,11 @@ test('installer remains self-contained for remote metadata and gateway keeps 376
   assert.match(installer, /tracevaneConfig\.transport\.preferredMode = mode;/);
   assert.match(installer, /tracevaneConfig\.transport\.standalone = \{\s*enabled: true,\s*port: apiPort,\s*\};/);
   assert.match(installer, /STANDALONE_HEALTH_URL="http:\/\/127\.0\.0\.1:\$\{TRACEVANE_API_PORT\}\/api\/system\/health"/);
+  assert.match(installer, /--json/);
+  assert.match(installer, /--uninstall/);
+  assert.match(installer, /emit_result_json\(\)/);
+  assert.match(installer, /uninstall_tracevane\(\)/);
+  assert.match(installer, /degradedFeatures/);
 });
 
 test('installer locates the extracted package without GNU-only find depth flags', () => {
@@ -135,6 +140,15 @@ test('installer locates the extracted package without GNU-only find depth flags'
     installer,
     /for package_candidate in "\$\{TMP_DIR\}"\/tracevane-\*; do\s+\[\[ -d "\$\{package_candidate\}" \]\] \|\| continue\s+PACKAGE_DIR="\$\{package_candidate\}"\s+break\s+done/,
   );
+});
+
+test('installer result and human output paths do not expose credential-bearing URLs', () => {
+  const installer = fs.readFileSync(new URL('../../install-tracevane.sh', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(installer, /log "下载安装包: \$\{TRACEVANE_PACKAGE_URL\}"/);
+  assert.doesNotMatch(installer, /ACCESS_URL="\$\{ACCESS_URL\}\?token=/);
+  assert.match(installer, /log "下载安装包: \$\{PACKAGE_URL_DISPLAY\}"/);
+  assert.match(installer, /HEALTH_REQUEST_URL="\$\{HEALTH_URL\}\?token=\$\{GATEWAY_TOKEN\}"/);
 });
 
 test('pack script syncs landing page versions and includes the current React app source snapshot', () => {
