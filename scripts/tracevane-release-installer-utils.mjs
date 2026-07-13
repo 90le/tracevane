@@ -20,6 +20,17 @@ export function parseReleaseMetadata(raw) {
     return null;
   }
 
+  const checksum = parsed.checksum && typeof parsed.checksum === 'object'
+    ? parsed.checksum
+    : {};
+  const sha256 = typeof parsed.sha256 === 'string'
+    ? parsed.sha256.trim().toLowerCase()
+    : typeof parsed.packageSha256 === 'string'
+      ? parsed.packageSha256.trim().toLowerCase()
+      : typeof checksum.sha256 === 'string'
+        ? checksum.sha256.trim().toLowerCase()
+        : '';
+
   return {
     version,
     packageUrl: typeof parsed.packageUrl === 'string' ? parsed.packageUrl.trim() : '',
@@ -30,6 +41,7 @@ export function parseReleaseMetadata(raw) {
         : parsed.openclaw && typeof parsed.openclaw.minHostVersion === 'string'
           ? parsed.openclaw.minHostVersion.trim()
           : '',
+    sha256,
   };
 }
 
@@ -96,7 +108,7 @@ function runCli(argv) {
     if (!parsed) {
       process.exit(1);
     }
-    process.stdout.write([parsed.version, parsed.packageUrl, parsed.minVersion].join('\t'));
+    process.stdout.write([parsed.version, parsed.packageUrl, parsed.minVersion, parsed.sha256].join('\t'));
     return;
   }
 

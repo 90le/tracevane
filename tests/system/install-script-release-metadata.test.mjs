@@ -12,19 +12,19 @@ import {
   parseReleaseMetadata,
 } from '../../scripts/tracevane-release-installer-utils.mjs';
 
-test('parseReleaseMetadata extracts version, package URL, and min host version from site metadata', () => {
-  const metadata = parseReleaseMetadata(`
-    {
-      "version": "0.1.21",
-      "packageUrl": "https://tracevane.90le.cn/tracevane-0.1.21.tar.gz",
-      "minOpenClawVersion": "2026.5.28"
-    }
-  `);
+test('parseReleaseMetadata extracts version, package URL, min host version, and checksum from release metadata', () => {
+  const metadata = parseReleaseMetadata(`{
+    "version": "0.1.72",
+    "packageUrl": "https://github.com/90le/tracevane/releases/download/v0.1.72/tracevane-0.1.72.tar.gz",
+    "minOpenClawVersion": "2026.5.28",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }`);
 
   assert.deepEqual(metadata, {
-    version: '0.1.21',
-    packageUrl: 'https://tracevane.90le.cn/tracevane-0.1.21.tar.gz',
+    version: '0.1.72',
+    packageUrl: 'https://github.com/90le/tracevane/releases/download/v0.1.72/tracevane-0.1.72.tar.gz',
     minVersion: '2026.5.28',
+    sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   });
 });
 
@@ -41,7 +41,49 @@ test('parseReleaseMetadata accepts alternate min host version shapes', () => {
     version: '0.1.22',
     packageUrl: '/tracevane-0.1.22.tar.gz',
     minVersion: '2026.5.29',
+    sha256: '',
   });
+});
+
+test('parseReleaseMetadata normalizes alternate checksum shapes', () => {
+  assert.equal(parseReleaseMetadata(`{
+    "version": "0.1.23",
+    "packageSha256": " BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB "
+  }`).sha256, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+
+  assert.equal(parseReleaseMetadata(`{
+    "version": "0.1.24",
+    "checksum": {
+      "sha256": " CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC "
+    }
+  }`).sha256, 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc');
+});
+
+test('parse-metadata CLI emits four tab-separated fields', () => {
+  const result = childProcess.spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('../../scripts/tracevane-release-installer-utils.mjs', import.meta.url)), 'parse-metadata'],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        TRACEVANE_RELEASE_METADATA: JSON.stringify({
+          version: '0.1.72',
+          packageUrl: 'https://github.com/90le/tracevane/releases/download/v0.1.72/tracevane-0.1.72.tar.gz',
+          minOpenClawVersion: '2026.5.28',
+          sha256: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        }),
+      },
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stdout, [
+    '0.1.72',
+    'https://github.com/90le/tracevane/releases/download/v0.1.72/tracevane-0.1.72.tar.gz',
+    '2026.5.28',
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  ].join('\t'));
 });
 
 test('injectInstallerDefaultVersion updates installer fallback version to current release', () => {
@@ -113,6 +155,14 @@ test('pack script provides a non-mutating test mode for release smoke checks', (
   assert.match(packScript, /rewrite-landing-version[\s\S]*"\$\{ROOT_LANDING_PATH\}"/);
   assert.match(viteConfig, /TRACEVANE_BUILD_VERSION/);
   assert.match(viteConfig, /if \(tracevanePackageVersionOverride\) return tracevanePackageVersionOverride;/);
+});
+
+test('pack script emits GitHub release URLs and SHA256SUMS', () => {
+  const packScript = fs.readFileSync(new URL('../../pack.sh', import.meta.url), 'utf8');
+  assert.match(packScript, /GITHUB_REPOSITORY="\$\{TRACEVANE_GITHUB_REPOSITORY:-90le\/tracevane\}"/);
+  assert.match(packScript, /releases\/download\/v\$\{version\}\/tracevane-\$\{version\}\.tar\.gz/);
+  assert.match(packScript, /SHA256SUMS/);
+  assert.doesNotMatch(packScript, /https:\/\/tracevane\.90le\.cn\/tracevane-/);
 });
 
 test('build scripts clean generated output before compiling fresh artifacts', () => {
