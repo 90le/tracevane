@@ -8111,8 +8111,7 @@ test("model gateway app connections apply through HTTP routes against an isolate
     const preview = await requestJson(`${baseUrl}/api/model-gateway/app-connections`);
     assert.equal(preview.status, 200);
     assert.equal(preview.body.connections.length, 4);
-    assert.equal(preview.body.connections.find((connection) => connection.id === "codex").canApply, false);
-    assert.equal(preview.body.connections.filter((connection) => connection.id !== "codex").every((connection) => connection.canApply), true);
+    assert.equal(preview.body.connections.every((connection) => connection.canApply), true);
     assert.equal(preview.body.connections.find((connection) => connection.id === "codex").target.path, codexPath);
     assert.equal(preview.body.connections.find((connection) => connection.id === "claude-code").target.path, claudePath);
     assert.equal(preview.body.connections.find((connection) => connection.id === "opencode").target.path, opencodePath);
@@ -8128,11 +8127,15 @@ test("model gateway app connections apply through HTTP routes against an isolate
       body: {},
     });
     assert.equal(applyAll.status, 200);
-    assert.deepEqual(applyAll.body.applied.map((item) => item.connection.id), ["claude-code", "opencode", "openclaw"]);
+    assert.deepEqual(
+      applyAll.body.applied.map((item) => item.connection.id),
+      ["codex", "claude-code", "opencode", "openclaw"],
+    );
     assert.equal(applyAll.body.applied.every((item) => item.applied), true);
 
     const codexConfig = fs.readFileSync(codexPath, "utf8");
-    assert.equal(codexConfig, "model = \"before-codex\"\n");
+    assert.match(codexConfig, /model = "model-b"/);
+    assert.match(codexConfig, /model_provider = "tracevane_gateway"/);
 
     const claudeConfig = JSON.parse(fs.readFileSync(claudePath, "utf8"));
     assert.equal(claudeConfig.env.KEEP, "claude");
@@ -8156,11 +8159,10 @@ test("model gateway app connections apply through HTTP routes against an isolate
 
     const configured = await requestJson(`${baseUrl}/api/model-gateway/app-connections`);
     assert.equal(configured.status, 200);
-    assert.equal(configured.body.connections.find((connection) => connection.id === "codex").configured, false);
-    assert.equal(configured.body.connections.filter((connection) => connection.id !== "codex").every((connection) => connection.configured), true);
+    assert.equal(configured.body.connections.every((connection) => connection.configured), true);
     assert.equal(JSON.stringify(configured.body).includes("sk-local-isolated"), false);
 
-    for (const appId of ["claude-code", "opencode", "openclaw"]) {
+    for (const appId of ["codex", "claude-code", "opencode", "openclaw"]) {
       const rollback = await requestJson(`${baseUrl}/api/model-gateway/app-connections/${appId}/rollback`, {
         method: "POST",
         body: {},
