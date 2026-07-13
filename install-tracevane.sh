@@ -22,7 +22,9 @@ if [[ -n "${OPENCLAW_MIN_VERSION:-}" ]]; then
 fi
 TRACEVANE_VERSION="${TRACEVANE_VERSION:-}"
 OPENCLAW_MIN_VERSION="${OPENCLAW_MIN_VERSION:-2026.5.28}"
-TRACEVANE_SITE_BASE="${TRACEVANE_SITE_BASE:-https://tracevane.90le.cn}"
+TRACEVANE_RELEASE_BASE="${TRACEVANE_RELEASE_BASE:-https://github.com/90le/tracevane/releases/latest/download}"
+TRACEVANE_PLATFORM=""
+TRACEVANE_ARCH=""
 TRACEVANE_PACKAGE_URL="${TRACEVANE_PACKAGE_URL:-}"
 TRACEVANE_PACKAGE_SHA256="${TRACEVANE_PACKAGE_SHA256:-}"
 TRACEVANE_MODE="${TRACEVANE_MODE:-standalone}"
@@ -88,6 +90,17 @@ die() {
   exit 1
 }
 
+detect_platform() {
+  local kernel
+  kernel="$(uname -s 2>/dev/null || true)"
+  case "${kernel}" in
+    Linux|Darwin) TRACEVANE_PLATFORM="${kernel}" ;;
+    MINGW*|MSYS*|CYGWIN*) die "Git Bash/Cygwin/MSYS 暂不受支持；请使用 WSL，或等待 PowerShell 安装器。" ;;
+    *) die "不受支持的 Bash 平台: ${kernel:-unknown}" ;;
+  esac
+  TRACEVANE_ARCH="$(uname -m 2>/dev/null || printf unknown)"
+}
+
 usage() {
   cat <<'EOF'
 Tracevane 一键安装脚本
@@ -104,14 +117,15 @@ Tracevane 一键安装脚本
 
 说明:
   gateway 单口模式会挂载到 OpenClaw Gateway 的 /tracevane，同时保留本机 3760 standalone 入口用于健康检查和回退。
-  默认 latest 需要能读取站点元数据；离线或私有镜像安装请传 --version 或 --package-url。
+  默认 latest 需要能读取 GitHub Release metadata；离线或私有镜像安装请传 --version、--package-url 和 --package-sha256。
 
 选项:
   --mode <standalone|gateway>   安装模式，默认 standalone
-  --version <version>           Tracevane 版本，默认 latest（站点最新）
-  --site-base <url>             站点根地址，默认 https://tracevane.90le.cn
-  --package-url <url>           安装包地址，默认优先读取站点 metadata
-  --package-sha256 <sha256>     安装包 SHA-256；metadata 提供时会自动校验
+  --version <version>           Tracevane 版本，默认 latest（GitHub Release 最新版）
+  --release-base <url>          Release 资源根地址，默认 GitHub latest/download
+  --site-base <url>             已弃用；等同于 --release-base
+  --package-url <url>           安装包地址，默认优先读取 Release metadata
+  --package-sha256 <sha256>     安装包 SHA-256；必须由 metadata 或此参数提供
   --api-port <port>             standalone API 端口，默认 3760
   --base-path <path>            gateway basePath，默认 /tracevane
   --gateway-bind <mode>         gateway bind，默认 lan（auto|loopback|lan|tailnet|custom）
@@ -198,9 +212,9 @@ resolve_remote_release_metadata() {
   local manifest_body
   local parsed
   for manifest_url in \
-    "${TRACEVANE_SITE_BASE}/tracevane-latest.json" \
-    "${TRACEVANE_SITE_BASE}/tracevane-version.json" \
-    "${TRACEVANE_SITE_BASE}/version.json"
+    "${TRACEVANE_RELEASE_BASE}/tracevane-latest.json" \
+    "${TRACEVANE_RELEASE_BASE}/tracevane-version.json" \
+    "${TRACEVANE_RELEASE_BASE}/version.json"
   do
     if ! manifest_body="$(http_get "${manifest_url}" 2>/dev/null)"; then
       continue
@@ -287,14 +301,14 @@ resolve_requested_release() {
   fi
 
   if [[ "${PACKAGE_URL_EXPLICIT}" -eq 0 && ( "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" ) ]]; then
-    die "无法从 ${TRACEVANE_SITE_BASE} 解析最新 Tracevane 版本；请检查站点元数据，或显式传入 --version / --package-url"
+    die "无法从 ${TRACEVANE_RELEASE_BASE} 解析最新 Tracevane 版本；请检查 Release metadata，或显式传入 --version / --package-url"
   fi
 
   if [[ "${PACKAGE_URL_EXPLICIT}" -eq 0 ]]; then
     if [[ -n "${remote_package_url}" ]]; then
       TRACEVANE_PACKAGE_URL="${remote_package_url}"
     else
-      TRACEVANE_PACKAGE_URL="${TRACEVANE_SITE_BASE}/tracevane-${TRACEVANE_VERSION}.tar.gz"
+      TRACEVANE_PACKAGE_URL="${TRACEVANE_RELEASE_BASE}/tracevane-${TRACEVANE_VERSION}.tar.gz"
     fi
   fi
 
@@ -384,7 +398,6 @@ probe_url() {
 verify_package_checksum() {
   local archive_path="$1"
   local expected_sha256="$2"
-  [[ -n "${expected_sha256}" ]] || return 0
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     printf '[dry-run] verify sha256 %q %q\n' "${archive_path}" "${expected_sha256}"
     return 0
@@ -618,8 +631,13 @@ parse_args() {
         VERSION_EXPLICIT=1
         shift 2
         ;;
+      --release-base)
+        TRACEVANE_RELEASE_BASE="${2:-}"
+        shift 2
+        ;;
       --site-base)
-        TRACEVANE_SITE_BASE="${2:-}"
+        TRACEVANE_RELEASE_BASE="${2:-}"
+        warn "--site-base 已弃用；请改用 --release-base。"
         shift 2
         ;;
       --package-url)
@@ -677,9 +695,15 @@ parse_args() {
 }
 
 parse_args "$@"
+detect_platform
 trap 'handle_install_error "$LINENO" "$?"' ERR
 
 resolve_requested_release
+
+if [[ ! "${TRACEVANE_PACKAGE_SHA256}" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+  die "缺少有效的安装包 SHA-256；请使用官方 Release metadata，或同时传入 --package-sha256。"
+fi
+TRACEVANE_PACKAGE_SHA256="$(printf '%s' "${TRACEVANE_PACKAGE_SHA256}" | tr '[:upper:]' '[:lower:]')"
 
 TRACEVANE_GATEWAY_BASE_PATH="$(normalize_base_path "${TRACEVANE_GATEWAY_BASE_PATH}")"
 
@@ -694,11 +718,7 @@ if [[ "${CHECK_RELEASE}" -eq 1 ]]; then
   log "版本: ${TRACEVANE_VERSION}"
   log "最低 OpenClaw: ${OPENCLAW_MIN_VERSION}"
   log "安装包: ${TRACEVANE_PACKAGE_URL}"
-  if [[ -n "${TRACEVANE_PACKAGE_SHA256}" ]]; then
-    log "安装包 SHA-256: ${TRACEVANE_PACKAGE_SHA256}"
-  else
-    warn "metadata 未提供安装包 SHA-256，安装时只能校验下载/解压是否成功"
-  fi
+  log "安装包 SHA-256: ${TRACEVANE_PACKAGE_SHA256}"
   if probe_url "${TRACEVANE_PACKAGE_URL}"; then
     log "安装包 URL 可访问"
   else
@@ -759,12 +779,8 @@ fi
 ARCHIVE_PATH="${TMP_DIR}/tracevane.tar.gz"
 log "下载安装包: ${TRACEVANE_PACKAGE_URL}"
 download_file "${TRACEVANE_PACKAGE_URL}" "${ARCHIVE_PATH}"
-if [[ -n "${TRACEVANE_PACKAGE_SHA256}" ]]; then
-  log "校验安装包 SHA-256"
-  verify_package_checksum "${ARCHIVE_PATH}" "${TRACEVANE_PACKAGE_SHA256}"
-else
-  warn "未提供安装包 SHA-256，跳过完整性校验"
-fi
+log "校验安装包 SHA-256"
+verify_package_checksum "${ARCHIVE_PATH}" "${TRACEVANE_PACKAGE_SHA256}"
 
 log "解压安装包"
 run_cmd tar -xzf "${ARCHIVE_PATH}" -C "${TMP_DIR}"

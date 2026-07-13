@@ -116,6 +116,12 @@ test('installer remains self-contained for remote metadata and gateway keeps 376
   const installer = fs.readFileSync(new URL('../../install-tracevane.sh', import.meta.url), 'utf8');
 
   assert.doesNotMatch(installer, /scripts\/tracevane-release-installer-utils\.mjs/);
+  assert.match(installer, /TRACEVANE_RELEASE_BASE="\$\{TRACEVANE_RELEASE_BASE:-https:\/\/github\.com\/90le\/tracevane\/releases\/latest\/download\}"/);
+  assert.match(installer, /--release-base/);
+  assert.match(installer, /Linux\|Darwin/);
+  assert.match(installer, /MINGW\*\|MSYS\*\|CYGWIN\*/);
+  assert.match(installer, /缺少有效的安装包 SHA-256/);
+  assert.doesNotMatch(installer, /跳过完整性校验/);
   assert.match(installer, /tracevaneConfig\.transport\.preferredMode = mode;/);
   assert.match(installer, /tracevaneConfig\.transport\.standalone = \{\s*enabled: true,\s*port: apiPort,\s*\};/);
   assert.match(installer, /STANDALONE_HEALTH_URL="http:\/\/127\.0\.0\.1:\$\{TRACEVANE_API_PORT\}\/api\/system\/health"/);
