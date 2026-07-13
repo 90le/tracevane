@@ -9,7 +9,7 @@ import type { TracevaneExposureKind, TracevaneServerConfig, TracevaneTransportCo
 const DEFAULT_PORT = 3760;
 const DEFAULT_GATEWAY_PORT = 18789;
 const DEFAULT_GATEWAY_BASE_PATH = '/tracevane';
-const TRACEVANE_VERSION_FALLBACK = '0.1.71';
+const TRACEVANE_VERSION_FALLBACK = '0.1.72';
 
 let cachedTracevaneVersion: string | null = null;
 
