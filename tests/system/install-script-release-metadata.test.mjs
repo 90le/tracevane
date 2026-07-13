@@ -127,6 +127,16 @@ test('installer remains self-contained for remote metadata and gateway keeps 376
   assert.match(installer, /STANDALONE_HEALTH_URL="http:\/\/127\.0\.0\.1:\$\{TRACEVANE_API_PORT\}\/api\/system\/health"/);
 });
 
+test('installer locates the extracted package without GNU-only find depth flags', () => {
+  const installer = fs.readFileSync(new URL('../../install-tracevane.sh', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(installer, /\bfind\b[^\n]*(?:-maxdepth|-mindepth)/);
+  assert.match(
+    installer,
+    /for package_candidate in "\$\{TMP_DIR\}"\/tracevane-\*; do\s+\[\[ -d "\$\{package_candidate\}" \]\] \|\| continue\s+PACKAGE_DIR="\$\{package_candidate\}"\s+break\s+done/,
+  );
+});
+
 test('pack script syncs landing page versions and includes the current React app source snapshot', () => {
   const packScript = fs.readFileSync(new URL('../../pack.sh', import.meta.url), 'utf8');
 

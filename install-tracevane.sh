@@ -208,13 +208,15 @@ handle_install_error() {
 }
 
 resolve_remote_release_metadata() {
+  local release_base="${1:-${TRACEVANE_RELEASE_BASE}}"
   local manifest_url
   local manifest_body
   local parsed
+  release_base="${release_base%/}"
   for manifest_url in \
-    "${TRACEVANE_RELEASE_BASE}/tracevane-latest.json" \
-    "${TRACEVANE_RELEASE_BASE}/tracevane-version.json" \
-    "${TRACEVANE_RELEASE_BASE}/version.json"
+    "${release_base}/tracevane-latest.json" \
+    "${release_base}/tracevane-version.json" \
+    "${release_base}/version.json"
   do
     if ! manifest_body="$(http_get "${manifest_url}" 2>/dev/null)"; then
       continue
@@ -281,22 +283,47 @@ resolve_requested_release() {
   local remote_min_version=""
   local remote_package_sha256=""
   local remote_metadata=""
+  local release_base="${TRACEVANE_RELEASE_BASE%/}"
+  local metadata_base="${release_base}"
+  local explicit_concrete_version=0
 
-  if [[ -z "${TRACEVANE_VERSION}" || "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" || "${PACKAGE_URL_EXPLICIT}" -eq 0 ]]; then
-    if remote_metadata="$(resolve_remote_release_metadata)"; then
+  if [[ "${VERSION_EXPLICIT}" -eq 1 && -n "${TRACEVANE_VERSION}" && "${TRACEVANE_VERSION}" != "latest" && "${TRACEVANE_VERSION}" != "auto" ]]; then
+    explicit_concrete_version=1
+    if [[ "${release_base}" == "https://github.com/90le/tracevane/releases/latest/download" ]]; then
+      metadata_base="https://github.com/90le/tracevane/releases/download/v${TRACEVANE_VERSION}"
+    fi
+  fi
+
+  if [[ -z "${TRACEVANE_VERSION}" || "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" || "${PACKAGE_URL_EXPLICIT}" -eq 0 || -z "${TRACEVANE_PACKAGE_SHA256}" ]]; then
+    if remote_metadata="$(resolve_remote_release_metadata "${metadata_base}")"; then
       IFS=$'\t' read -r remote_version remote_package_url remote_min_version remote_package_sha256 <<< "${remote_metadata}"
     fi
   fi
 
-  if [[ -z "${TRACEVANE_VERSION}" || "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" ]]; then
-    TRACEVANE_VERSION="${remote_version:-${TRACEVANE_DEFAULT_VERSION}}"
+  if [[ "${explicit_concrete_version}" -eq 1 && -n "${remote_version}" && (
+    "${remote_version}" != "${TRACEVANE_VERSION}" ||
+    ( -n "${remote_package_url}" && "${remote_package_url}" != *"/tracevane-${TRACEVANE_VERSION}.tar.gz"* )
+  ) ]]; then
+    remote_version=""
+    remote_package_url=""
+    remote_min_version=""
+    remote_package_sha256=""
+  elif [[ "${PACKAGE_URL_EXPLICIT}" -eq 1 && -n "${remote_version}" && ( -z "${remote_package_url}" || "${remote_package_url}" != "${TRACEVANE_PACKAGE_URL}" ) ]]; then
+    remote_version=""
+    remote_package_url=""
+    remote_min_version=""
+    remote_package_sha256=""
   fi
 
-  if [[ "${PACKAGE_URL_EXPLICIT}" -eq 1 && "${VERSION_EXPLICIT}" -eq 0 && -z "${remote_version}" ]]; then
-    if [[ "${TRACEVANE_PACKAGE_URL}" =~ tracevane-([0-9][0-9A-Za-z._-]*)\.tar\.gz ]]; then
+  if [[ -z "${TRACEVANE_VERSION}" || "${TRACEVANE_VERSION}" == "latest" || "${TRACEVANE_VERSION}" == "auto" ]]; then
+    if [[ -n "${remote_version}" ]]; then
+      TRACEVANE_VERSION="${remote_version}"
+    elif [[ "${PACKAGE_URL_EXPLICIT}" -eq 1 && "${TRACEVANE_PACKAGE_URL}" =~ tracevane-([0-9][0-9A-Za-z._-]*)\.tar\.gz ]]; then
       TRACEVANE_VERSION="${BASH_REMATCH[1]}"
+    elif [[ "${PACKAGE_URL_EXPLICIT}" -eq 1 ]]; then
+      die "使用 --package-url 且无法读取匹配的 Release metadata 时，请同时传入 --version"
     else
-      die "使用 --package-url 且无法读取站点 metadata 时，请同时传入 --version"
+      TRACEVANE_VERSION="${TRACEVANE_DEFAULT_VERSION}"
     fi
   fi
 
@@ -308,7 +335,7 @@ resolve_requested_release() {
     if [[ -n "${remote_package_url}" ]]; then
       TRACEVANE_PACKAGE_URL="${remote_package_url}"
     else
-      TRACEVANE_PACKAGE_URL="${TRACEVANE_RELEASE_BASE}/tracevane-${TRACEVANE_VERSION}.tar.gz"
+      TRACEVANE_PACKAGE_URL="${metadata_base}/tracevane-${TRACEVANE_VERSION}.tar.gz"
     fi
   fi
 
@@ -788,7 +815,12 @@ run_cmd tar -xzf "${ARCHIVE_PATH}" -C "${TMP_DIR}"
 if [[ "${DRY_RUN}" -eq 1 ]]; then
   PACKAGE_DIR="${TMP_DIR}/tracevane-${TRACEVANE_VERSION}"
 else
-  PACKAGE_DIR="$(find "${TMP_DIR}" -maxdepth 1 -mindepth 1 -name 'tracevane-*' | head -n1)"
+  PACKAGE_DIR=""
+  for package_candidate in "${TMP_DIR}"/tracevane-*; do
+    [[ -d "${package_candidate}" ]] || continue
+    PACKAGE_DIR="${package_candidate}"
+    break
+  done
 fi
 [[ -n "${PACKAGE_DIR}" ]] || die "未在安装包中找到 tracevane-* 目录"
 
