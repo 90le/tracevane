@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible Tracevane defect
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tracevane and OpenClaw versions
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: OS, architecture, Node.js, and install mode
+    validations:
+      required: true

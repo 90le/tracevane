@@ -1,0 +1,39 @@
+name: Installation problem
+description: Report a reproducible problem installing or starting Tracevane
+title: "[Install] "
+labels: ["installation"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Tracevane and OpenClaw versions
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: OS, architecture, Node.js, and install mode
+    validations:
+      required: true
+  - type: input
+    id: installer-command
+    attributes:
+      label: Installer command
+      description: Paste the exact command you ran, after removing sensitive values.
+    validations:
+      required: true
+  - type: textarea
+    id: redacted-output
+    attributes:
+      label: Redacted installer output
+      description: Remove passwords, access tokens, API keys, private paths, and other secrets.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: health-check
+    attributes:
+      label: Health-check result
+      description: Share the health-check command and its redacted result.
+    validations:
+      required: true

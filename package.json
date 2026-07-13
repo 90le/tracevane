@@ -3,6 +3,14 @@
   "version": "0.1.71",
   "description": "Tracevane - Local AI Agent Control Workbench",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/90le/tracevane.git"
+  },
+  "homepage": "https://90le.github.io/tracevane/",
+  "bugs": {
+    "url": "https://github.com/90le/tracevane/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
