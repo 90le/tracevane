@@ -1,497 +1,94 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tracevane · Local AI Agent Control Workbench</title>
-<meta name="description" content="Tracevane 是本地优先的 AI Agent 控制工作台，用于连接、观察、恢复和验证本地项目、Model Gateway、CLI Agent、IM 渠道与 OpenClaw 运行表面。">
-<link rel="icon" type="image/svg+xml" href="assets/brand/favicon.svg">
-<link rel="icon" href="assets/brand/favicon.ico" sizes="any">
-<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
-<meta name="theme-color" content="#edf2ee">
-<style>
-  :root{
-    color-scheme:light;
-    --bg:#edf2ee;
-    --bg-warm:#f7f4ea;
-    --ink:#10161d;
-    --ink-soft:#26323d;
-    --muted:#66727c;
-    --muted-2:#87919a;
-    --line:#d6ded8;
-    --line-strong:#b8c5be;
-    --surface:#fbfcf7;
-    --surface-2:#f3f7f2;
-    --graphite:#121921;
-    --graphite-2:#1b2630;
-    --cyan:#00a9a0;
-    --cyan-2:#08756f;
-    --blue:#3157ff;
-    --amber:#c57618;
-    --shadow:0 24px 80px rgba(20,31,40,.14);
-    --shadow-soft:0 14px 44px rgba(20,31,40,.09);
-    --radius-lg:32px;
-    --radius:20px;
-    --radius-sm:14px;
-    --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    --mono:"JetBrains Mono","SFMono-Regular","Cascadia Code",Consolas,monospace;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html{scroll-behavior:smooth;background:var(--bg)}
-  body{
-    min-height:100vh;
-    color:var(--ink);
-    font-family:var(--sans);
-    background:
-      radial-gradient(760px 420px at 82% -8%, rgba(0,169,160,.18), transparent 62%),
-      radial-gradient(560px 360px at 12% 6%, rgba(49,87,255,.10), transparent 60%),
-      linear-gradient(180deg,#eef4ef 0%,#f7f4ea 46%,#edf2ee 100%);
-    -webkit-font-smoothing:antialiased;
-    text-rendering:optimizeLegibility;
-  }
-  body::before{
-    content:"";
-    position:fixed;inset:0;z-index:-2;pointer-events:none;
-    background-image:linear-gradient(rgba(16,22,29,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(16,22,29,.035) 1px,transparent 1px);
-    background-size:64px 64px;
-    mask-image:linear-gradient(180deg,rgba(0,0,0,.7),transparent 70%);
-  }
-  body::after{
-    content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.42;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E");
-    mix-blend-mode:multiply;
-  }
-  a{color:inherit;text-decoration:none}
-  button{font:inherit;color:inherit}
-  img{max-width:100%;display:block}
-  ::selection{background:rgba(0,169,160,.18)}
-  .wrap{width:min(1188px,calc(100% - 40px));margin:0 auto}
-  .reveal{opacity:1;transform:none;transition:opacity .7s ease,transform .7s cubic-bezier(.2,.8,.2,1)}
-  .js .reveal{opacity:1;transform:none}
-  .js .reveal.is-visible{opacity:1;transform:none}
-
-  .topbar{position:sticky;top:0;z-index:50;border-bottom:1px solid rgba(184,197,190,.7);background:rgba(237,242,238,.78);backdrop-filter:blur(22px) saturate(1.2)}
-  .nav{height:72px;display:grid;grid-template-columns:1fr auto 1fr;gap:22px;align-items:center}
-  .brand{display:inline-flex;align-items:center;gap:12px;font-weight:820;letter-spacing:-.035em}
-  .brand img{width:34px;height:34px;border-radius:12px;box-shadow:0 10px 24px rgba(0,169,160,.16)}
-  .brand small{display:block;margin-top:1px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-  .nav-links{justify-self:center;display:flex;align-items:center;gap:4px;border:1px solid rgba(184,197,190,.82);border-radius:999px;background:rgba(251,252,247,.58);padding:5px;box-shadow:0 8px 28px rgba(20,31,40,.05)}
-  .nav-links a{border-radius:999px;padding:8px 13px;color:#52606a;font-size:13px;font-weight:680;transition:background .18s ease,color .18s ease,transform .18s ease}
-  .nav-links a:hover{background:#fff;color:var(--ink);transform:translateY(-1px)}
-  .nav-meta{justify-self:end;display:flex;align-items:center;gap:9px;color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.04em;text-transform:uppercase}
-  .nav-dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 5px rgba(0,169,160,.12)}
-
-  .hero{padding:84px 0 56px}
-  .hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,492px);gap:54px;align-items:center}
-  .eyebrow{display:inline-flex;align-items:center;gap:10px;border:1px solid rgba(184,197,190,.86);border-radius:999px;background:rgba(251,252,247,.62);padding:8px 12px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan-2);box-shadow:var(--shadow-soft)}
-  .pulse{width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 5px rgba(0,169,160,.12)}
-  h1{margin-top:24px;max-width:860px;font-size:clamp(74px,10.4vw,148px);line-height:.84;letter-spacing:-.09em;font-weight:900;text-wrap:balance}
-  h1 em{display:block;margin-top:18px;font-style:normal;font-size:clamp(28px,4.4vw,58px);line-height:1.02;letter-spacing:-.064em;font-weight:850;color:var(--ink-soft)}
-  .hero-sub{max-width:760px;margin-top:26px;color:var(--ink-soft);font-size:19px;line-height:1.82;letter-spacing:-.015em}
-  .hero-sub strong{color:var(--ink);font-weight:820}
-  .hero-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px}
-  .button{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:46px;border:1px solid var(--ink);border-radius:999px;padding:12px 17px;cursor:pointer;font-weight:780;transition:transform .18s ease,box-shadow .18s ease,background .18s ease,color .18s ease}
-  .button:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(20,31,40,.12)}
-  .button.primary{background:var(--ink);color:#fff}.button.ghost{background:rgba(251,252,247,.62);border-color:var(--line-strong);color:var(--ink)}
-  .button:focus-visible,.nav-links a:focus-visible,.copy-btn:focus-visible,.video-trigger:focus-visible,.dialog-close:focus-visible{outline:3px solid rgba(0,169,160,.28);outline-offset:3px}
-  .hero-footnotes{display:flex;flex-wrap:wrap;gap:10px;margin-top:28px;color:var(--muted);font-family:var(--mono);font-size:12px}
-  .hero-footnotes span{border:1px solid rgba(184,197,190,.8);border-radius:999px;background:rgba(251,252,247,.48);padding:7px 10px}
-
-  .control-card{position:relative;border:1px solid rgba(16,22,29,.92);border-radius:34px;background:linear-gradient(160deg,var(--graphite),var(--graphite-2));color:#eef6f4;box-shadow:var(--shadow);overflow:hidden}
-  .control-card::before{content:"";position:absolute;inset:-120px -120px auto auto;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(0,169,160,.32),transparent 65%);filter:blur(4px)}
-  .control-card::after{content:"";position:absolute;left:32px;right:32px;bottom:0;height:1px;background:linear-gradient(90deg,transparent,rgba(158,255,245,.48),transparent)}
-  .card-top{position:relative;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:22px 22px 18px;border-bottom:1px solid rgba(255,255,255,.11);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#aab8c3}
-  .traffic{display:flex;gap:7px}.traffic i{width:9px;height:9px;border-radius:50%;background:#51616d}.traffic i:nth-child(1){background:#ff7b72}.traffic i:nth-child(2){background:#e3b341}.traffic i:nth-child(3){background:#1fbf75}
-  .card-body{position:relative;padding:24px}
-  .card-body h2{font-size:30px;line-height:1;letter-spacing:-.055em;text-wrap:balance}.card-body p{margin-top:13px;color:#b9c6ce;line-height:1.7;font-size:14px}
-  .route-stack{display:grid;gap:10px;margin-top:24px}.route-card{display:grid;grid-template-columns:auto 1fr auto;gap:13px;align-items:center;border:1px solid rgba(255,255,255,.12);border-radius:18px;background:rgba(255,255,255,.045);padding:13px}.route-index{width:28px;height:28px;border-radius:10px;display:grid;place-items:center;background:rgba(0,169,160,.16);color:#98fff5;font-family:var(--mono);font-size:11px}.route-card b{display:block;font-size:14px}.route-card span{display:block;margin-top:3px;color:#9cafba;font-size:12px}.route-pill{border:1px solid rgba(154,255,245,.25);border-radius:999px;color:#9afff5;font-family:var(--mono);font-size:10px;padding:5px 8px}
-  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}.metric{border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.035);padding:13px}.metric span{display:block;color:#8fa2ad;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.07em}.metric b{display:block;margin-top:7px;color:#f7fffd;font-size:17px;letter-spacing:-.03em}
-
-  .proof-strip{padding:18px 0 62px}.proof-grid{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid rgba(184,197,190,.88);border-radius:28px;background:rgba(251,252,247,.62);box-shadow:var(--shadow-soft);overflow:hidden}.proof{padding:22px;border-left:1px solid rgba(184,197,190,.7)}.proof:first-child{border-left:0}.proof b{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--cyan-2)}.proof span{display:block;margin-top:10px;color:var(--ink-soft);font-size:14px;line-height:1.58}
-
-  .section{padding:88px 0;border-top:1px solid rgba(184,197,190,.72)}
-  .section-head{display:grid;grid-template-columns:270px minmax(0,1fr);gap:48px;margin-bottom:34px}.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--cyan-2);font-weight:760}.section h2{font-size:clamp(34px,5vw,66px);line-height:1;letter-spacing:-.064em;text-wrap:balance}.section-desc{max-width:760px;margin-top:18px;color:var(--muted);font-size:17px;line-height:1.78}
-
-  .bento{display:grid;grid-template-columns:1.08fr .92fr 1fr;gap:16px}.product-card{position:relative;min-height:250px;border:1px solid rgba(184,197,190,.9);border-radius:28px;background:rgba(251,252,247,.72);padding:24px;box-shadow:0 12px 34px rgba(20,31,40,.055);overflow:hidden}.product-card::after{content:"";position:absolute;right:-50px;bottom:-70px;width:160px;height:160px;border-radius:50%;background:rgba(0,169,160,.08)}.product-card.wide{grid-column:span 2}.product-card.dark{background:linear-gradient(150deg,#13202a,#111820);color:#f5faf8;border-color:#10161d}.product-card.dark p{color:#b7c6cd}.product-card code{font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--cyan-2)}.product-card.dark code{color:#99fff2}.product-card h3{margin-top:38px;font-size:27px;line-height:1.04;letter-spacing:-.052em}.product-card p{margin-top:12px;color:var(--muted);font-size:14px;line-height:1.72}.card-lines{position:absolute;inset:18px 18px auto auto;display:grid;gap:6px;width:96px}.card-lines i{height:3px;border-radius:9px;background:rgba(16,22,29,.12)}.dark .card-lines i{background:rgba(255,255,255,.16)}
-
-  .flow{display:grid;grid-template-columns:.9fr 1.1fr;gap:18px;align-items:stretch}.flow-panel{border:1px solid rgba(184,197,190,.92);border-radius:30px;background:rgba(251,252,247,.72);box-shadow:var(--shadow-soft);overflow:hidden}.flow-panel header{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid rgba(184,197,190,.72);padding:18px 20px;color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase}.flow-body{padding:22px}.flow-step{display:grid;grid-template-columns:42px 1fr;gap:14px;position:relative;padding:0 0 24px}.flow-step:last-child{padding-bottom:0}.flow-step:not(:last-child)::after{content:"";position:absolute;left:20px;top:48px;bottom:8px;width:1px;background:var(--line-strong)}.step-num{position:relative;z-index:1;width:42px;height:42px;border-radius:14px;background:var(--ink);color:#fff;display:grid;place-items:center;font-family:var(--mono);font-size:12px;box-shadow:0 8px 22px rgba(16,22,29,.13)}.flow-step h3{font-size:18px;letter-spacing:-.03em}.flow-step p{margin-top:7px;color:var(--muted);font-size:14px;line-height:1.64}.proof-list{display:grid;gap:12px}.proof-item{border:1px solid rgba(184,197,190,.8);border-radius:18px;background:#fffdf7;padding:16px}.proof-item b{display:block;font-size:15px}.proof-item p{margin-top:7px;color:var(--muted);font-size:13px;line-height:1.62}
-
-  .guide{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(340px,.92fr);gap:18px;align-items:stretch}.video-card{position:relative;border:1px solid rgba(16,22,29,.92);border-radius:32px;background:#111820;box-shadow:var(--shadow);overflow:hidden;min-height:450px}.video-poster{width:100%;height:100%;min-height:450px;object-fit:cover;filter:saturate(.94) contrast(.98)}.video-card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(16,22,29,.72));pointer-events:none}.video-overlay{position:absolute;left:18px;right:18px;bottom:18px;z-index:2;border:1px solid rgba(255,255,255,.18);border-radius:24px;background:rgba(17,24,32,.72);backdrop-filter:blur(18px);color:#fff;padding:15px}.video-trigger{width:100%;border:0;background:transparent;display:flex;align-items:center;justify-content:space-between;gap:18px;text-align:left;cursor:pointer}.video-copy b{display:block;font-size:16px;letter-spacing:-.02em}.video-copy span{display:block;margin-top:5px;color:#b8c7ce;font-family:var(--mono);font-size:11px;line-height:1.48}.play-mark{width:50px;height:50px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;background:#fff;color:#111820;font-weight:900;transition:transform .18s ease,box-shadow .18s ease}.video-trigger:hover .play-mark{transform:scale(1.04);box-shadow:0 0 0 8px rgba(255,255,255,.12)}
-  .avatar-card{border:1px solid rgba(184,197,190,.92);border-radius:32px;background:rgba(251,252,247,.72);box-shadow:var(--shadow-soft);padding:26px;display:flex;flex-direction:column;justify-content:space-between;gap:24px}.avatar-head{display:flex;gap:16px;align-items:flex-start}.avatar-mark{width:68px;height:68px;border:1px solid var(--line-strong);border-radius:22px;background:linear-gradient(135deg,#dff3ee,#fffdf7);display:grid;place-items:center;box-shadow:0 12px 30px rgba(20,31,40,.08)}.avatar-mark img{width:42px;height:42px}.avatar-card h3{margin-top:7px;font-size:31px;line-height:1;letter-spacing:-.055em}.avatar-card p{margin-top:13px;color:var(--muted);line-height:1.75}.script-box{border-top:1px solid var(--line);padding-top:18px}.script-box b{font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--cyan-2)}.script-box ol{margin:13px 0 0 19px;color:var(--ink-soft);line-height:1.78;font-size:14px}.integration-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.integration-pill{border:1px solid rgba(184,197,190,.78);border-radius:16px;background:#fffdf7;padding:13px}.integration-pill b{display:block;font-family:var(--mono);font-size:10px;color:var(--cyan-2);letter-spacing:.07em}.integration-pill span{display:block;margin-top:7px;color:var(--muted);font-size:12px;line-height:1.45}
-
-  .install{padding:88px 0}.install-shell{border:1px solid rgba(16,22,29,.92);border-radius:34px;background:linear-gradient(160deg,#111820,#18232d);box-shadow:var(--shadow);overflow:hidden;color:#eef5f3}.install-top{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:24px;border-bottom:1px solid rgba(255,255,255,.1);padding:28px}.install-top h2{font-size:clamp(32px,4.5vw,58px);line-height:1;letter-spacing:-.06em}.install-top p{margin-top:14px;max-width:720px;color:#b9c6ce;line-height:1.72}.mode-cards{display:grid;gap:10px}.mode-card{border:1px solid rgba(255,255,255,.12);border-radius:18px;background:rgba(255,255,255,.045);padding:14px}.mode-card b{font-size:14px}.mode-card span{display:block;margin-top:5px;color:#9fb0ba;font-size:12px;line-height:1.5}.prompt-grid{display:grid;grid-template-columns:1fr 1fr}.prompt-card{min-width:0;border-left:1px solid rgba(255,255,255,.1)}.prompt-card:first-child{border-left:0}.prompt-header{display:flex;align-items:center;justify-content:space-between;gap:14px;border-bottom:1px solid rgba(255,255,255,.1);padding:17px 18px}.prompt-header h3{display:flex;align-items:center;gap:9px;font-size:15px}.badge{display:inline-flex;border:1px solid rgba(154,255,245,.28);border-radius:999px;padding:4px 8px;color:#a5fff6;font-family:var(--mono);font-size:10px;letter-spacing:.08em}.copy-btn{border:1px solid rgba(255,255,255,.2);border-radius:999px;background:transparent;color:#f6fbf9;padding:9px 12px;cursor:pointer;font-size:12px;font-weight:780;transition:background .16s ease,color .16s ease}.copy-btn:hover,.copy-btn.copied{background:#f6fbf9;color:#111820}.prompt-body{max-height:560px;overflow:auto;padding:18px;background:rgba(0,0,0,.13)}.prompt-body pre{font-family:var(--mono);font-size:12px;line-height:1.72;white-space:pre-wrap;word-break:break-word;color:#cad7dd}.prompt-body::-webkit-scrollbar{width:8px}.prompt-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.24);border-radius:999px}
-
-  .video-dialog{width:min(920px,calc(100% - 28px));border:1px solid #0f151c;border-radius:30px;padding:0;background:var(--surface);color:var(--ink);box-shadow:0 34px 120px rgba(0,0,0,.34);overflow:hidden}.video-dialog::backdrop{background:rgba(13,19,25,.58);backdrop-filter:blur(5px)}.dialog-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px}.dialog-media{min-height:430px;background:#111820;display:grid;grid-template-rows:minmax(0,1fr) auto;border-right:1px solid var(--line)}.dialog-media img{width:100%;height:100%;object-fit:cover}.dialog-caption{display:flex;justify-content:space-between;gap:12px;border-top:1px solid rgba(255,255,255,.13);padding:13px 15px;color:#b9c6ce;background:#111820;font-family:var(--mono);font-size:11px}.dialog-copy{padding:25px;display:flex;flex-direction:column;gap:18px}.dialog-copy h3{font-size:34px;line-height:1;letter-spacing:-.055em}.dialog-copy p,.dialog-copy li{color:var(--muted);line-height:1.68}.dialog-copy ul{display:grid;gap:9px;margin-left:18px}.auth-note{border:1px solid var(--line);border-radius:17px;background:#fffdf7;padding:13px;color:var(--muted);font-size:13px;line-height:1.6}.auth-note b{display:block;color:var(--cyan-2);font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}.dialog-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto}.dialog-close,.dialog-link{border:1px solid var(--ink);border-radius:999px;padding:10px 14px;cursor:pointer;font-weight:780}.dialog-close{background:var(--ink);color:#fff}.dialog-link{background:transparent;color:var(--ink);border-color:var(--line-strong)}
-
-  footer{border-top:1px solid rgba(184,197,190,.72);padding:34px 0 42px;color:var(--muted)}.footer-grid{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:end}.footer-grid b{display:block;color:var(--ink);font-size:15px}.footer-grid p{margin-top:8px;max-width:780px;font-size:13px;line-height:1.72}.footer-meta{text-align:right;font-family:var(--mono);font-size:11px;letter-spacing:.03em;text-transform:uppercase}
-
-  @media(max-width:980px){.hero-grid,.section-head,.flow,.guide,.install-top{grid-template-columns:1fr}.control-card{max-width:600px}.proof-grid{grid-template-columns:1fr 1fr}.proof:nth-child(odd){border-left:0}.proof:nth-child(n+3){border-top:1px solid rgba(184,197,190,.7)}.bento{grid-template-columns:1fr 1fr}.product-card.wide{grid-column:span 1}.prompt-grid{grid-template-columns:1fr}.prompt-card{border-left:0;border-top:1px solid rgba(255,255,255,.1)}.prompt-card:first-child{border-top:0}}
-  @media(max-width:720px){.wrap{width:min(100% - 24px,1188px)}.nav{height:auto;grid-template-columns:1fr;padding:12px 0}.nav-links{justify-self:stretch;overflow:auto;scrollbar-width:none}.nav-meta{justify-self:start}.hero{padding:52px 0 36px}h1{font-size:66px;letter-spacing:-.075em}h1 em{font-size:31px;margin-top:13px}.hero-sub{font-size:16px}.hero-actions .button{width:100%}.proof-grid,.bento,.metrics,.integration-row{grid-template-columns:1fr}.proof{border-left:0;border-top:1px solid rgba(184,197,190,.7)}.proof:first-child{border-top:0}.section,.install{padding:62px 0}.product-card{min-height:220px}.video-card,.video-poster{min-height:310px}.dialog-grid{grid-template-columns:1fr}.dialog-media{min-height:270px;border-right:0;border-bottom:1px solid var(--line)}.footer-grid{grid-template-columns:1fr}.footer-meta{text-align:left}.install-top{padding:22px}.prompt-header{align-items:flex-start;flex-direction:column}.copy-btn{width:100%}}
-  @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}.reveal{opacity:1;transform:none}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tracevane — OpenClaw AI Agent 控制工作台</title>
+  <meta name="description" content="Tracevane 是本地优先的 OpenClaw AI Agent 控制工作台：工作区、模型网关、消息渠道、CLI Agent 与运行健康。">
+  <meta name="theme-color" content="#07100f">
+  <meta property="og:title" content="Tracevane — Operate OpenClaw from one workspace">
+  <meta property="og:description" content="Local-first control for workspaces, model gateways, channels, CLI agents, and runtime health.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://90le.github.io/tracevane/">
+  <link rel="icon" href="assets/brand/favicon.ico">
+  <link rel="manifest" href="assets/brand/site.webmanifest">
+  <style>
+    :root{--bg:#07100f;--bg2:#0a1514;--panel:#0c1917;--line:#1d302d;--text:#f0f5f2;--muted:#9aaba6;--green:#35e69a;--cyan:#64d8d0;--max:1160px;--mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}a{color:inherit;text-decoration:none}button{font:inherit}.shell{width:min(calc(100% - 40px),var(--max));margin:auto}
+    body:before{content:"";position:fixed;inset:0;z-index:-2;background:linear-gradient(rgba(100,216,208,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(100,216,208,.035) 1px,transparent 1px);background-size:64px 64px;mask-image:linear-gradient(to bottom,#000,transparent 72%)}body:after{content:"";position:fixed;z-index:-1;width:720px;height:720px;top:-390px;left:50%;transform:translateX(-20%);background:radial-gradient(circle,rgba(53,230,154,.11),transparent 68%);pointer-events:none}
+    .skip{position:absolute;left:-999px}.skip:focus{left:20px;top:16px;z-index:20;background:var(--green);color:#03100b;padding:8px 12px;border-radius:4px}
+    header{height:76px;border-bottom:1px solid rgba(255,255,255,.07);background:rgba(7,16,15,.78);backdrop-filter:blur(16px);position:sticky;top:0;z-index:10}.nav{height:100%;display:flex;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:11px;font-weight:750;letter-spacing:.06em}.brand img{width:34px;height:34px}.brand small{color:var(--green);font:600 10px var(--mono);letter-spacing:.18em}.links{display:flex;align-items:center;gap:28px;color:#b8c6c2;font-size:14px}.links a:hover{color:#fff}.nav-gh{border:1px solid #29433e;padding:8px 14px;border-radius:6px;color:#ecf8f4!important;background:#0c1b18}
+    .hero{padding:112px 0 90px;display:grid;grid-template-columns:1.04fr .96fr;align-items:center;gap:82px}.eyebrow{display:flex;align-items:center;gap:10px;color:var(--green);font:650 12px var(--mono);letter-spacing:.13em;text-transform:uppercase}.eyebrow:before{content:"";width:30px;height:1px;background:var(--green)}h1{font-size:clamp(52px,6.4vw,84px);line-height:.98;letter-spacing:-.055em;margin:24px 0 28px;max-width:760px}.accent{color:var(--green)}.lead{font-size:18px;line-height:1.75;color:#aab9b5;max-width:650px;margin:0}.cn{display:block;margin-top:10px;color:#748783;font-size:14px}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:36px}.button{min-height:48px;padding:11px 19px;border-radius:6px;border:1px solid #29423d;display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:14px;font-weight:700}.button.primary{background:var(--green);color:#04110c;border-color:var(--green)}.button.primary:hover{background:#6af0b4}.button.secondary:hover{border-color:#53726c;background:#0b1b18}.maintenance{margin-top:26px;color:#748984;font:12px var(--mono)}.maintenance span{display:inline-block;width:7px;height:7px;background:#e1b65a;border-radius:50%;margin-right:8px;box-shadow:0 0 16px rgba(225,182,90,.45)}
+    .console{border:1px solid #26403b;background:rgba(9,20,18,.94);box-shadow:0 34px 90px rgba(0,0,0,.35);position:relative}.console:before{content:"";position:absolute;inset:-11px 11px 11px -11px;border:1px solid rgba(53,230,154,.12);z-index:-1}.console-bar{height:43px;display:flex;align-items:center;justify-content:space-between;padding:0 15px;border-bottom:1px solid var(--line);color:#718680;font:11px var(--mono);letter-spacing:.06em}.dots{display:flex;gap:6px}.dots i{display:block;width:7px;height:7px;border-radius:50%;background:#27403b}.console-body{padding:24px}.route-head{display:flex;justify-content:space-between;align-items:start;margin-bottom:28px}.route-head strong{font-size:16px}.route-head small{display:block;color:#78908a;font:11px var(--mono);margin-top:4px}.live{color:var(--green);font:11px var(--mono);border:1px solid rgba(53,230,154,.25);padding:5px 8px}.topology{display:grid;grid-template-columns:1fr 40px 1fr;align-items:center;margin:18px 0 25px}.node{border:1px solid #223b36;background:#0a1715;padding:14px}.node b{display:block;font:12px var(--mono);color:#dce9e5}.node span{color:#6f8580;font:10px var(--mono)}.flow{height:1px;background:linear-gradient(90deg,var(--green),var(--cyan));position:relative}.flow:after{content:"";position:absolute;right:0;top:-3px;border-left:6px solid var(--cyan);border-top:3px solid transparent;border-bottom:3px solid transparent}.signals{border-top:1px solid var(--line)}.signal{display:grid;grid-template-columns:18px 1fr auto;gap:10px;align-items:center;padding:12px 2px;border-bottom:1px solid rgba(29,48,45,.65);font:11px var(--mono)}.signal i{width:7px;height:7px;background:var(--green);border-radius:50%;box-shadow:0 0 10px rgba(53,230,154,.7)}.signal span{color:#9fb0ac}.signal em{font-style:normal;color:#59706b}.command{margin-top:18px;background:#050c0b;border:1px solid #172a26;padding:12px 14px;color:#83a098;font:11px/1.65 var(--mono)}.command b{color:var(--green)}
+    section{padding:104px 0;border-top:1px solid rgba(255,255,255,.07)}.section-label{color:var(--green);font:650 11px var(--mono);letter-spacing:.14em;text-transform:uppercase}.section-title{font-size:clamp(34px,4vw,50px);line-height:1.1;letter-spacing:-.035em;margin:15px 0}.section-intro{color:#8fa29d;max-width:650px;margin:0}.cap-grid{display:grid;grid-template-columns:repeat(3,1fr);margin-top:55px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.cap{padding:35px 30px 38px;border-right:1px solid var(--line)}.cap:first-child{padding-left:0}.cap:last-child{border-right:0}.cap-num{color:#57706a;font:11px var(--mono)}.cap h3{font-size:20px;margin:25px 0 11px}.cap p{color:#899d98;font-size:14px;margin:0}.cap ul{list-style:none;padding:0;margin:24px 0 0}.cap li{color:#b3c1bd;font:12px var(--mono);padding:8px 0;border-top:1px solid rgba(29,48,45,.7)}.cap li:before{content:"+";color:var(--green);margin-right:9px}
+    .install-layout{display:grid;grid-template-columns:.72fr 1.28fr;gap:80px;align-items:start}.install-layout>*{min-width:0}.steps{margin-top:34px}.step{display:grid;grid-template-columns:26px 1fr;gap:13px;margin:20px 0}.step i{font:11px var(--mono);color:var(--green);font-style:normal;border:1px solid #295044;width:25px;height:25px;display:grid;place-items:center}.step strong{font-size:14px}.step p{color:#7f938e;font-size:13px;margin:2px 0}.terminal{background:#050c0b;border:1px solid #233934;min-width:0}.terminal-top{height:42px;border-bottom:1px solid #192c28;display:flex;align-items:center;justify-content:space-between;padding:0 15px;color:#617872;font:10px var(--mono)}.terminal pre{margin:0;padding:26px;overflow:auto;color:#afc1bc;font:12px/1.9 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}.terminal .prompt{color:var(--green)}.terminal .comment{color:#58716b}.copy{color:#86a099;background:transparent;border:0;cursor:pointer;font:10px var(--mono);padding:7px}.copy:hover{color:#fff}.mode-note{margin-top:12px;color:#6f8580;font:11px var(--mono)}
+    .resource-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px;margin-top:48px}.resource{border:1px solid var(--line);padding:30px;background:rgba(10,21,20,.5);transition:.2s}.resource:hover{border-color:#3d625a;transform:translateY(-2px)}.resource small{color:var(--green);font:10px var(--mono);letter-spacing:.1em}.resource h3{margin:22px 0 8px;font-size:22px}.resource p{color:#829690;font-size:14px;margin:0}.resource .arrow{display:block;margin-top:25px;color:#c6d3cf;font:12px var(--mono)}.agent-prompts{margin-top:18px;color:#718781;font:11px var(--mono)}.agent-prompts a{color:#a9bbb6;margin-left:12px}.agent-prompts a:hover{color:var(--green)}
+    footer{border-top:1px solid rgba(255,255,255,.07);padding:36px 0 48px;color:#70847f}.foot{display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:12px}.foot-links{display:flex;gap:22px}.foot a:hover{color:#fff}.version{font:11px var(--mono)}
+    @media(max-width:900px){.links a:not(.nav-gh){display:none}.hero{grid-template-columns:1fr;padding-top:80px;gap:60px}.hero-copy{text-align:left}.console{max-width:620px}.cap-grid{grid-template-columns:1fr}.cap{border-right:0;border-bottom:1px solid var(--line);padding:30px 0}.cap:last-child{border-bottom:0}.install-layout{grid-template-columns:1fr;gap:45px}.resource-grid{grid-template-columns:1fr}}
+    @media(max-width:560px){.shell{width:min(calc(100% - 28px),var(--max))}header{height:66px}.brand small{display:none}.hero{padding:66px 0 72px}h1{font-size:48px}.lead{font-size:16px}.actions{display:grid}.button{width:100%}.console-body{padding:17px}.topology{grid-template-columns:1fr;gap:10px}.flow{height:24px;width:1px;margin:auto}.flow:after{right:-3px;top:auto;bottom:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:6px solid var(--cyan);border-bottom:0}.signal{grid-template-columns:16px 1fr}.signal em{display:none}section{padding:74px 0}.section-title{font-size:36px}.terminal pre{padding:19px;font-size:11px}.resource{padding:24px}.foot{align-items:flex-start;flex-direction:column}.foot-links{flex-wrap:wrap}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.resource{transition:none}}
+  </style>
 </head>
 <body>
-<header class="topbar" aria-label="Tracevane 顶部导航">
-  <div class="wrap nav">
-    <a class="brand" href="#top" aria-label="Tracevane 首页">
-      <img src="assets/brand/tracevane-mark.svg" alt="">
-      <span>Tracevane<small>local control plane</small></span>
-    </a>
-    <nav class="nav-links" aria-label="页面导航">
-      <a href="#scope">产品边界</a>
-      <a href="#workflow">工作流</a>
-      <a href="#guide">虚拟向导</a>
-      <a href="#install">安装</a>
-    </nav>
-    <div class="nav-meta"><span class="nav-dot"></span><span id="releaseVersionLabel">latest</span></div>
-  </div>
-</header>
-
-<main id="top">
-  <section class="hero">
-    <div class="wrap hero-grid">
-      <div class="reveal">
-        <div class="eyebrow"><span class="pulse"></span> OpenClaw supported · standalone or gateway</div>
-        <h1><span>Tracevane</span><em>本地 AI Agent 控制工作台</em></h1>
-        <p class="hero-sub"><strong>Tracevane</strong> 把本地项目、IDE Workbench、Model Gateway、CLI Agents、渠道连接器与恢复证据放到同一个可解释的操作平面。它不是聊天皮肤，也不伪装成全能仪表盘；它负责连接、观察、恢复、验证。</p>
-        <div class="hero-actions">
-          <button class="button primary" type="button" onclick="document.getElementById('install').scrollIntoView({behavior:'smooth'})">复制安装 Prompt</button>
-          <button class="button ghost" type="button" data-video-trigger aria-haspopup="dialog" aria-controls="videoPreview" onclick="openVideoPreview()">预览产品导览</button>
-        </div>
-        <div class="hero-footnotes" aria-label="发布摘要">
-          <span>default port · 3760</span>
-          <span>gateway mount · /tracevane</span>
-          <span>min OpenClaw · <b id="minVersionLabel">2026.5.28</b></span>
-        </div>
-        <article class="prompt-card"><div class="prompt-header"><h3>Standalone Audit</h3><button class="copy-btn" type="button" onclick="copyPrompt('promptStandaloneAudit',this)">复制 Prompt</button></div><div class="prompt-body"><pre id="promptStandaloneAudit">审计 standalone：验证平台，审阅本地脚本，先 --dry-run；披露 changed paths，失败提供 rollback 证据，原始 JSON 返回 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，并 redaction token/credential。禁止 curl | bash 或绕过 checksum、TLS、config、health。</pre></div></article>
-        <article class="prompt-card"><div class="prompt-header"><h3>Gateway Audit</h3><button class="copy-btn" type="button" onclick="copyPrompt('promptGatewayAudit',this)">复制 Prompt</button></div><div class="prompt-body"><pre id="promptGatewayAudit">审计 gateway：验证平台，审阅本地脚本，先 --dry-run；披露 changed paths、rollback 证据，验证 gateway 与 3760 fallback health，原始 JSON 返回全部字段并 redaction token/credential。禁止 curl | bash 或任何校验绕过。</pre></div></article>
-      </div>
-
-      <aside class="control-card reveal" aria-label="Tracevane 控制平面摘要">
-        <div class="card-top"><span>tracevane plane</span><span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span></div>
-        <div class="card-body">
-          <h2>把入口、运行面和证据链收束到一个本地平面。</h2>
-          <p>首屏只展示真实边界：独立端口、Gateway 挂载、回退入口、版本约束和健康检查。</p>
-          <div class="route-stack">
-            <div class="route-card"><span class="route-index">01</span><span><b>Standalone</b><span>本地 3760 直连入口，适合开发和排障。</span></span><span class="route-pill">local</span></div>
-            <div class="route-card"><span class="route-index">02</span><span><b>Gateway</b><span>共用 OpenClaw 端口，挂载 /tracevane。</span></span><span class="route-pill">single port</span></div>
-            <div class="route-card"><span class="route-index">03</span><span><b>Evidence</b><span>SHA-256、metadata、health check 都必须可复核。</span></span><span class="route-pill">proof</span></div>
-          </div>
-          <div class="metrics" aria-label="安装指标">
-            <div class="metric"><span>mode</span><b>2</b></div>
-            <div class="metric"><span>port</span><b>3760</b></div>
-            <div class="metric"><span>mount</span><b>/tracevane</b></div>
-          </div>
-        </div>
-      </aside>
+  <a class="skip" href="#main">跳到正文</a>
+  <header>
+    <div class="shell nav">
+      <a class="brand" href="#top"><img src="assets/brand/tracevane-mark.svg" alt=""><span>TRACEVANE<br><small>LOCAL AGENT CONTROL</small></span></a>
+      <nav class="links" aria-label="主导航"><a href="#capabilities">Capabilities</a><a href="#install">Install</a><a href="#docs">Docs</a><a class="nav-gh" href="https://github.com/90le/tracevane">GitHub ↗</a></nav>
     </div>
-  </section>
-
-  <section class="proof-strip" aria-label="产品摘要">
-    <div class="wrap proof-grid reveal">
-      <div class="proof"><b>Workspace</b><span>文件、在线编辑、预览、终端交接和 Git/evidence 工作流。</span></div>
-      <div class="proof"><b>Gateway</b><span>Provider 路由、协议适配、账号媒体和活动路由可观察。</span></div>
-      <div class="proof"><b>Channels</b><span>Feishu / Octo 私聊连接 Agent 工作流、权限和交付证据。</span></div>
-      <div class="proof"><b>Recovery</b><span>服务修复、健康检查、守护状态和运行摘要减少黑盒故障。</span></div>
-    </div>
-  </section>
-
-  <section class="section" id="scope">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <div class="kicker">Product boundary</div>
-        <div><h2>不做“AI 外壳”，只呈现 Tracevane 真正负责的边界。</h2><p class="section-desc">参考顶级开发者工具页面的做法：把产品事实放在首位，用真实模块和真实安装路径建立信任，而不是堆叠无意义的发光卡片。</p></div>
+  </header>
+  <main id="main">
+    <div class="shell hero" id="top">
+      <div class="hero-copy">
+        <div class="eyebrow">Open source · Local first</div>
+        <h1>Operate OpenClaw from <span class="accent">one workspace.</span></h1>
+        <p class="lead">Bring workspaces, model routes, message channels, CLI agents, and runtime health into one local control surface.<span class="cn">把工作区、模型路由、消息渠道、CLI Agent 与运行健康收进一个本地控制界面。</span></p>
+        <div class="actions"><a class="button primary" href="https://github.com/90le/tracevane">View on GitHub <span>↗</span></a><a class="button secondary" href="#install">Install v0.1.72 <span>↓</span></a></div>
+        <div class="maintenance"><span></span>Maintenance mode · MIT licensed</div>
       </div>
-      <div class="bento reveal">
-        <article class="product-card wide dark"><span class="card-lines" aria-hidden="true"><i></i><i></i><i></i></span><code>01 · Workspace / Files</code><h3>本地工作区与文件表面。</h3><p>文件操作、在线编辑、预览、终端交接和证据导向的项目工作流；不会把文件管理器伪装成聊天页。</p></article>
-        <article class="product-card"><span class="card-lines" aria-hidden="true"><i></i><i></i><i></i></span><code>02 · IDE Workbench</code><h3>真实 IDE 工作台边界。</h3><p>Explorer、Monaco 编辑器组、Terminal、Problems / Output、布局持久化与 Git/LSP 基础。</p></article>
-        <article class="product-card"><span class="card-lines" aria-hidden="true"><i></i><i></i><i></i></span><code>03 · Model Gateway</code><h3>模型路由与协议适配。</h3><p>Provider 路由、端点配置、账号媒体能力和活动路由可观察，而不是黑盒转发。</p></article>
-        <article class="product-card"><span class="card-lines" aria-hidden="true"><i></i><i></i><i></i></span><code>04 · Channel Connectors</code><h3>IM 渠道到 Agent 工作流。</h3><p>Feishu / Octo 私聊接入，保留权限、文件、进度和交付证据。</p></article>
-        <article class="product-card wide"><span class="card-lines" aria-hidden="true"><i></i><i></i><i></i></span><code>05 · CLI Agents / System Guard</code><h3>运行准备度、系统守护与恢复证据。</h3><p>Codex、Claude Code、OpenCode 的 readiness 和 Agent Runs；OpenClaw 配置兼容、服务修复、健康检查和审计事件。</p></article>
-      </div>
-    </div>
-  </section>
-
-  <section class="section" id="workflow">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <div class="kicker">Operating model</div>
-        <div><h2>四个动作，比一堆营销词更重要。</h2><p class="section-desc">连接运行面，观察真实状态，恢复故障入口，验证每一次安装和交付。页面动效只服务于信息分层：短、准、可关闭、尊重 reduced motion。</p></div>
-      </div>
-      <div class="flow reveal">
-        <article class="flow-panel">
-          <header><span>connect → observe → recover → verify</span><span>operational</span></header>
-          <div class="flow-body">
-            <div class="flow-step"><span class="step-num">01</span><div><h3>Connect</h3><p>用 standalone 或 gateway 连接 OpenClaw 与 Tracevane，而不是依赖单一脆弱入口。</p></div></div>
-            <div class="flow-step"><span class="step-num">02</span><div><h3>Observe</h3><p>把 Gateway、Channels、CLI Agents、Workspace 和 Guard 状态放到可读边界内。</p></div></div>
-            <div class="flow-step"><span class="step-num">03</span><div><h3>Recover</h3><p>保留本机 3760 回退入口，修复配置、依赖、服务和健康检查失败。</p></div></div>
-            <div class="flow-step"><span class="step-num">04</span><div><h3>Verify</h3><p>用版本、SHA-256、metadata、health endpoint 和运行摘要证明结果。</p></div></div>
-          </div>
-        </article>
-        <aside class="flow-panel">
-          <header><span>install proof</span><span>no fake states</span></header>
-          <div class="flow-body proof-list">
-            <div class="proof-item"><b>最低版本门槛</b><p>安装脚本先检查 OpenClaw 最低版本，避免把不兼容问题推迟到运行时。</p></div>
-            <div class="proof-item"><b>发布元数据</b><p>正式站点读取 version.json；本地预览跳过 fetch，防止开发时产生 404 噪音。</p></div>
-            <div class="proof-item"><b>完整性校验</b><p>下载包必须通过 SHA-256 校验，防止损坏包和错误元数据污染安装链路。</p></div>
-            <div class="proof-item"><b>双入口健康检查</b><p>Gateway 模式同时验证 /tracevane 与 3760 回退入口，把恢复路径明确写入结果。</p></div>
-          </div>
-        </aside>
-      </div>
-    </div>
-  </section>
-
-  <section class="section" id="guide">
-    <div class="wrap">
-      <div class="section-head reveal">
-        <div class="kicker">Avatar / video layer</div>
-        <div><h2>虚拟形象只是产品向导，不是 AI 秀场。</h2><p class="section-desc">Signal Steward 的角色是用 45 秒讲清 Tracevane 的边界、安装入口和验证路径。当前已集成本地海报与脚本位；HeyGen 连接恢复授权后即可替换为真实视频。</p></div>
-      </div>
-      <div class="guide reveal">
-        <figure class="video-card">
-          <img class="video-poster" src="assets/landing/tracevane-video-poster.png" alt="Tracevane 视频海报：信号风向标连接 Workspace、Gateway、Channels、CLI 和 Recovery 控制平面">
-          <figcaption class="video-overlay">
-            <button class="video-trigger" type="button" data-video-trigger aria-haspopup="dialog" aria-controls="videoPreview" onclick="openVideoPreview()">
-              <span class="video-copy"><b>45 秒产品导览预览</b><span>Connect · Observe · Recover · Verify · 中文旁白 · landscape</span></span>
-              <span class="play-mark" aria-hidden="true">▶</span>
-            </button>
-          </figcaption>
-        </figure>
-        <aside class="avatar-card">
-          <div>
-            <div class="avatar-head">
-              <div class="avatar-mark"><img src="assets/brand/tracevane-mark.svg" alt=""></div>
-              <div><div class="kicker">Signal Steward</div><h3>冷静、精确、证据导向。</h3></div>
-            </div>
-            <p>遵循 DESIGN.md：本地优先工业工作室气质；避免机器人、霓虹、夸张拟人和“AI 味”话术。虚拟向导只承担产品解释，不伪造能力。</p>
-          </div>
-          <div class="script-box">
-            <b>video script structure</b>
-            <ol>
-              <li>Tracevane 不是聊天皮肤，而是本地控制平面。</li>
-              <li>六个边界：Workspace、IDE、Gateway、Channels、CLI、Guard。</li>
-              <li>两种入口：Standalone 3760 与 Gateway /tracevane。</li>
-              <li>以健康检查和 SHA-256 证据收束。</li>
-            </ol>
-          </div>
-          <div class="integration-row">
-            <div class="integration-pill"><b>IMAGE</b><span>已生成本地产品海报资产。</span></div>
-            <div class="integration-pill"><b>AVATAR</b><span>预留 Signal Steward 身份位。</span></div>
-            <div class="integration-pill"><b>VIDEO</b><span>HeyGen 重新授权后替换真实视频。</span></div>
-          </div>
-        </aside>
-      </div>
-    </div>
-  </section>
-
-  <section class="install" id="install">
-    <div class="wrap install-shell reveal">
-      <div class="install-top">
-        <div><div class="kicker">Install</div><h2>选择部署入口，复制给你的 Agent 执行。</h2><p>为了避免 AI 或安全策略拦截，安装指令默认先下载脚本、可选审阅，再本地运行。正式发布站点会用 metadata 自动填充最新 Tracevane 版本与最低 OpenClaw 版本。</p></div>
-        <div class="mode-cards" aria-label="安装模式">
-          <div class="mode-card"><b>Standalone 非单口</b><span>适合本地访问，或可以直接开放 3760 端口的机器。</span></div>
-          <div class="mode-card"><b>Gateway 单口挂载</b><span>挂载到 /tracevane，同时保留本机 3760 回退入口。</span></div>
+      <div class="console" aria-label="Tracevane control surface preview">
+        <div class="console-bar"><div class="dots"><i></i><i></i><i></i></div><span>TRACEVANE / CONTROL</span><span>LOCAL</span></div>
+        <div class="console-body">
+          <div class="route-head"><div><strong>Runtime overview</strong><small>openclaw.workspace.default</small></div><span class="live">● HEALTHY</span></div>
+          <div class="topology"><div class="node"><b>CHANNEL INPUT</b><span>feishu / octo</span></div><div class="flow"></div><div class="node"><b>AGENT ROUTE</b><span>codex / claude / opencode</span></div></div>
+          <div class="signals"><div class="signal"><i></i><span>Workspace services</span><em>ready</em></div><div class="signal"><i></i><span>Model Gateway routes</span><em>active</em></div><div class="signal"><i></i><span>CLI Agent runtime</span><em>available</em></div></div>
+          <div class="command"><b>$</b> tracevane status --json<br><span>{ "runtime": "healthy", "scope": "local" }</span></div>
         </div>
       </div>
-      <div class="prompt-grid">
-        <article class="prompt-card">
-          <div class="prompt-header"><h3>独立端口 <span class="badge">STANDALONE</span></h3><button class="copy-btn" type="button" onclick="copyPrompt('promptStandaloneShort',this)">复制 Prompt</button></div>
-          <div class="prompt-body"><pre id="promptStandaloneShort">请在我的 OpenClaw 环境里安装 Tracevane，使用非单口模式（standalone，独立端口 3760）。
-
-请按下面步骤执行，不要使用在线脚本直通执行：
-
-1. 先下载 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 到本地当前目录
-2. 可选执行：sed -n '1,160p' ./install-tracevane.sh
-3. 执行：chmod +x ./install-tracevane.sh
-4. 执行：./install-tracevane.sh --check-release
-5. 确认来源、版本和 SHA-256 后执行：./install-tracevane.sh --mode standalone --json
-
-脚本会自动完成这些事情：
-1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
-2. 解析站点发布元数据并下载最新 Tracevane 安装包（当前 metadata 版本：{{TRACEVANE_VERSION}}）
-3. 校验安装包 SHA-256，防止下载损坏或元数据不匹配
-4. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
-5. 安装依赖并重建 node-pty
-6. 写入 plugins.entries.tracevane / plugins.load.paths / transport 配置
-7. 执行 openclaw gateway install --force 与重启
-8. 对 http://127.0.0.1:3760/api/system/health 做健康检查
-
-执行完成后，请原样返回 JSON，并总结 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures；不要使用 curl | bash，也不要绕过 checksum、TLS、OpenClaw 配置校验或健康检查。
-执行完成后，请把以下结果告诉我：
-- OpenClaw 版本
-- 配置文件路径
-- 安装目录
-- 访问地址
-- 健康检查结果</pre></div>
-        </article>
-        <article class="prompt-card">
-          <div class="prompt-header"><h3>单口挂载 <span class="badge">GATEWAY</span></h3><button class="copy-btn" type="button" onclick="copyPrompt('promptGatewayShort',this)">复制 Prompt</button></div>
-          <div class="prompt-body"><pre id="promptGatewayShort">请在我的 OpenClaw 环境里安装 Tracevane，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /tracevane，同时保留本机 3760 standalone 入口）。
-
-请按下面步骤执行，不要使用在线脚本直通执行：
-
-1. 先下载 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 到本地当前目录
-2. 可选执行：sed -n '1,160p' ./install-tracevane.sh
-3. 执行：chmod +x ./install-tracevane.sh
-4. 执行：./install-tracevane.sh --check-release
-5. 确认来源、版本和 SHA-256 后执行：./install-tracevane.sh --mode gateway --json
-
-脚本会自动完成这些事情：
-1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
-2. 解析站点发布元数据并下载最新 Tracevane 安装包（当前 metadata 版本：{{TRACEVANE_VERSION}}）
-3. 校验安装包 SHA-256，防止下载损坏或元数据不匹配
-4. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
-5. 安装依赖并重建 node-pty
-6. 写入 plugins.entries.tracevane / plugins.load.paths / gateway transport 配置，并保留 3760 standalone 监听
-7. 补齐 gateway.bind / gateway.auth.token / gateway.controlUi.allowedOrigins 等最低可用配置
-8. 执行 openclaw gateway install --force 与重启
-9. 对 http://127.0.0.1:&lt;gateway_port&gt;/tracevane/api/system/health 和 http://127.0.0.1:3760/api/system/health 做健康检查
-
-执行完成后，请原样返回 JSON，并总结 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures；确认 3760 fallback health，禁止 curl | bash 或绕过 checksum、TLS、配置校验和健康检查。
-执行完成后，请把以下结果告诉我：
-- OpenClaw 版本
-- 配置文件路径
-- 安装目录
-- Gateway 端口
-- 3760 回退入口健康检查
-- 访问地址
-- 健康检查结果</pre></div>
-        </article>
+    </div>
+    <section id="capabilities">
+      <div class="shell"><div class="section-label">01 / Capabilities</div><h2 class="section-title">One surface. Clear boundaries.</h2><p class="section-intro">Tracevane connects the operational pieces around OpenClaw without hiding where each responsibility lives.</p>
+        <div class="cap-grid">
+          <article class="cap"><span class="cap-num">01</span><h3>Workspace</h3><p>Manage local projects with files, online editing, preview, terminal, and Git-aware workflows.</p><ul><li>File manager & editor</li><li>IDE workbench</li><li>Terminal & Git</li></ul></article>
+          <article class="cap"><span class="cap-num">02</span><h3>Model Gateway</h3><p>See providers, models, routes, account pools, protocol adapters, and usage in one control plane.</p><ul><li>Provider routing</li><li>Protocol adapters</li><li>Health & usage</li></ul></article>
+          <article class="cap"><span class="cap-num">03</span><h3>Agent Operations</h3><p>Connect message inputs to CLI Agents, then inspect service health and delivery evidence locally.</p><ul><li>Channel connectors</li><li>CLI Agent readiness</li><li>Runtime diagnostics</li></ul></article>
+        </div>
       </div>
-    </div>
-  </section>
-</main>
+    </section>
+    <section id="install">
+      <div class="shell install-layout">
+        <div><div class="section-label">02 / Install</div><h2 class="section-title">Inspect first.<br>Then install.</h2><p class="section-intro">The release installer verifies metadata and package SHA-256. Tracevane deliberately avoids the opaque <code>curl | bash</code> pattern.</p><div class="steps"><div class="step"><i>1</i><div><strong>Download and review</strong><p>Save the installer locally and inspect it.</p></div></div><div class="step"><i>2</i><div><strong>Check the release</strong><p>Verify the version, source, and checksum.</p></div></div><div class="step"><i>3</i><div><strong>Choose a mode</strong><p>Standalone service or existing Gateway.</p></div></div></div></div>
+        <div><div class="terminal"><div class="terminal-top"><span>INSTALL · BASH</span><button class="copy" type="button" data-copy>Copy command</button></div><pre id="install-command"><span class="comment"># Download the latest signed release installer</span>
+<span class="prompt">$</span> curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
+<span class="prompt">$</span> sed -n '1,220p' /tmp/install-tracevane.sh
+<span class="prompt">$</span> chmod +x /tmp/install-tracevane.sh
 
-<dialog class="video-dialog" id="videoPreview" aria-labelledby="videoPreviewTitle">
-  <div class="dialog-grid">
-    <div class="dialog-media">
-      <img src="assets/landing/tracevane-video-poster.png" alt="Tracevane Signal Steward 视频导览海报">
-      <div class="dialog-caption"><span>Signal Steward preview</span><span>45s · landscape</span></div>
-    </div>
-    <div class="dialog-copy">
-      <div><div class="kicker">Video preview</div><h3 id="videoPreviewTitle">导览先讲边界，再讲安装。</h3></div>
-      <p>真实 HeyGen 视频位已经预留；当前连接需要重新授权，所以这里展示可验证的脚本与视觉方向，避免用假视频欺骗用户。</p>
-      <ul>
-        <li>开场：Tracevane 不是聊天皮肤，而是本地控制平面。</li>
-        <li>中段：Workspace、IDE、Gateway、Channels、CLI、Guard 六个边界。</li>
-        <li>收束：Standalone / Gateway 两种入口，以及健康检查和 SHA-256 证据。</li>
-      </ul>
-      <div class="auth-note"><b>HeyGen handoff</b>重新授权后，用同一脚本生成真实 presenter 视频，并替换此海报模块。</div>
-      <div class="dialog-actions">
-        <button class="dialog-close" type="button" onclick="closeVideoPreview()">关闭预览</button>
-        <button class="dialog-link" type="button" onclick="document.getElementById('install').scrollIntoView({behavior:'smooth'}); closeVideoPreview();">查看安装 Prompt</button>
+<span class="comment"># Verify, then install in standalone mode</span>
+<span class="prompt">$</span> /tmp/install-tracevane.sh --check-release
+<span class="prompt">$</span> /tmp/install-tracevane.sh --mode standalone --json</pre></div><p class="mode-note">Gateway mode: replace <b>--mode standalone</b> with <b>--mode gateway</b>. Linux, macOS, and WSL are supported.</p></div>
       </div>
-    </div>
-  </div>
-</dialog>
-
-<footer id="contact">
-  <div class="wrap footer-grid">
-    <div><b>Tracevane · Open Source · Maintenance Mode</b><p>当前以 OpenClaw UI extension 发布。安装问题与缺陷请通过 GitHub Issues 提交，并在公开内容中移除凭据和敏感信息。</p></div>
-    <div class="footer-meta">Made with care by 丘彬彬<br>Local AI Agent Control Workbench</div>
-  </div>
-</footer>
-
-<script>
-document.documentElement.classList.add("js");
-const TRACEVANE_VERSION = "0.1.72";
-const OPENCLAW_MIN_VERSION = "2026.5.28";
-
-function applyReleasePlaceholders(version, minVersion) {
-  document.querySelectorAll("pre").forEach(pre => {
-    pre.textContent = pre.textContent
-      .replace(/\{\{TRACEVANE_VERSION\}\}/g, version)
-      .replace(/\{\{OPENCLAW_MIN_VERSION\}\}/g, minVersion);
-  });
-  const releaseVersionLabel = document.getElementById("releaseVersionLabel");
-  const minVersionLabel = document.getElementById("minVersionLabel");
-  if (releaseVersionLabel) releaseVersionLabel.textContent = version;
-  if (minVersionLabel) minVersionLabel.textContent = minVersion;
-}
-
-async function loadReleaseMetadata() {
-  const localPreviewHosts = new Set(["", "localhost", "127.0.0.1", "::1"]);
-  if (localPreviewHosts.has(window.location.hostname)) {
-    applyReleasePlaceholders(TRACEVANE_VERSION, OPENCLAW_MIN_VERSION);
-    return;
-  }
-  try {
-    const response = await fetch("./version.json", { cache: "no-store" });
-    if (!response.ok) throw new Error("version.json unavailable");
-    const payload = await response.json();
-    const version = typeof payload.latestVersion === "string" && payload.latestVersion.trim()
-      ? payload.latestVersion.trim()
-      : TRACEVANE_VERSION;
-    const minVersion = typeof payload.minOpenClawVersion === "string" && payload.minOpenClawVersion.trim()
-      ? payload.minOpenClawVersion.trim()
-      : OPENCLAW_MIN_VERSION;
-    applyReleasePlaceholders(version, minVersion);
-  } catch {
-    applyReleasePlaceholders(TRACEVANE_VERSION, OPENCLAW_MIN_VERSION);
-  }
-}
-
-void loadReleaseMetadata();
-
-function openVideoPreview(){
-  const dialog = document.getElementById("videoPreview");
-  if (!dialog) return;
-  if (typeof dialog.showModal === "function") dialog.showModal();
-  else dialog.setAttribute("open", "");
-}
-function closeVideoPreview(){
-  const dialog = document.getElementById("videoPreview");
-  if (!dialog) return;
-  if (typeof dialog.close === "function") dialog.close();
-  else dialog.removeAttribute("open");
-}
-document.getElementById("videoPreview")?.addEventListener("click", event => {
-  if (event.target === event.currentTarget) closeVideoPreview();
-});
-
-document.querySelectorAll(".reveal").forEach((element, index) => {
-  element.style.transitionDelay = `${Math.min(index * 55, 220)}ms`;
-});
-window.setTimeout(() => document.querySelectorAll(".reveal").forEach(element => element.classList.add("is-visible")), 900);
-if ("IntersectionObserver" in window) {
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add("is-visible");
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.12 });
-  document.querySelectorAll(".reveal").forEach(element => observer.observe(element));
-} else {
-  document.querySelectorAll(".reveal").forEach(element => element.classList.add("is-visible"));
-}
-
-function copyPrompt(id,btn){
-  const source = document.getElementById(id);
-  if (!source) return;
-  const text = source.textContent;
-  const done = () => {
-    btn.textContent = "已复制";
-    btn.classList.add("copied");
-    setTimeout(() => { btn.textContent = "复制 Prompt"; btn.classList.remove("copied"); }, 2000);
-  };
-  if(navigator.clipboard && window.isSecureContext){
-    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
-  } else {
-    fallbackCopy(text, done);
-  }
-}
-function fallbackCopy(text, done){
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.setAttribute("readonly", "");
-  ta.style.position = "fixed";
-  ta.style.opacity = "0";
-  document.body.appendChild(ta);
-  ta.select();
-  try { document.execCommand("copy"); done(); } finally { document.body.removeChild(ta); }
-}
-</script>
+    </section>
+    <section id="docs">
+      <div class="shell"><div class="section-label">03 / Open source</div><h2 class="section-title">Read, run, contribute.</h2><p class="section-intro">The public surface stays small: installation, troubleshooting, contribution rules, security policy, and the source itself.</p>
+        <div class="resource-grid"><a class="resource" href="https://github.com/90le/tracevane#快速安装"><small>START HERE</small><h3>Documentation</h3><p>Installation, usage, architecture boundaries, and local development.</p><span class="arrow">Open README →</span></a><a class="resource" href="https://github.com/90le/tracevane/issues"><small>COMMUNITY</small><h3>Issues</h3><p>Report a reproducible bug or follow maintenance work.</p><span class="arrow">Browse issues →</span></a></div><div class="agent-prompts">Agent install prompts: <a id="promptStandaloneShort" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptstandaloneshort">Standalone</a><a id="promptGatewayShort" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptgatewayshort">Gateway</a><a id="promptStandaloneAudit" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptstandaloneaudit">Standalone audit</a><a id="promptGatewayAudit" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptgatewayaudit">Gateway audit</a></div>
+      </div>
+    </section>
+  </main>
+  <footer><div class="shell foot"><div><strong>TRACEVANE</strong> · Local Agent Control</div><div class="foot-links"><a href="https://github.com/90le/tracevane">Source</a><a href="https://github.com/90le/tracevane/releases">Releases</a><a href="https://github.com/90le/tracevane/blob/main/SECURITY.md">Security</a><a href="https://github.com/90le/tracevane/blob/main/LICENSE">MIT</a></div><div class="version">v0.1.72 · maintenance mode</div></div></footer>
+  <script>
+    const OPENCLAW_MIN_VERSION = "2026.5.28";
+    const copyButton=document.querySelector('[data-copy]');
+    copyButton?.addEventListener('click',async()=>{const command=`curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh\nsed -n '1,220p' /tmp/install-tracevane.sh\nchmod +x /tmp/install-tracevane.sh\n/tmp/install-tracevane.sh --check-release\n/tmp/install-tracevane.sh --mode standalone --json`;try{await navigator.clipboard.writeText(command);copyButton.textContent='Copied';setTimeout(()=>copyButton.textContent='Copy command',1600)}catch{copyButton.textContent='Select & copy'}});
+  </script>
 </body>
 </html>

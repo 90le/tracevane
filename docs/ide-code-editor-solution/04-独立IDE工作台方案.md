@@ -3,7 +3,7 @@
 
 ## 当前实现状态（M5.y 已完成）
 
-M4 Workbench Layout Foundation 已完成，验收记录见 [`archive/m4-execution-summary.md`](./archive/m4-execution-summary.md)。M5 Real Terminal Foundation 与 M5.x Terminal Split / Group / Panel Placement 已完成，验收记录见 [`archive/m5-execution-summary.md`](./archive/m5-execution-summary.md) 和 [`archive/m5x-execution-summary.md`](./archive/m5x-execution-summary.md)。M5.y / M5.5 IDE Editor Foundation 已完成，验收记录见 [`archive/m5y-execution-summary.md`](./archive/m5y-execution-summary.md)。
+M4 Workbench Layout Foundation 已完成，验收记录见 `archive/m4-execution-summary.md`。M5 Real Terminal Foundation 与 M5.x Terminal Split / Group / Panel Placement 已完成，验收记录见 `archive/m5-execution-summary.md` 和 `archive/m5x-execution-summary.md`。M5.y / M5.5 IDE Editor Foundation 已完成，验收记录见 `archive/m5y-execution-summary.md`。
 
 当前独立 IDE Workbench 已提供 `/ide` / `/ide/:workspaceId` 路由、`features/ide-workbench` 独立 shell、ActivityBar、SideBar Explorer、Editor Dock / Dockview、真实 Monaco 文件编辑 panel、preview/pinned 多标签、tab 右键菜单、向右/向下真实 file panel split、底部/右侧 Terminal Panel、StatusBar、sidebar/panel resize/collapse/maximize、layoutVersion + persistence + fallback/reset、IDE Explorer 文件操作，以及已打开 editor tab/panel 在 rename/move/delete 时的 path/title/document id/deleted 同步。
 
