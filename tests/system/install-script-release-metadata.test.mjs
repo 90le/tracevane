@@ -257,6 +257,10 @@ test('public install docs and landing prompts use GitHub release assets and stab
   assert.doesNotMatch(text, /tracevane\.90le\.cn\/install-tracevane\.sh/);
   for (const id of ['promptStandaloneShort', 'promptGatewayShort', 'promptStandaloneAudit', 'promptGatewayAudit']) assert.match(text, new RegExp(`id=["']${id}["']`));
   for (const token of ['--check-release', '--dry-run', '--json', '--uninstall', 'healthChecks', '3760', 'package-sha256', 'WSL']) assert.match(text, new RegExp(token, 'i'));
+  assert.match(text, /--mode standalone --json/);
+  assert.match(text, /--mode gateway --json/);
+  assert.match(text, /--version \"\$VERSION\" --package-url \"\$PACKAGE_URL\" --package-sha256 \"\$SHA256\"/);
+  assert.match(text, /Maintainer-only GitHub Release publication/);
   assert.match(text, /curl \| bash/);
 });
 

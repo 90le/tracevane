@@ -243,3 +243,26 @@ node --test tests/system/install-script-release-metadata.test.mjs tests/system/d
 ```
 
 如变更了前端、API、终端或 Gateway 行为，再按对应范围补充 typecheck、build 和 smoke。
+
+## Maintainer-only GitHub Release publication
+
+以下步骤仅供仓库维护者使用，不是终端用户安装流程。先确认版本、测试和工作树，再生成确定性 Release 资产：
+
+```bash
+VERSION=0.1.72
+bash pack.sh --no-source-sync --output-dir ".tmp/release-${VERSION}" "${VERSION}"
+test -s ".tmp/release-${VERSION}/tracevane-${VERSION}.tar.gz"
+test -s ".tmp/release-${VERSION}/install-tracevane.sh"
+test -s ".tmp/release-${VERSION}/SHA256SUMS"
+git tag "v${VERSION}"
+git push origin "v${VERSION}"
+gh release create "v${VERSION}" \
+  ".tmp/release-${VERSION}/tracevane-${VERSION}.tar.gz" \
+  ".tmp/release-${VERSION}/install-tracevane.sh" \
+  ".tmp/release-${VERSION}/SHA256SUMS" \
+  ".tmp/release-${VERSION}/tracevane-latest.json" \
+  ".tmp/release-${VERSION}/tracevane-version.json" \
+  --title "Tracevane v${VERSION}" --generate-notes
+```
+
+检查 Release 必须同时包含 tarball、Bash 安装器、`SHA256SUMS` 和两个 metadata JSON；发布前核对 SHA-256 与 metadata 中的 `packageUrl`、`sha256` 一致。

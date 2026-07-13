@@ -303,7 +303,8 @@
 1. 先下载 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 到本地当前目录
 2. 可选执行：sed -n '1,160p' ./install-tracevane.sh
 3. 执行：chmod +x ./install-tracevane.sh
-4. 执行：./install-tracevane.sh --mode standalone
+4. 执行：./install-tracevane.sh --check-release
+5. 确认来源、版本和 SHA-256 后执行：./install-tracevane.sh --mode standalone --json
 
 脚本会自动完成这些事情：
 1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
@@ -315,6 +316,7 @@
 7. 执行 openclaw gateway install --force 与重启
 8. 对 http://127.0.0.1:3760/api/system/health 做健康检查
 
+执行完成后，请原样返回 JSON，并总结 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures；不要使用 curl | bash，也不要绕过 checksum、TLS、OpenClaw 配置校验或健康检查。
 执行完成后，请把以下结果告诉我：
 - OpenClaw 版本
 - 配置文件路径
@@ -331,7 +333,8 @@
 1. 先下载 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 到本地当前目录
 2. 可选执行：sed -n '1,160p' ./install-tracevane.sh
 3. 执行：chmod +x ./install-tracevane.sh
-4. 执行：./install-tracevane.sh --mode gateway
+4. 执行：./install-tracevane.sh --check-release
+5. 确认来源、版本和 SHA-256 后执行：./install-tracevane.sh --mode gateway --json
 
 脚本会自动完成这些事情：
 1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
@@ -344,6 +347,7 @@
 8. 执行 openclaw gateway install --force 与重启
 9. 对 http://127.0.0.1:&lt;gateway_port&gt;/tracevane/api/system/health 和 http://127.0.0.1:3760/api/system/health 做健康检查
 
+执行完成后，请原样返回 JSON，并总结 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures；确认 3760 fallback health，禁止 curl | bash 或绕过 checksum、TLS、配置校验和健康检查。
 执行完成后，请把以下结果告诉我：
 - OpenClaw 版本
 - 配置文件路径
