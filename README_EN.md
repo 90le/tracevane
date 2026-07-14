@@ -36,7 +36,23 @@
 
 ## Quick install
 
-Supported on Linux, macOS, and WSL using a Linux filesystem. Bash, Node.js, and a working OpenClaw environment are required. Download and inspect the installer first; do not use `curl | bash`.
+Supported on Linux, macOS, and WSL using a Linux filesystem. Bash, Node.js, and an initialized OpenClaw installation are required.
+
+> **Fresh machine:** the Tracevane installer does not install a completely missing OpenClaw CLI. It only upgrades an existing installation that is too old. Install and onboard OpenClaw first.
+
+```bash
+node --version
+npm --version
+npm install -g openclaw@latest
+openclaw --version
+openclaw onboard --install-daemon
+openclaw doctor
+openclaw gateway status
+```
+
+Onboarding asks you to select a model provider and authorize an account or API key. Keep credentials out of issues, logs, and Agent conversations. Refer to the [official OpenClaw installation guide](https://docs.openclaw.ai/install) for current runtime requirements and alternative methods.
+
+After OpenClaw passes its checks, download and inspect the Tracevane installer; do not use `curl | bash`.
 
 ```bash
 curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh

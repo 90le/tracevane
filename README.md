@@ -36,7 +36,36 @@
 
 ## 快速安装
 
-支持 Linux、macOS，以及使用 Linux 文件系统的 WSL。需要 Bash、Node.js 和可用的 OpenClaw 环境。请先下载并检查脚本，不要使用 `curl | bash`。
+支持 Linux、macOS，以及使用 Linux 文件系统的 WSL。需要 Bash、Node.js 和已经完成初始化的 OpenClaw。
+
+> **全新机器注意：** Tracevane 安装器不会安装完全缺失的 OpenClaw；它只会升级已经存在但版本过旧的 OpenClaw。没有 OpenClaw 时，请先执行下面的“从零安装 OpenClaw”，完成模型账号配置和 Gateway 验证后再继续。
+
+### 1. 从零安装 OpenClaw（仅首次需要）
+
+如果 `openclaw --version` 提示命令不存在：
+
+```bash
+# 先确认 Node.js 满足 OpenClaw 当前要求
+node --version
+npm --version
+
+# 使用 OpenClaw 官方 npm 包安装
+npm install -g openclaw@latest
+openclaw --version
+
+# 交互式配置模型账号并安装 Gateway 服务
+openclaw onboard --install-daemon
+
+# 验证 OpenClaw
+openclaw doctor
+openclaw gateway status
+```
+
+Onboarding 会要求选择模型 Provider 并完成密钥或账号授权。不要把密钥粘贴到 Issue、日志或 Agent 对话中。OpenClaw 最新环境要求与其他安装方式以 [OpenClaw 官方安装文档](https://docs.openclaw.ai/install) 为准。
+
+### 2. 安装 Tracevane
+
+请先下载并检查脚本，不要使用 `curl | bash`。
 
 ```bash
 curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
@@ -53,6 +82,16 @@ chmod +x /tmp/install-tracevane.sh
 ```
 
 安装器会验证 Release 元数据和 SHA-256，并返回安装目录、配置路径、访问地址与健康检查结果。详细参数见 [安装文档](docs/installation.md)，让 Agent 执行安装时可直接使用 [Agent 安装提示词](docs/agent-installation.md)。
+
+### 交给 Agent 从零安装
+
+把下面整段复制给 Codex、Claude Code 或 OpenCode：
+
+```text
+请在这台机器上从零安装 OpenClaw 和 Tracevane。先只检查环境并报告操作系统、是否处于 WSL2、node/npm/openclaw 版本；不要立即修改系统。如果 OpenClaw 缺失，按 https://docs.openclaw.ai/install 的官方 npm 方式安装 openclaw@latest，然后运行 openclaw onboard --install-daemon。Onboarding 涉及模型账号或密钥时暂停，让我在本机交互完成，禁止读取、回显或上传密钥。随后运行 openclaw --version、openclaw doctor、openclaw gateway status；验证成功后，从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载 Tracevane 安装器到本地，先审阅脚本并运行 --check-release，再以 --mode standalone --json 安装。禁止 curl | bash，禁止绕过 TLS、SHA-256、配置校验或健康检查。最后返回 OpenClaw 版本、Tracevane JSON 中的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，所有 token/credential 必须脱敏。
+```
+
+Gateway 模式只需把 Prompt 中的 `--mode standalone --json` 改为 `--mode gateway --json`。更短和审计版 Prompt 见 [Agent 安装提示词](docs/agent-installation.md)。
 
 ## 本地开发
 
