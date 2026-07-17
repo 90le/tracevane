@@ -24,6 +24,7 @@ import {
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
 
 import {
   useApplyChannelConnectorsV3ConfigMutation,
@@ -322,15 +323,25 @@ export function WorkspacesView({ selectedTarget }: ChannelConnectorsViewProps) {
         <Button variant="primary" size="sm" onClick={() => setCreating(true)}><Plus />新建工作区</Button>
       </div>
 
-      <dl className="grid grid-cols-2 overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4">
-        <div className="border-b border-r border-line p-3 sm:border-b-0"><dt className="text-xs text-subtle">工作区</dt><dd className="text-xl font-semibold text-ink-strong">{config.targets.length}</dd></div>
-        <div className="border-b border-line p-3 sm:border-b-0 sm:border-r"><dt className="text-xs text-subtle">已启用</dt><dd className="text-xl font-semibold text-ink-strong">{config.targets.filter((target) => target.enabled).length}</dd></div>
-        <div className="border-r border-line p-3"><dt className="text-xs text-subtle">被账号使用</dt><dd className="text-xl font-semibold text-ink-strong">{referenced}</dd></div>
-        <div className="p-3"><dt className="text-xs text-subtle">独立目录</dt><dd className="text-xl font-semibold text-ink-strong">{new Set(config.targets.map((target) => target.workspace.workDir)).size}</dd></div>
-      </dl>
+      <MetricRail>
+        <MetricTile label="Agent 工作区" value={config.targets.length} hint={`${config.targets.filter((target) => target.enabled).length} 个已启用`} icon={<Bot />} />
+        <MetricTile label="被账号使用" value={referenced} hint="被默认投递或来源例外引用" icon={<ShieldCheck />} />
+        <MetricTile label="独立目录" value={new Set(config.targets.map((target) => target.workspace.workDir)).size} hint="目录是并发隔离边界" icon={<FolderOpen />} />
+      </MetricRail>
 
-      {filtered.length === 0 ? (
-        <EmptyState title="暂无 Agent 工作区" description="先创建工作区，再为渠道账号选择默认投递目标。" action={<Button variant="primary" size="sm" onClick={() => setCreating(true)}><Plus />新建工作区</Button>} />
+      {config.targets.length === 0 ? (
+        <EmptyState
+          icon={<Bot />}
+          title="尚未创建 Agent 工作区"
+          description="工作区是可复用的 Agent 执行环境；先创建工作区，渠道账号才能把消息投递进来。"
+          action={<Button variant="primary" size="sm" onClick={() => setCreating(true)}><Plus />新建工作区</Button>}
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="没有匹配的工作区"
+          description={`没有符合“${query.trim()}”的工作区；调整搜索条件再试。`}
+          action={<Button variant="outline" size="sm" onClick={() => setQuery("")}>清除搜索</Button>}
+        />
       ) : (
         <Table>
           <TableHeader><TableRow><TableHead>工作区</TableHead><TableHead>Agent / 模型</TableHead><TableHead>启动目录</TableHead><TableHead>账号引用</TableHead><TableHead>状态</TableHead><TableHead className="text-right">动作</TableHead></TableRow></TableHeader>

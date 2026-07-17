@@ -64,7 +64,7 @@ export function ToneBadge({
 export function toneIconClass(tone: ReadinessTone): string {
   switch (tone) {
     case "ok":
-      return "bg-success/12 text-success";
+      return "bg-success-soft text-success";
     case "warn":
       return "bg-warning-soft text-warning";
     case "bad":

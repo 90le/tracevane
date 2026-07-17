@@ -2,6 +2,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Activity,
+  ArrowRight,
   Boxes,
   CheckCircle2,
   CircleDot,
@@ -19,13 +20,18 @@ import {
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { MetricRail, MetricTile, type MetricTone } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
+
+import { isGatewayExposure } from "@/lib/runtime";
 
 import type {
   AttentionIconKey,
   AttentionSeverity,
   QuickLaunchEntry,
+  ReadinessTone,
 } from "./types";
 import {
   Panel,
@@ -73,6 +79,15 @@ const SEVERITY_BADGE: Record<
   low: { variant: "mute", label: "低" },
 };
 
+/** Aggregate readiness tone → MetricTile tone (info/mute stay neutral). */
+const METRIC_TONE: Record<ReadinessTone, MetricTone> = {
+  ok: "ok",
+  warn: "warn",
+  bad: "bad",
+  info: "default",
+  mute: "default",
+};
+
 const QUICK_LAUNCH: QuickLaunchEntry[] = [
   {
     id: "model-gateway",
@@ -98,12 +113,14 @@ const QUICK_LAUNCH: QuickLaunchEntry[] = [
 ];
 
 /**
- * Dashboard — a task-first live operations cockpit. It aggregates live runtime
- * state from across the owning domains (model gateway, IM channels, recovery,
- * terminal, system) into one screen that answers "can the operator work
- * right now, and what's the next step?" — then DEEP-LINKS to the owning domain
- * for every action. The cockpit itself is read-only: it never writes.
+ * Dashboard — an attention-first home. It aggregates live runtime state from
+ * across the owning domains (model gateway, IM channels, recovery, terminal,
+ * system) into one screen that answers "what needs my attention right now,
+ * and what's the next step?" — then DEEP-LINKS to the owning domain for every
+ * action. The cockpit itself is read-only: it never writes.
  *
+ * Hierarchy: PageHeader (exposure + readiness meta) → attention queue →
+ * health MetricRail → quick launch / in-progress work → recent activity.
  * No SSE — refresh is TanStack Query polling plus a manual refresh control.
  */
 export function DashboardPage() {
@@ -146,138 +163,166 @@ export function DashboardPage() {
 
   const checkedAt =
     summary?.checkedAt ?? sources.health.data?.checkedAt ?? null;
-  const hydrationLabel = secondarySourcesEnabled
-    ? isFetching
-      ? "正在更新"
-      : "实时状态已更新"
-    : "基础状态已就绪，详细检测进行中";
+  const hydrationLabel = isBootstrapping
+    ? "正在读取轻量摘要"
+    : secondarySourcesEnabled
+      ? isFetching
+        ? "正在更新"
+        : "实时状态已更新"
+      : "基础状态已就绪，详细检测进行中";
   const releaseVersion =
     summary?.server.version ?? sources.health.data?.version;
+  const gatewayExposure = isGatewayExposure();
 
   return (
     <div className="grid gap-[18px]">
-      {/* ---- Hero: 现在能不能工作 ---------------------------------------- */}
-      <section className="rounded-md border border-line bg-panel-2 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <ToneBadge tone={readiness.tone}>
-            <CircleDot className="size-3.5" />
-            {readiness.label}
-          </ToneBadge>
-          <span className="text-sm text-muted">
-            {isBootstrapping
-              ? "正在读取轻量摘要"
-              : readiness.attentionCount > 0
-                ? `${readiness.attentionCount} 项需要关注`
-                : "暂无需要关注的事项"}
-          </span>
-          {releaseVersion && (
-            <span className="text-sm text-subtle">v{releaseVersion}</span>
-          )}
-          <span className="ml-auto flex items-center gap-2 text-xs text-subtle">
-            <span>{hydrationLabel}</span>
+      <PageHeader
+        className="px-0"
+        title="工作台"
+        description="汇总模型路由、消息接入、平台守护与 Agent CLI 的运行状态；较慢的检测在后台自动补齐，不影响当前操作。"
+        meta={
+          <>
+            <Badge variant={gatewayExposure ? "info" : "mute"}>
+              {gatewayExposure ? "OpenClaw 网关接入" : "独立运行"}
+            </Badge>
+            <ToneBadge tone={readiness.tone}>
+              <CircleDot className="size-3.5" />
+              {readiness.label}
+            </ToneBadge>
+            {releaseVersion && <span>v{releaseVersion}</span>}
+            <span aria-live="polite">{hydrationLabel}</span>
             {checkedAt && <span>更新于 {formatTime(checkedAt)}</span>}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={refetchAll}
-              disabled={isFetching}
-            >
-              <RefreshCw
-                className={cn("size-3.5", isFetching && "animate-spin")}
-              />
-              刷新
-            </Button>
-          </span>
-        </div>
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refetchAll}
+            disabled={isFetching}
+          >
+            <RefreshCw
+              className={cn("size-3.5", isFetching && "animate-spin")}
+            />
+            刷新
+          </Button>
+        }
+      />
 
-        <p className="mt-3 text-base text-ink-strong">
-          一个屏幕看清 Agent 工作是否能继续推进。
-        </p>
-        <p className="mt-1 text-sm text-muted">
-          汇总模型网关、消息接入、平台守护与 Agent CLI 的运行状态；较慢的检测在后台自动补齐，不影响当前操作。
-        </p>
-
-        {/* Readiness pillars — one glance, each deep-links to its domain. */}
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {pillars.map((pillar) => (
-            <button
-              key={pillar.id}
-              type="button"
-              onClick={() => navigate(pillar.to)}
-              className="rounded-sm border border-line bg-panel p-3 text-left outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-subtle">{pillar.label}</span>
-                <ToneBadge tone={pillar.tone}>{pillar.value}</ToneBadge>
-              </div>
-              <div className="mt-1.5 truncate text-sm text-muted">
-                {pillar.detail}
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        {/* ---- 关注队列 / 下一步 (task-first core) ---------------------- */}
-        <Panel>
-          <PanelHead
-            title="关注队列 · 下一步"
-            sub="从实时状态综合，点击前往对应域处理"
-            action={
-              <Badge variant={attention.length > 0 ? "warn" : "ok"}>
-                {attention.length} 项
-              </Badge>
+      {/* ---- 关注队列 (attention-first core) ----------------------------- */}
+      <Panel>
+        <PanelHead
+          title="关注队列 · 下一步"
+          sub="从实时状态综合，点击前往对应域处理"
+          action={
+            <Badge variant={attention.length > 0 ? "warn" : "ok"}>
+              {attention.length} 项
+            </Badge>
+          }
+        />
+        {attention.length === 0 ? (
+          <EmptyState
+            icon={<CheckCircle2 />}
+            title={secondarySourcesEnabled ? "一切就绪" : "正在补齐后台检测"}
+            description={
+              secondarySourcesEnabled
+                ? "当前没有从运行状态综合出的待处理事项。"
+                : "摘要和入口已可用；较慢的后台检测将在稍后自动补齐。"
             }
           />
-          {attention.length === 0 ? (
-            <EmptyState
-              icon={<CheckCircle2 />}
-              title={secondarySourcesEnabled ? "一切就绪" : "正在补齐后台检测"}
-              description={
-                secondarySourcesEnabled
-                  ? "当前没有从运行状态综合出的待处理事项。"
-                  : "摘要和入口已可用；较慢的后台检测将在稍后自动补齐。"
+        ) : (
+          <div className="py-1.5">
+            {attention.map((item) => {
+              const Icon = ATTENTION_ICON[item.icon];
+              const sev = SEVERITY_BADGE[item.severity];
+              return (
+                <Row
+                  key={item.id}
+                  icon={<Icon />}
+                  iconClass={
+                    item.severity === "high"
+                      ? "bg-danger-soft text-danger"
+                      : item.severity === "medium"
+                        ? "bg-warning-soft text-warning"
+                        : "bg-panel-3 text-muted"
+                  }
+                  title={item.title}
+                  subtitle={item.detail}
+                  trailing={
+                    <span className="flex items-center gap-2">
+                      <Badge variant={sev.variant}>{sev.label}</Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate(item.to)}
+                      >
+                        {item.actionLabel}
+                      </Button>
+                    </span>
+                  }
+                />
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+
+      {/* ---- 关键健康指标 — one tile per readiness pillar, deep-links. --- */}
+      <MetricRail aria-label="关键健康指标">
+        {pillars.map((pillar) => (
+          <MetricTile
+            key={pillar.id}
+            label={pillar.label}
+            value={pillar.value}
+            hint={pillar.detail}
+            tone={METRIC_TONE[pillar.tone]}
+            role="link"
+            tabIndex={0}
+            onClick={() => navigate(pillar.to)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                navigate(pillar.to);
               }
-            />
-          ) : (
-            <div className="py-1.5">
-              {attention.map((item) => {
-                const Icon = ATTENTION_ICON[item.icon];
-                const sev = SEVERITY_BADGE[item.severity];
-                return (
-                  <Row
-                    key={item.id}
-                    icon={<Icon />}
-                    iconClass={
-                      item.severity === "high"
-                        ? "bg-danger-soft text-danger"
-                        : item.severity === "medium"
-                          ? "bg-warning-soft text-warning"
-                          : "bg-panel-3 text-muted"
-                    }
-                    title={item.title}
-                    subtitle={item.detail}
-                    trailing={
-                      <span className="flex items-center gap-2">
-                        <Badge variant={sev.variant}>{sev.label}</Badge>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(item.to)}
-                        >
-                          {item.actionLabel}
-                        </Button>
-                      </span>
-                    }
-                  />
-                );
-              })}
-            </div>
-          )}
+            }}
+            className="cursor-pointer transition-colors hover:border-primary-line focus-visible:shadow-[var(--ring)]"
+          />
+        ))}
+      </MetricRail>
+
+      <div className="grid gap-[18px] lg:grid-cols-2">
+        {/* ---- 快速启动 ------------------------------------------------- */}
+        <Panel>
+          <PanelHead title="快速启动" sub="进入关键工作域" />
+          <div className="grid gap-2 p-3">
+            {QUICK_LAUNCH.map((entry) => {
+              const Icon = QUICK_LAUNCH_ICON[entry.icon];
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => navigate(entry.to)}
+                  className="group flex items-center gap-3 rounded-sm border border-line bg-panel p-3 text-left outline-none transition-colors hover:border-primary-line hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
+                >
+                  <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
+                    <Icon />
+                  </span>
+                  <span className="grid min-w-0">
+                    <strong className="truncate text-base text-ink-strong">
+                      {entry.label}
+                    </strong>
+                    <span className="truncate text-sm text-muted">
+                      {entry.detail}
+                    </span>
+                  </span>
+                  <ArrowRight className="ml-auto size-4 shrink-0 text-subtle opacity-0 transition-opacity group-hover:opacity-100" />
+                </button>
+              );
+            })}
+          </div>
         </Panel>
 
-        {/* ---- 正在进行 (read-only) ------------------------------------ */}
+        {/* ---- 正在进行 (read-only) ------------------------------------- */}
         <Panel>
           <PanelHead
             title="正在进行"
@@ -311,36 +356,6 @@ export function DashboardPage() {
           )}
         </Panel>
       </div>
-
-      {/* ---- 快速启动 / 继续 -------------------------------------------- */}
-      <Panel>
-        <PanelHead title="快速启动" sub="进入关键工作域" />
-        <div className="grid grid-cols-1 gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
-          {QUICK_LAUNCH.map((entry) => {
-            const Icon = QUICK_LAUNCH_ICON[entry.icon];
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => navigate(entry.to)}
-                className="flex items-center gap-3 rounded-sm border border-line bg-panel p-3 text-left outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
-              >
-                <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
-                  <Icon />
-                </span>
-                <span className="grid min-w-0">
-                  <strong className="truncate text-base text-ink-strong">
-                    {entry.label}
-                  </strong>
-                  <span className="truncate text-sm text-muted">
-                    {entry.detail}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </Panel>
 
       {/* ---- 近期动态 --------------------------------------------------- */}
       <Panel>

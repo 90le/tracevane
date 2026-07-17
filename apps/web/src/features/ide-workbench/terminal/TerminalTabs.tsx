@@ -168,7 +168,7 @@ export function TerminalTabs({
   }, [onFocusTab, onReorderTab]);
 
   return (
-    <div className="flex min-h-8 min-w-0 items-center gap-1 border-b border-line bg-panel-2 px-2" data-ide-terminal-tabs>
+    <div className="flex min-h-9 min-w-0 items-center gap-1 border-b border-line bg-panel-2 px-2" data-ide-terminal-tabs>
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain py-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-line">
         {tabs.map((tab) => {
           const paneCount = Object.keys(tab.panes).length;
@@ -178,10 +178,10 @@ export function TerminalTabs({
             <div
               key={tab.tabId}
               className={cn(
-                "group/tab relative z-10 inline-flex min-h-6 max-w-[128px] shrink-0 cursor-grab items-center overflow-hidden rounded-sm border outline-none active:cursor-grabbing focus-within:shadow-[var(--ring)] sm:max-w-[150px]",
+                "group/tab relative z-10 inline-flex min-h-7 max-w-[136px] shrink-0 cursor-grab items-center overflow-hidden rounded-sm border outline-none active:cursor-grabbing focus-within:shadow-[var(--ring)] sm:max-w-[160px]",
                 active
-                  ? "border-primary-line bg-primary-soft text-ink-strong"
-                  : "border-line bg-panel text-muted hover:text-ink",
+                  ? "border-primary-line bg-panel text-ink-strong shadow-[inset_0_2px_0_var(--primary)]"
+                  : "border-line bg-canvas text-muted hover:border-line-2 hover:text-ink",
                 draggingTabId === tab.tabId && "scale-[0.98] cursor-grabbing border-primary-line bg-primary-soft/80 opacity-45 shadow-[0_0_0_1px_var(--primary)]",
                 dropIndicator?.targetTabId === tab.tabId &&
                   "overflow-visible ring-2 ring-primary/20",
@@ -212,18 +212,20 @@ export function TerminalTabs({
                 data-terminal-shell={activePane?.shell || undefined}
                 data-active-terminal-tab={active ? "true" : "false"}
               >
-                <span className="size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                <TerminalIcon className="size-3.5 shrink-0 text-subtle" />
+                <TerminalIcon className={cn("size-3.5 shrink-0", active ? "text-primary" : "text-subtle")} />
                 <span className="truncate">{tab.title}</span>
                 {paneCount > 1 ? (
-                  <span className="rounded-full border border-line bg-panel px-1 font-mono text-2xs text-muted">
+                  <span className="rounded-full border border-line bg-panel-2 px-1 font-mono text-2xs tabular-nums text-muted">
                     {paneCount}
                   </span>
                 ) : null}
               </button>
               <button
                 type="button"
-                className="relative z-20 grid size-6 shrink-0 cursor-pointer place-items-center text-subtle outline-none hover:bg-panel-3 hover:text-ink focus-visible:shadow-[var(--ring)]"
+                className={cn(
+                  "relative z-20 grid size-6 shrink-0 cursor-pointer place-items-center text-subtle outline-none hover:bg-panel-3 hover:text-ink focus-visible:shadow-[var(--ring)]",
+                  active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100",
+                )}
                 aria-label={`${tab.title} 操作菜单`}
                 title="终端标签操作"
                 onClick={(event) => {

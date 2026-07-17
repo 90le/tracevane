@@ -2,12 +2,13 @@ import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { SectionNav } from "@/design/ui/section-nav";
 import { toast } from "@/design/ui/sonner";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { Skeleton } from "@/shared/states/Skeleton";
+import { LoadingState } from "@/shared/states/LoadingState";
 import { useOpenClawConfigSummaryQuery, usePatchOpenClawConfigMutation, useSystemDiagnosticsQuery } from "@/lib/query/platform-read";
 import { BoundaryBadge, Panel, PanelHead, ReadOnlyStrip, RefreshButton, WorkbenchToolbar, fmtDate } from "../components";
-import { StatTile } from "../../_shared";
 import type { ConfigPatchPayload, ConfigSummaryPayload } from "../../../../../../../types/config";
 
 type ConfigSection = "defaults" | "models" | "runtime" | "security" | "gateway" | "messages" | "extensions" | "browserLogging";
@@ -545,10 +546,6 @@ function ModelListField({ label, value, onChange, options, helper }: { label: st
   return <div className="grid gap-1.5 border-b border-line px-4 py-3 last:border-b-0 md:col-span-2"><span className="text-sm font-medium text-ink-strong">{label}</span><select value="" onChange={(event) => add(event.target.value)} className="min-w-0 rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm text-ink-strong outline-none focus:shadow-[var(--ring)]"><option value="">添加备用模型…</option>{addable.map((option) => <option key={optionValue(option)} value={optionValue(option)}>{optionLabel(option)}</option>)}</select><div className="flex min-h-8 flex-wrap gap-2">{values.length ? values.map((item) => <button key={item} type="button" onClick={() => remove(item)} className="rounded-full border border-line bg-panel-2 px-2.5 py-1 text-xs text-ink-strong hover:border-danger hover:text-danger" title="点击移除">{item} ×</button>) : <span className="text-xs text-muted">未配置备用模型</span>}</div>{helper ? <span className="text-xs text-muted">{helper}</span> : null}</div>;
 }
 
-function SectionNav({ active, onChange }: { active: ConfigSection; onChange: (section: ConfigSection) => void }) {
-  return <nav aria-label="OpenClaw 配置子页面" className="grid gap-1 border-b border-line p-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-8">{CONFIG_SECTIONS.map((section) => <button key={section.id} type="button" onClick={() => onChange(section.id)} aria-current={active === section.id ? "page" : undefined} className={`rounded-sm px-3 py-2 text-left transition ${active === section.id ? "bg-primary text-primary-ink shadow-sm" : "text-muted hover:bg-panel-2 hover:text-ink-strong"}`}><span className="block text-sm font-semibold">{section.title}</span><span className="block truncate text-xs opacity-80">{section.desc}</span></button>)}</nav>;
-}
-
 function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid gap-0 overflow-hidden rounded-sm border border-line md:grid-cols-2">{children}</div>;
 }
@@ -605,7 +602,7 @@ export function ConfigPage() {
   }, [config.data?.checkedAt, patchConfig.isPending]);
 
   const data = config.data;
-  if (config.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[420px] w-full" /></div>;
+  if (config.isLoading) return <LoadingState title="正在加载 OpenClaw 配置…" />;
   if (config.error) return <ErrorState title="无法加载 OpenClaw 配置摘要" description={config.error.message} />;
   const currentDraft = draftFromConfig(data);
   const dirty = JSON.stringify(draft) !== JSON.stringify(currentDraft);
@@ -639,10 +636,17 @@ export function ConfigPage() {
   const activeMeta = CONFIG_SECTIONS.find((section) => section.id === activeSection) ?? CONFIG_SECTIONS[0];
   return <div className="grid gap-[18px]">
     <ReadOnlyStrip>配置页按 Settings 子页面分层：基础、模型、策略、安全、网关、会话消息、扩展、浏览日志；常用项使用下拉、开关和数字控件，复杂对象回到各自 owner 域。</ReadOnlyStrip>
+    <MetricRail>
+      <MetricTile label="当前子页" value={activeMeta.title} hint={activeMeta.desc} />
+      <MetricTile label="默认模型" value={data?.defaults.model ?? "—"} hint="OpenClaw 默认" />
+      <MetricTile label="网关端口" value={data?.gateway.port ?? "—"} hint={`${data?.gateway.mode ?? "—"} / ${data?.gateway.bind ?? "—"}`} />
+      <MetricTile label="安全" value={data?.sandbox.mode ?? "—"} hint={data?.tools.execSecurity ?? "—"} />
+    </MetricRail>
     <Panel>
       <WorkbenchToolbar title="OpenClaw 配置" description="分组设置工作台，避免一个巨型表单和无保护覆盖。"><RefreshButton loading={config.isFetching} onClick={() => { void config.refetch(); void diagnostics.refetch(); }} /><BoundaryBadge /><Badge variant={dirty ? "warn" : "mute"}>{dirty ? "有未保存修改" : `已检查 ${fmtDate(data?.checkedAt)}`}</Badge></WorkbenchToolbar>
-      <SectionNav active={activeSection} onChange={setActiveSection} />
-      <div className="grid gap-3 p-3 md:grid-cols-4"><StatTile label="当前子页" value={activeMeta.title} sub={activeMeta.desc} /><StatTile label="默认模型" value={data?.defaults.model ?? "—"} sub="OpenClaw 默认" /><StatTile label="网关端口" value={data?.gateway.port ?? "—"} sub={`${data?.gateway.mode ?? "—"} / ${data?.gateway.bind ?? "—"}`} /><StatTile label="安全" value={data?.sandbox.mode ?? "—"} sub={data?.tools.execSecurity ?? "—"} /></div>
+      <div className="px-3 py-2">
+        <SectionNav ariaLabel="OpenClaw 配置子页面" items={CONFIG_SECTIONS.map((section) => ({ id: section.id, label: section.title }))} value={activeSection} onChange={(id) => setActiveSection(id as ConfigSection)} />
+      </div>
     </Panel>
     <div className="grid gap-[18px]">
       {renderSection(activeSection, draft, setField, setBool, data)}

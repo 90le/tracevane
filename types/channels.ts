@@ -254,12 +254,6 @@ export interface ChannelsMutationResponse {
   summary: ChannelsSummaryPayload;
 }
 
-export interface ChannelAccessMutationResponse {
-  success: boolean;
-  message: string;
-  access: ChannelAccountAccessPayload;
-}
-
 export interface ChannelPairingApproveResponse {
   success: boolean;
   message: string;

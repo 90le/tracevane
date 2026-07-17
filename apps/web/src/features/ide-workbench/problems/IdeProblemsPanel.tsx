@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Circle, Eraser, Info, Lightbulb, TriangleAle
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
+import { PanelHeader, PanelHeaderChip } from "../panelHeader";
 import { clearWorkbenchProblems, type WorkbenchProblem, type WorkbenchProblemSeverity, useWorkbenchProblems } from "./problemStore";
 
 export function IdeProblemsPanel({
@@ -18,23 +19,27 @@ export function IdeProblemsPanel({
 
   return (
     <section className="grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] bg-panel text-sm" data-ide-problems-panel>
-      <div className="flex min-h-9 items-center gap-2 border-b border-line bg-panel-2 px-3 text-xs text-muted">
-        <span className="font-medium text-ink-strong">Problems</span>
+      <PanelHeader
+        title="问题"
+        icon={<AlertCircle />}
+        actions={(
+          <Button variant="ghost" size="sm" className="h-7 min-h-0 px-2 text-xs" onClick={clearWorkbenchProblems} disabled={!problems.length} data-ide-problems-clear>
+            <Eraser />
+            清空
+          </Button>
+        )}
+      >
         <ProblemCount severity="error" count={counts.error} />
         <ProblemCount severity="warning" count={counts.warning} />
         <ProblemCount severity="info" count={counts.info + counts.hint} />
-        <Button variant="ghost" size="sm" className="ml-auto h-7 min-h-0 px-2 text-xs" onClick={clearWorkbenchProblems} disabled={!problems.length} data-ide-problems-clear>
-          <Eraser />
-          清空
-        </Button>
-      </div>
+      </PanelHeader>
       {problems.length ? (
-        <div className="min-h-0 overflow-auto p-2" data-ide-problems-list>
+        <div className="min-h-0 overflow-auto py-1" data-ide-problems-list>
           {problems.map((problem) => (
             <button
               key={problem.id}
               type="button"
-              className="grid w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 rounded-sm px-2 py-1.5 text-left text-xs text-muted outline-none hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
+              className="group grid w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 border-b border-line/50 px-3 py-1.5 text-left outline-none last:border-b-0 hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
               onClick={() => onOpenProblem(problem)}
               data-ide-problem-row
               data-ide-problem-severity={problem.severity}
@@ -42,12 +47,12 @@ export function IdeProblemsPanel({
             >
               <ProblemIcon severity={problem.severity} />
               <span className="min-w-0">
-                <span className="block truncate text-ink">{problem.message}</span>
+                <span className="block truncate text-xs text-ink-strong group-hover:text-primary">{problem.message}</span>
                 <span className="block truncate font-mono text-2xs text-subtle">
                   {problem.path ? `${problem.path}${formatProblemRange(problem)}` : "workspace"} · {problem.source}{problem.code ? ` · ${problem.code}` : ""}
                 </span>
               </span>
-              <span className="font-mono text-2xs text-subtle">{formatProblemTime(problem.createdAt)}</span>
+              <span className="shrink-0 font-mono text-2xs tabular-nums text-subtle">{formatProblemTime(problem.createdAt)}</span>
             </button>
           ))}
         </div>
@@ -55,8 +60,8 @@ export function IdeProblemsPanel({
         <EmptyState
           className="min-h-0"
           icon={<CheckCircle2 />}
-          title="当前没有 Problems"
-          description="语言服务、搜索、Git 或调试产生的问题会显示在这里。"
+          title="当前没有发现问题"
+          description="语言服务、搜索、Git 或调试产生的问题会汇总在这里；点击条目可直接跳转到对应文件位置。"
           data-ide-problems-empty
         />
       )}
@@ -66,10 +71,10 @@ export function IdeProblemsPanel({
 
 function ProblemCount({ severity, count }: { severity: WorkbenchProblemSeverity; count: number }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-sm border border-line bg-canvas px-1.5 py-0.5" data-ide-problems-count={severity}>
+    <PanelHeaderChip data-ide-problems-count={severity}>
       <ProblemIcon severity={severity} />
       {count}
-    </span>
+    </PanelHeaderChip>
   );
 }
 

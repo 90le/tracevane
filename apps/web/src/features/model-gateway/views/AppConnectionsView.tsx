@@ -14,6 +14,7 @@ import {
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { PageHeader } from "@/design/ui/page-header";
 import {
   Dialog,
   DialogBody,
@@ -960,20 +961,19 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
 
   return (
     <div className="grid gap-4">
-      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
-        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel))] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="ok">{configuredConnectionCount} 个已应用</Badge>
-              <Badge variant={attentionConnectionCount > 0 ? "warn" : "outline"}>
-                {attentionConnectionCount} 个待处理
-              </Badge>
-            </div>
-            <h2 className="mt-2 text-2xl font-semibold text-ink-strong">客户端接入控制台</h2>
-            <p className="mt-1 max-w-4xl text-sm leading-6 text-muted">
-              把网关路由应用到本地 CLI 客户端。每行展示 Agent scope、协议、Gateway endpoint 和当前实际 active route；写入、编辑和回滚仍先展示差异与备份证据。
-            </p>
-          </div>
+      <PageHeader
+        className="px-0"
+        title="客户端接入控制台"
+        description="把网关路由应用到本地 CLI 客户端。每行展示 Agent scope、协议、Gateway endpoint 和当前实际 active route；写入、编辑和回滚仍先展示差异与备份证据。"
+        meta={
+          <>
+            <Badge variant="ok">{configuredConnectionCount} 个已应用</Badge>
+            <Badge variant={attentionConnectionCount > 0 ? "warn" : "outline"}>
+              {attentionConnectionCount} 个待处理
+            </Badge>
+          </>
+        }
+        actions={
           <Button
             variant="outline"
             size="sm"
@@ -985,7 +985,10 @@ export function AppConnectionsView({ selectedApp }: ModelGatewayViewProps) {
             <RotateCcw />
             刷新状态
           </Button>
-        </div>
+        }
+      />
+
+      <section className="rounded-md border border-line bg-panel shadow-sm">
         <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
           <GatewayMetricCard
             icon={<Route />}

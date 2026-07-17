@@ -1,6 +1,5 @@
 import {
   deriveTracevaneManagedAgentChatChannel,
-  isTracevaneManagedAgentChatSession,
 } from './tracevane-delivery.js';
 
 export interface ResolvedPluginHostContext {
@@ -61,17 +60,4 @@ export function resolvePluginHostContext(ctx: unknown): ResolvedPluginHostContex
     channelId: null,
     source: 'none',
   };
-}
-
-export function isTracevaneManagedAgentChatHostContext(ctx: unknown): boolean {
-  const resolved = resolvePluginHostContext(ctx);
-  return isTracevaneManagedAgentChatSession({
-    sessionKey: resolved.sessionKey,
-    messageChannel: resolved.channelId,
-  });
-}
-
-/** @deprecated Use isTracevaneManagedAgentChatHostContext. Kept for legacy plugin/test callers. */
-export function isTracevaneManagedWebchatHostContext(ctx: unknown): boolean {
-  return isTracevaneManagedAgentChatHostContext(ctx);
 }

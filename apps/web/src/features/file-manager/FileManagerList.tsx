@@ -413,7 +413,7 @@ export function BulkActionBar({
             onChmod={onChmod}
             onUnarchive={onUnarchive}
           />
-          <div className="ml-auto flex shrink-0 items-center gap-2 rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
+          <div className="ml-auto flex shrink-0 items-center gap-2 rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger">
             <span className="hidden md:inline">危险操作</span>
             <Button
               variant="danger"
@@ -633,7 +633,7 @@ function MobileBulkAction({
       className={cn(
         "grid min-h-14 place-items-center gap-1 rounded-md border border-line bg-panel-2 px-1 py-2 text-center text-2xs shadow-sm focus-visible:shadow-[var(--ring)] focus-visible:outline-none",
         danger
-          ? "border-danger/25 bg-danger-soft text-danger"
+          ? "border-danger-line bg-danger-soft text-danger"
           : "text-muted hover:border-primary-line hover:bg-primary-soft hover:text-primary",
       )}
       onClick={onClick}

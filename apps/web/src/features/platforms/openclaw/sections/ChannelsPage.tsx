@@ -4,13 +4,14 @@ import { toast } from "@/design/ui/sonner";
 import { ConfirmDialog } from "@/design/ui/action-dialog";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/design/ui/sheet";
+import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { Skeleton } from "@/shared/states/Skeleton";
+import { LoadingState } from "@/shared/states/LoadingState";
 import { useChannelsSummaryQuery, useCreateChannelAccountMutation, useCreateChannelMutation, useDeleteChannelAccountMutation, useDeleteChannelMutation, useUpdateChannelAccountMutation, useUpdateChannelMutation } from "@/lib/query/channels";
 import type { ChannelAccountInput, ChannelAccountSummary, ChannelCatalogEntry, ChannelFieldDescriptor, ChannelSettingsInput, ChannelSummary } from "../../../../../../../types/channels";
-import { PanelHead, RefreshButton, ResponsiveTable, SearchBox, SelectableRow, StatusPill, WorkbenchToolbar, useSelectedKey } from "../components";
-import { StatTile } from "../../_shared";
+import { EvidenceRow, Panel, PanelHead, RefreshButton, ResponsiveTable, SearchBox, SelectableRow, StatusPill, WorkbenchToolbar, useSelectedKey } from "../components";
 
 type ChannelDraft = { type: string; enabled: boolean; groupPolicy: string; streaming: string; dmPolicy: string; responsePrefix: string; threadEnabled: boolean; threadIdleHours: string; threadMaxAgeHours: string; threadSpawnSessions: boolean; };
 type BotDraft = { id: string; enabled: boolean; dmPolicy: string; groupPolicy: string; streaming: string; responsePrefix: string; fieldValues: Record<string, string>; };
@@ -68,7 +69,7 @@ export function ChannelsPage() {
   const selectedBots = selected?.accounts ?? [];
   const [selectedBotId, setSelectedBotId] = useSelectedKey(selectedBots.map((bot) => bot.id));
   const selectedBot = selectedBots.find((bot) => bot.id === selectedBotId) ?? selectedBots[0];
-  if (channels.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[260px] w-full" /></div>;
+  if (channels.isLoading) return <LoadingState title="正在加载 OpenClaw 原生 Channel…" />;
   if (channels.error) return <ErrorState title="无法加载 OpenClaw 原生 Channel" description={channels.error.message} />;
   const channelPayload = (): ChannelSettingsInput => ({ enabled: channelDraft.enabled, groupPolicy: channelDraft.groupPolicy, streaming: channelDraft.streaming, dmPolicy: channelDraft.dmPolicy, responsePrefix: channelDraft.responsePrefix, threadBindings: { enabled: channelDraft.threadEnabled, idleHours: Number(channelDraft.threadIdleHours) || 24, maxAgeHours: Number(channelDraft.threadMaxAgeHours) || 0, spawnSessions: channelDraft.threadSpawnSessions } });
   const botPayload = (): ChannelAccountInput => { const fields = [...(selectedCatalog?.accountFields ?? []), ...(selectedCatalog?.credentialFields ?? [])]; const fieldValues: Record<string, unknown> = {}; for (const field of fields) { const value = normalizeFieldValue(field, botDraft.fieldValues[field.key] ?? ""); if (value !== undefined) fieldValues[field.key] = value; } return { id: botDraft.id.trim(), enabled: botDraft.enabled, dmPolicy: botDraft.dmPolicy || null, groupPolicy: botDraft.groupPolicy || null, streaming: botDraft.streaming || null, responsePrefix: botDraft.responsePrefix || null, fieldValues }; };
@@ -86,12 +87,98 @@ export function ChannelsPage() {
   const deleteDialog = <ConfirmDialog open={Boolean(deleteTarget)} title={deleteTarget?.kind === "channel" ? "删除 OpenClaw Channel" : "删除 Bot"} description={deleteTarget?.kind === "channel" ? `删除 ${deleteTarget.channel.type}，相关 Bot 和绑定也会移除。` : deleteTarget?.kind === "bot" ? `删除 ${deleteTarget.channelType}/${deleteTarget.bot.id}，相关绑定可能失效。` : undefined} icon={<Trash2 />} tone="danger" confirmLabel="删除" contentDataAttr="openclaw-channel-delete" onCancel={() => setDeleteTarget(null)} onConfirm={() => { if (!deleteTarget) return; const target = deleteTarget; setDeleteTarget(null); if (target.kind === "channel") deleteChannel.mutate(target.channel.type, { onSuccess: () => { toast.success("OpenClaw Channel 已删除"); setActiveType(null); }, onError: (error) => toast.error("删除失败", { description: error.message }) }); else deleteBot.mutate({ type: target.channelType, accountId: target.bot.id }, { onSuccess: () => toast.success("Bot 已删除"), onError: (error) => toast.error("删除失败", { description: error.message }) }); }} />;
   const editors = <>
     <Sheet open={channelEditorOpen} onOpenChange={setChannelEditorOpen}><SheetContent className="w-[min(620px,94vw)]"><SheetHeader><div><SheetTitle>{channelMode === "new" ? "新增 Channel" : `编辑 ${channelDraft.type}`}</SheetTitle><SheetDescription>Channel 是平台类型；Bot/Account 在频道子页面管理。</SheetDescription></div></SheetHeader><SheetBody><div className="grid gap-3 sm:grid-cols-2"><SelectInput label="Channel 类型" value={channelDraft.type} onChange={(type) => setChannelDraft((p) => ({ ...p, type }))} options={catalogOptions} /><ToggleInput label="启用 Channel" checked={channelDraft.enabled} onChange={(enabled) => setChannelDraft((p) => ({ ...p, enabled }))} /><SelectInput label="群组策略" value={channelDraft.groupPolicy} onChange={(groupPolicy) => setChannelDraft((p) => ({ ...p, groupPolicy }))} options={policyOptions.filter((o) => o.value)} /><SelectInput label="私聊策略" value={channelDraft.dmPolicy} onChange={(dmPolicy) => setChannelDraft((p) => ({ ...p, dmPolicy }))} options={policyOptions.filter((o) => o.value)} /><SelectInput label="流式推送" value={channelDraft.streaming} onChange={(streaming) => setChannelDraft((p) => ({ ...p, streaming }))} options={streamOptions.filter((o) => o.value)} /><TextInput label="回复前缀" value={channelDraft.responsePrefix} onChange={(responsePrefix) => setChannelDraft((p) => ({ ...p, responsePrefix }))} /><ToggleInput label="启用线程绑定" checked={channelDraft.threadEnabled} onChange={(threadEnabled) => setChannelDraft((p) => ({ ...p, threadEnabled }))} /><ToggleInput label="线程自动生成会话" checked={channelDraft.threadSpawnSessions} onChange={(threadSpawnSessions) => setChannelDraft((p) => ({ ...p, threadSpawnSessions }))} /><TextInput label="线程空闲小时" type="number" value={channelDraft.threadIdleHours} onChange={(threadIdleHours) => setChannelDraft((p) => ({ ...p, threadIdleHours }))} /><TextInput label="线程最大保留小时" type="number" value={channelDraft.threadMaxAgeHours} onChange={(threadMaxAgeHours) => setChannelDraft((p) => ({ ...p, threadMaxAgeHours }))} /></div></SheetBody><SheetFooter><Button onClick={saveChannel} disabled={createChannel.isPending || updateChannel.isPending}>{channelMode === "new" ? "新增" : "保存"}</Button><Button variant="outline" onClick={() => setChannelEditorOpen(false)}>取消</Button></SheetFooter></SheetContent></Sheet>
-      <Sheet open={botEditorOpen} onOpenChange={setBotEditorOpen}><SheetContent className="w-[min(760px,94vw)]"><SheetHeader><div><SheetTitle>{botMode === "new" ? "新增 Bot" : `编辑 Bot ${botDraft.id}`}</SheetTitle><SheetDescription>{selectedCatalog?.label ?? selected?.type} 的账号实例；字段按该频道 catalog 动态生成，密钥留空不覆盖。</SheetDescription></div></SheetHeader><SheetBody><PanelHead title="Bot 基础与策略" sub="命名 Bot 可创建多个；不支持命名账号的平台只能使用 default。" /><div className="grid gap-3 sm:grid-cols-2"><TextInput label="Bot / Account ID" value={botDraft.id} onChange={(id) => setBotDraft((p) => ({ ...p, id }))} disabled={botMode === "edit"} /><ToggleInput label="启用 Bot" checked={botDraft.enabled} onChange={(enabled) => setBotDraft((p) => ({ ...p, enabled }))} /><SelectInput label="私聊策略" value={botDraft.dmPolicy} onChange={(dmPolicy) => setBotDraft((p) => ({ ...p, dmPolicy }))} options={policyOptions} /><SelectInput label="群组策略" value={botDraft.groupPolicy} onChange={(groupPolicy) => setBotDraft((p) => ({ ...p, groupPolicy }))} options={policyOptions} /><SelectInput label="流式推送" value={botDraft.streaming} onChange={(streaming) => setBotDraft((p) => ({ ...p, streaming }))} options={streamOptions} /><TextInput label="回复前缀" value={botDraft.responsePrefix} onChange={(responsePrefix) => setBotDraft((p) => ({ ...p, responsePrefix }))} /></div>{botFields.length ? <FieldGroups fields={botFields} draft={botDraft} setDraft={setBotDraft} /> : <div className="rounded-sm border border-dashed border-line p-4 text-sm text-muted">该频道没有暴露额外 Bot 字段。</div>}</SheetBody><SheetFooter><Button onClick={saveBot} disabled={createBot.isPending || updateBot.isPending}>{botMode === "new" ? "新增" : "保存"}</Button><Button variant="outline" onClick={() => setBotEditorOpen(false)}>取消</Button></SheetFooter></SheetContent></Sheet>
-
+    <Sheet open={botEditorOpen} onOpenChange={setBotEditorOpen}><SheetContent className="w-[min(760px,94vw)]"><SheetHeader><div><SheetTitle>{botMode === "new" ? "新增 Bot" : `编辑 Bot ${botDraft.id}`}</SheetTitle><SheetDescription>{selectedCatalog?.label ?? selected?.type} 的账号实例；字段按该频道 catalog 动态生成，密钥留空不覆盖。</SheetDescription></div></SheetHeader><SheetBody><PanelHead title="Bot 基础与策略" sub="命名 Bot 可创建多个；不支持命名账号的平台只能使用 default。" /><div className="grid gap-3 sm:grid-cols-2"><TextInput label="Bot / Account ID" value={botDraft.id} onChange={(id) => setBotDraft((p) => ({ ...p, id }))} disabled={botMode === "edit"} /><ToggleInput label="启用 Bot" checked={botDraft.enabled} onChange={(enabled) => setBotDraft((p) => ({ ...p, enabled }))} /><SelectInput label="私聊策略" value={botDraft.dmPolicy} onChange={(dmPolicy) => setBotDraft((p) => ({ ...p, dmPolicy }))} options={policyOptions} /><SelectInput label="群组策略" value={botDraft.groupPolicy} onChange={(groupPolicy) => setBotDraft((p) => ({ ...p, groupPolicy }))} options={policyOptions} /><SelectInput label="流式推送" value={botDraft.streaming} onChange={(streaming) => setBotDraft((p) => ({ ...p, streaming }))} options={streamOptions} /><TextInput label="回复前缀" value={botDraft.responsePrefix} onChange={(responsePrefix) => setBotDraft((p) => ({ ...p, responsePrefix }))} /></div>{botFields.length ? <FieldGroups fields={botFields} draft={botDraft} setDraft={setBotDraft} /> : <div className="rounded-sm border border-dashed border-line p-4 text-sm text-muted">该频道没有暴露额外 Bot 字段。</div>}</SheetBody><SheetFooter><Button onClick={saveBot} disabled={createBot.isPending || updateBot.isPending}>{botMode === "new" ? "新增" : "保存"}</Button><Button variant="outline" onClick={() => setBotEditorOpen(false)}>取消</Button></SheetFooter></SheetContent></Sheet>
   </>;
-  if (active) return <div className="grid gap-[18px]"><section className="rounded-md border border-line bg-panel shadow-sm"><WorkbenchToolbar title={`${selectedCatalog?.icon ?? "◈"} ${selectedCatalog?.label ?? active.type}`} description="频道子页面：管理此 Channel 下的 Bot/Account；不同频道的表单字段来自 OpenClaw catalog、manifest 和后端映射。"><Button variant="outline" size="sm" onClick={() => setActiveType(null)}><ArrowLeft className="size-4" />返回频道列表</Button><Button size="sm" onClick={() => openBotEditor("new")}><Bot className="size-4" />新增 Bot</Button><Button variant="outline" size="sm" onClick={() => openChannelEditor("edit", active)}><Pencil className="size-4" />编辑 Channel</Button><RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} /></WorkbenchToolbar><div className="grid gap-3 p-3"><div className="grid gap-3 md:grid-cols-4"><StatTile label="Bot" value={active.accountCount} sub="账号实例" /><StatTile label="绑定" value={active.bindingCount} sub="Bot → Agent" /><StatTile label="命名 Bot" value={selectedCatalog?.supportsNamedAccounts ? "支持" : "不支持"} sub="由 catalog 声明" /><StatTile label="字段" value={botFields.length} sub="动态表单字段" /></div><ResponsiveTable columns={["Bot / Account", "凭据", "策略", "状态", "操作"]} rows={selectedBots.map((bot) => <SelectableRow key={bot.id} id={bot.id} selected={selectedBotId === bot.id} onSelect={setSelectedBotId}><td className="px-4 py-3"><div className="font-medium text-ink-strong">{bot.id}</div><div className="text-xs text-muted">{bot.kind === "default" ? "默认 Bot" : "命名 Bot"}</div></td><td className="px-4 py-3 text-muted">{bot.credentialStates.filter((item) => item.configured).length}/{bot.credentialStates.length}</td><td className="px-4 py-3 text-muted">DM {bot.dmPolicy ?? active.dmPolicy ?? "继承"} · 群 {bot.groupPolicy ?? active.groupPolicy ?? "继承"}</td><td className="px-4 py-3"><StatusPill tone={bot.enabled ? "ok" : "warn"}>{bot.enabled ? "启用" : "停用"}</StatusPill></td><td className="px-4 py-3"><div className="flex gap-2"><Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); openBotEditor("edit", bot); }}><Pencil className="size-4" />编辑</Button><Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); removeBot(bot); }}><Trash2 className="size-4" />删除</Button></div></td></SelectableRow>)} empty="当前 Channel 还没有 Bot" /></div></section>{selectedBot ? <section className="rounded-md border border-line bg-panel shadow-sm"><PanelHead title={`当前 Bot：${selectedBot.id}`} sub="这里仅展示摘要；完整编辑在抽屉中完成，避免长列表页面被表单拉长。" /><div className="grid gap-3 p-3 md:grid-cols-3"><StatTile label="凭据已配置" value={selectedBot.credentialStates.filter((item) => item.configured).length} sub={`${selectedBot.credentialStates.length} 个字段`} /><StatTile label="私聊策略" value={selectedBot.dmPolicy ?? active.dmPolicy ?? "继承"} sub="DM policy" /><StatTile label="群组策略" value={selectedBot.groupPolicy ?? active.groupPolicy ?? "继承"} sub="Group policy" /></div></section> : null}{editors}{deleteDialog}</div>;
-  return <div className="grid gap-[18px]"><section className="rounded-md border border-line bg-panel shadow-sm"><WorkbenchToolbar title="OpenClaw 原生接入：Channel / Bot" description="先选择频道进入子页面，再管理该频道下的多个 Bot。这里不再使用左右分栏。"><SearchBox value={query} onChange={setQuery} placeholder="搜索 Channel" /><Button size="sm" onClick={() => openChannelEditor("new")}><Plus className="size-4" />新增 Channel</Button><RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} /><Badge variant="info">可编辑</Badge></WorkbenchToolbar><div className="grid gap-3 p-3"><div className="grid gap-3 md:grid-cols-4"><StatTile label="Channel" value={channels.data?.counts.channels ?? 0} sub="平台类型" /><StatTile label="Bot" value={channels.data?.counts.accounts ?? 0} sub="账号实例" /><StatTile label="绑定" value={channels.data?.counts.bindings ?? 0} sub="Bot → Agent" /><StatTile label="Catalog" value={channels.data?.catalog.length ?? 0} sub="可新增平台" /></div><ResponsiveTable columns={["Channel", "Bot 数", "绑定数", "状态", "操作"]} rows={filtered.map((channel) => <SelectableRow key={channel.type} id={channel.type} selected={selectedKey === channel.type} onSelect={setSelectedKey}><td className="max-w-[300px] truncate px-4 py-3"><div className="font-medium text-ink-strong">{channels.data?.catalog.find((entry) => entry.type === channel.type)?.label ?? channel.type}</div><div className="text-xs text-muted">{channel.type}</div></td><td className="px-4 py-3 text-muted">{channel.accountCount}</td><td className="px-4 py-3 text-muted">{channel.bindingCount}</td><td className="px-4 py-3"><StatusPill tone={channel.enabled ? "ok" : "warn"}>{channel.enabled ? "已启用" : "已停用"}</StatusPill></td><td className="px-4 py-3"><div className="flex gap-2"><Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); setActiveType(channel.type); }}><ChevronRight className="size-4" />进入</Button><Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); removeChannel(channel); }}><Trash2 className="size-4" />删除</Button></div></td></SelectableRow>)} empty="无匹配 OpenClaw Channel" /></div></section>
-    {editors}
-    {deleteDialog}
-  </div>;
+  if (active) return (
+    <div className="grid gap-[18px]">
+      <MetricRail>
+        <MetricTile label="Bot" value={active.accountCount} hint="账号实例" icon={<Bot />} />
+        <MetricTile label="绑定" value={active.bindingCount} hint="Bot → Agent" />
+        <MetricTile label="命名 Bot" value={selectedCatalog?.supportsNamedAccounts ? "支持" : "不支持"} hint="由 catalog 声明" />
+        <MetricTile label="字段" value={botFields.length} hint="动态表单字段" />
+      </MetricRail>
+      <Panel>
+        <WorkbenchToolbar title={`${selectedCatalog?.icon ?? "◈"} ${selectedCatalog?.label ?? active.type}`} description="频道子页面：管理此 Channel 下的 Bot/Account；不同频道的表单字段来自 OpenClaw catalog、manifest 和后端映射。">
+          <Button variant="outline" size="sm" onClick={() => setActiveType(null)}><ArrowLeft className="size-4" />返回频道列表</Button>
+          <Button size="sm" onClick={() => openBotEditor("new")}><Bot className="size-4" />新增 Bot</Button>
+          <Button variant="outline" size="sm" onClick={() => openChannelEditor("edit", active)}><Pencil className="size-4" />编辑 Channel</Button>
+          <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
+        </WorkbenchToolbar>
+        <ResponsiveTable
+          columns={["Bot / Account", "凭据", "策略", "状态", "操作"]}
+          rows={selectedBots.map((bot) => (
+            <SelectableRow key={bot.id} id={bot.id} selected={selectedBotId === bot.id} onSelect={setSelectedBotId}>
+              <td className="px-4 py-3">
+                <div className="font-medium text-ink-strong">{bot.id}</div>
+                <div className="text-xs text-muted">{bot.kind === "default" ? "默认 Bot" : "命名 Bot"}</div>
+              </td>
+              <td className="px-4 py-3 text-muted">{bot.credentialStates.filter((item) => item.configured).length}/{bot.credentialStates.length}</td>
+              <td className="px-4 py-3 text-muted">DM {bot.dmPolicy ?? active.dmPolicy ?? "继承"} · 群 {bot.groupPolicy ?? active.groupPolicy ?? "继承"}</td>
+              <td className="px-4 py-3"><StatusPill tone={bot.enabled ? "ok" : "warn"}>{bot.enabled ? "启用" : "停用"}</StatusPill></td>
+              <td className="px-4 py-3">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); openBotEditor("edit", bot); }}><Pencil className="size-4" />编辑</Button>
+                  <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); removeBot(bot); }}><Trash2 className="size-4" />删除</Button>
+                </div>
+              </td>
+            </SelectableRow>
+          ))}
+          empty={<EmptyState title="当前 Channel 还没有 Bot" description="新增一个 Bot/Account 实例后，即可在原生绑定页把它路由到 Agent。" action={<Button size="sm" onClick={() => openBotEditor("new")}><Bot className="size-4" />新增 Bot</Button>} />}
+        />
+      </Panel>
+      {selectedBot ? (
+        <Panel>
+          <PanelHead title={`当前 Bot：${selectedBot.id}`} sub="这里仅展示摘要；完整编辑在抽屉中完成，避免长列表页面被表单拉长。" />
+          <div className="py-1.5">
+            <EvidenceRow label="凭据已配置" value={`${selectedBot.credentialStates.filter((item) => item.configured).length}/${selectedBot.credentialStates.length} 个字段`} />
+            <EvidenceRow label="私聊策略" value={selectedBot.dmPolicy ?? active.dmPolicy ?? "继承"} />
+            <EvidenceRow label="群组策略" value={selectedBot.groupPolicy ?? active.groupPolicy ?? "继承"} />
+          </div>
+        </Panel>
+      ) : null}
+      {editors}
+      {deleteDialog}
+    </div>
+  );
+  return (
+    <div className="grid gap-[18px]">
+      <MetricRail>
+        <MetricTile label="Channel" value={channels.data?.counts.channels ?? 0} hint="平台类型" />
+        <MetricTile label="Bot" value={channels.data?.counts.accounts ?? 0} hint="账号实例" />
+        <MetricTile label="绑定" value={channels.data?.counts.bindings ?? 0} hint="Bot → Agent" />
+        <MetricTile label="Catalog" value={channels.data?.catalog.length ?? 0} hint="可新增平台" />
+      </MetricRail>
+      <Panel>
+        <WorkbenchToolbar title="OpenClaw 原生接入：Channel / Bot" description="先选择频道进入子页面，再管理该频道下的多个 Bot。这里不再使用左右分栏。">
+          <SearchBox value={query} onChange={setQuery} placeholder="搜索 Channel" />
+          <Button size="sm" onClick={() => openChannelEditor("new")}><Plus className="size-4" />新增 Channel</Button>
+          <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
+          <Badge variant="info">可编辑</Badge>
+        </WorkbenchToolbar>
+        <ResponsiveTable
+          columns={["Channel", "Bot 数", "绑定数", "状态", "操作"]}
+          rows={filtered.map((channel) => (
+            <SelectableRow key={channel.type} id={channel.type} selected={selectedKey === channel.type} onSelect={setSelectedKey}>
+              <td className="max-w-[300px] truncate px-4 py-3">
+                <div className="font-medium text-ink-strong">{channels.data?.catalog.find((entry) => entry.type === channel.type)?.label ?? channel.type}</div>
+                <div className="text-xs text-muted">{channel.type}</div>
+              </td>
+              <td className="px-4 py-3 text-muted">{channel.accountCount}</td>
+              <td className="px-4 py-3 text-muted">{channel.bindingCount}</td>
+              <td className="px-4 py-3"><StatusPill tone={channel.enabled ? "ok" : "warn"}>{channel.enabled ? "已启用" : "已停用"}</StatusPill></td>
+              <td className="px-4 py-3">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); setActiveType(channel.type); }}><ChevronRight className="size-4" />进入</Button>
+                  <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); removeChannel(channel); }}><Trash2 className="size-4" />删除</Button>
+                </div>
+              </td>
+            </SelectableRow>
+          ))}
+          empty={list.length === 0 ? <EmptyState title="暂无 OpenClaw Channel" description="新增一个 Channel 平台类型后，即可配置它下面的 Bot/Account。" action={<Button size="sm" onClick={() => openChannelEditor("new")}><Plus className="size-4" />新增 Channel</Button>} /> : "无匹配 OpenClaw Channel"}
+        />
+      </Panel>
+      {editors}
+      {deleteDialog}
+    </div>
+  );
 }

@@ -23,7 +23,7 @@ function severityIcon(severity: OpenClawRecoveryEventSeverity): React.ReactNode 
 function severityIconClass(severity: OpenClawRecoveryEventSeverity): string | undefined {
   if (severity === "error") return "bg-danger-soft text-danger";
   if (severity === "warning") return "bg-warning-soft text-warning";
-  if (severity === "success") return "bg-success/12 text-success";
+  if (severity === "success") return "bg-success-soft text-success";
   return undefined;
 }
 

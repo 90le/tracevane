@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertTriangle, Search, Upload } from "lucide-react";
+import { AlertTriangle, ChevronRight, Search, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { cn } from "@/design/lib/utils";
@@ -1770,7 +1770,7 @@ export function FileManagerPage() {
           >
             {browse.error ? (
               <div
-                className="flex flex-wrap items-center gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger"
+                className="flex flex-wrap items-center gap-2 rounded-md border border-danger-line bg-danger-soft px-3 py-2 text-xs text-danger"
                 data-file-manager-path-error-recovery
               >
                 <span className="font-medium">路径不可访问：</span>
@@ -2269,14 +2269,14 @@ class FileManagerModalErrorBoundary extends React.Component<
         data-file-manager-modal-error-boundary
         role="alert"
       >
-        <div className="grid w-full max-w-lg gap-3 rounded-lg border border-danger/30 bg-panel px-5 py-4 text-center shadow-xl">
+        <div className="grid w-full max-w-lg gap-3 rounded-lg border border-danger-line bg-panel px-5 py-4 text-center shadow-xl">
           <div className="text-base font-semibold text-danger">
             {this.props.title}
           </div>
           <p className="text-xs leading-5 text-muted">
             {this.props.description}
           </p>
-          <pre className="max-h-32 overflow-auto rounded border border-danger/20 bg-danger/5 p-2 text-left font-mono text-2xs text-danger">
+          <pre className="max-h-32 overflow-auto rounded border border-danger-line bg-danger-soft p-2 text-left font-mono text-2xs text-danger">
             {this.state.error.message}
           </pre>
           <div className="flex justify-center gap-2">
@@ -2340,6 +2340,7 @@ function FileManagerSecondaryDock({
           <span className="inline-flex min-w-0 items-center gap-2 font-semibold text-ink-strong">
             <Search className="size-3.5 shrink-0 text-subtle" />
             搜索与统计
+            <ChevronRight className="size-3.5 shrink-0 text-subtle transition-transform group-open:rotate-90" />
           </span>
           <FileManagerStatsInline
             counts={counts}

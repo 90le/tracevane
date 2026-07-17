@@ -100,7 +100,7 @@ export function V3OverviewView({ goToView }: ChannelConnectorsViewProps) {
       </section>
 
       {!sessionRuntimeReachable ? (
-        <div className="flex items-start gap-2 rounded-sm border border-amber/30 bg-amber-soft px-4 py-3 text-sm text-amber" role="status">
+        <div className="flex items-start gap-2 rounded-sm border border-warning-line bg-warning-soft px-4 py-3 text-sm text-warning" role="status">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
           <span><strong>会话运行态暂不可用。</strong>消息守护当前离线；账号与分发配置仍可查看，守护启动后会自动刷新会话数据。</span>
         </div>
@@ -109,17 +109,17 @@ export function V3OverviewView({ goToView }: ChannelConnectorsViewProps) {
       <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
         <Panel>
           <PanelHead title="账号接入状态" sub="保存成功、连接成功和收到真实消息分别显示。" action={<Button variant="ghost" size="sm" onClick={() => goToView("accounts")}><RadioTower />管理账号</Button>} />
-          {accountStates.length === 0 ? <div className="p-4"><EmptyState title="尚未创建渠道账号" description="先创建 Agent 工作区，再连接飞书或 Octo。" action={<Button variant="primary" size="sm" onClick={() => goToView("accounts")}><RadioTower />创建账号</Button>} /></div> : <div className="divide-y divide-line">{accountStates.map(({ account, state }) => {
+          {accountStates.length === 0 ? <div className="p-4"><EmptyState icon={<RadioTower />} title="尚未创建渠道账号" description={config.targets.length === 0 ? "先创建一个 Agent 工作区作为投递目标，再连接飞书或 Octo 账号。" : "连接飞书或 Octo 账号，把消息投递到 Agent 工作区。"} action={config.targets.length === 0 ? <Button variant="primary" size="sm" onClick={() => goToView("workspaces")}><Bot />创建工作区</Button> : <Button variant="primary" size="sm" onClick={() => goToView("accounts")}><RadioTower />创建账号</Button>} /></div> : <div className="divide-y divide-line">{accountStates.map(({ account, state }) => {
             const policy = config.deliveryPolicies.find((candidate) => candidate.accountRef === account.id);
             const target = config.targets.find((candidate) => candidate.id === policy?.defaultTargetRef);
-            return <Row key={account.id} icon={<RadioTower />} iconClass={state.variant === "ok" ? "bg-success/10 text-success" : state.variant === "warn" ? "bg-warning-soft text-warning" : undefined} title={account.displayName} subtitle={`${account.platform} · ${target?.name || "未指定默认工作区"} · ${state.detail}`} trailing={<Badge variant={state.variant}>{state.label}</Badge>} onClick={() => goToView("accounts", { account: account.id })} />;
+            return <Row key={account.id} icon={<RadioTower />} iconClass={state.variant === "ok" ? "bg-success-soft text-success" : state.variant === "warn" ? "bg-warning-soft text-warning" : undefined} title={account.displayName} subtitle={`${account.platform} · ${target?.name || "未指定默认工作区"} · ${state.detail}`} trailing={<Badge variant={state.variant}>{state.label}</Badge>} onClick={() => goToView("accounts", { account: account.id })} />;
           })}</div>}
         </Panel>
 
         <Panel>
           <PanelHead title="运行流水线" sub="连接、入站队列、工作区与回复状态。" action={<Button variant="ghost" size="sm" onClick={() => goToView("runtime")}><Activity />运行中心</Button>} />
           <div className="divide-y divide-line">
-            <Row icon={<Server />} iconClass={daemonOnline ? "bg-success/10 text-success" : "bg-warning-soft text-warning"} title="账号连接" subtitle={`${runtime?.feishuConnections ?? 0} 飞书 · ${runtime?.octoConnections ?? 0} Octo`} trailing={<Badge variant={daemonOnline ? "ok" : "warn"}>{daemonOnline ? "在线" : "离线"}</Badge>} />
+            <Row icon={<Server />} iconClass={daemonOnline ? "bg-success-soft text-success" : "bg-warning-soft text-warning"} title="账号连接" subtitle={`${runtime?.feishuConnections ?? 0} 飞书 · ${runtime?.octoConnections ?? 0} Octo`} trailing={<Badge variant={daemonOnline ? "ok" : "warn"}>{daemonOnline ? "在线" : "离线"}</Badge>} />
             <Row icon={<Route />} iconClass={(ingress?.queued ?? 0) > 0 ? "bg-warning-soft text-warning" : undefined} title="入站队列" subtitle={`${ingress?.completed ?? 0} 完成 · ${ingress?.duplicates ?? 0} 重复已拦截`} trailing={<Badge variant={(ingress?.failed ?? 0) > 0 ? "warn" : "mute"}>{ingress?.queued ?? 0} 排队</Badge>} />
             <Row icon={<Bot />} title="工作区调度" subtitle="同一真实目录默认串行，跨目录可并行" trailing={<Badge variant="info">{config.targets.length}</Badge>} />
             <Row icon={<MessageSquare />} title="回复与会话" subtitle={`${runtime?.replyOutbox.pending ?? 0} 条回复待发送 · ${runtime?.replyOutbox.deadLetter ?? 0} 条死信`} trailing={<Badge variant={(runtime?.replyOutbox.deadLetter ?? 0) > 0 ? "warn" : "ok"}>{activeSessions.length} 活跃</Badge>} />
@@ -131,7 +131,7 @@ export function V3OverviewView({ goToView }: ChannelConnectorsViewProps) {
         <PanelHead title="最近会话事件" sub="优先暴露失败与备用路径，便于定位接入链路。" action={<Button variant="ghost" size="sm" onClick={() => goToView("sessions")}><MessageSquare />全部会话</Button>} />
         {recentEvents.length === 0 ? <div className="p-4"><EmptyState title="尚无会话事件" description="发送第一条真实消息后，这里会显示解析与执行结果。" /></div> : <div className="divide-y divide-line">{recentEvents.map((event, index) => {
           const failed = Boolean(event.error || event.type === "turn.failed" || event.type === "turn.fallback");
-          return <Row key={`${event.checkedAt}:${event.type}:${index}`} icon={failed ? <TriangleAlert /> : <CheckCircle2 />} iconClass={failed ? "bg-warning-soft text-warning" : "bg-success/10 text-success"} title={eventTitle(event.type)} subtitle={`${event.agent} · ${event.bindingId} · ${event.error || event.reason || formatTime(event.checkedAt)}`} trailing={<Badge variant={failed ? "warn" : "mute"}>{formatTime(event.checkedAt)}</Badge>} />;
+          return <Row key={`${event.checkedAt}:${event.type}:${index}`} icon={failed ? <TriangleAlert /> : <CheckCircle2 />} iconClass={failed ? "bg-warning-soft text-warning" : "bg-success-soft text-success"} title={eventTitle(event.type)} subtitle={`${event.agent} · ${event.bindingId} · ${event.error || event.reason || formatTime(event.checkedAt)}`} trailing={<Badge variant={failed ? "warn" : "mute"}>{formatTime(event.checkedAt)}</Badge>} />;
         })}</div>}
       </Panel>
     </div>

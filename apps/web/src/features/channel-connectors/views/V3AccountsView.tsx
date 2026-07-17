@@ -41,6 +41,7 @@ import {
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
 
 import {
   useApplyChannelConnectorsV3ConfigMutation,
@@ -359,7 +360,7 @@ function FeishuAuthorization({
           </div>
         </div>
       )}
-      {registration?.error && <p className="rounded-sm border border-warning/40 bg-warning-soft p-2 text-sm text-warning">{registration.error}</p>}
+      {registration?.error && <p className="rounded-sm border border-warning-line bg-warning-soft p-2 text-sm text-warning">{registration.error}</p>}
     </div>
   );
 }
@@ -569,7 +570,7 @@ function AccountEditor({
 
           <section className="grid gap-3 border-t border-line pt-4">
             <div><h3 className="font-semibold text-ink-strong">默认投递</h3><p className="text-sm text-subtle">未命中来源例外的全部消息都会进入这个 Agent 工作区。</p></div>
-            {targets.length === 0 ? <div className="rounded-sm border border-warning/40 bg-warning-soft p-3 text-sm text-warning">尚无 Agent 工作区。请先创建工作区，再启用账号。</div> : (
+            {targets.length === 0 ? <div className="rounded-sm border border-warning-line bg-warning-soft p-3 text-sm text-warning">尚无 Agent 工作区。请先创建工作区，再启用账号。</div> : (
               <div className="grid gap-3 sm:grid-cols-2">
                 <FormField label="默认 Agent 工作区"><SelectInput value={draftPolicy.defaultTargetRef} onChange={(event) => setDraftPolicy((current) => ({ ...current, defaultTargetRef: event.target.value }))}>{targets.map((target) => <option key={target.id} value={target.id}>{target.name} · {target.runtime.agent}</option>)}</SelectInput></FormField>
                 <div className="rounded-sm border border-line bg-panel p-3 text-sm"><div className="flex items-center gap-2 text-ink-strong"><Bot className="size-4 text-primary" />{defaultTarget?.name || "未选择"}</div><p className="mt-1 truncate text-xs text-muted" title={defaultTarget?.workspace.workDir}>{defaultTarget?.workspace.workDir || "—"}</p></div>
@@ -595,7 +596,7 @@ function AccountEditor({
           <section className="grid gap-3 border-t border-line pt-4">
             <div><h3 className="font-semibold text-ink-strong">分发预览</h3><p className="text-sm text-subtle">输入一个来源，查看最终工作区、命中规则和访问决策。</p></div>
             <div className="grid gap-3 sm:grid-cols-4"><FormField label="来源类型"><SelectInput value={previewPeerKind} onChange={(event) => setPreviewPeerKind(event.target.value as ChannelConnectorDeliveryPeerKind)}><option value="private">私聊</option><option value="group">群聊</option><option value="channel">频道</option></SelectInput></FormField><FormField label="来源 ID"><Input value={previewPeerId} onChange={(event) => setPreviewPeerId(event.target.value)} /></FormField><FormField label="发送者"><Input value={previewSender} onChange={(event) => setPreviewSender(event.target.value)} /></FormField><div className="flex items-end"><Button type="button" variant="outline" className="w-full" disabled={preview.isPending || !targets.length} onClick={runPreview}><Route />模拟解析</Button></div></div>
-            {previewResult && <div className={`rounded-sm border p-3 text-sm ${previewResult.ok ? "border-success/30 bg-success/10 text-success" : "border-warning/40 bg-warning-soft text-warning"}`}>{previewResult.ok ? <>最终投递到 <strong>{targets.find((target) => target.id === previewResult.resolution.targetId)?.name || previewResult.resolution.targetId}</strong>；{previewResult.resolution.explanation}</> : previewResult.message}</div>}
+            {previewResult && <div className={`rounded-sm border p-3 text-sm ${previewResult.ok ? "border-success-line bg-success-soft text-success" : "border-warning-line bg-warning-soft text-warning"}`}>{previewResult.ok ? <>最终投递到 <strong>{targets.find((target) => target.id === previewResult.resolution.targetId)?.name || previewResult.resolution.targetId}</strong>；{previewResult.resolution.explanation}</> : previewResult.message}</div>}
           </section>
 
           <section className="grid gap-3 border-t border-line pt-4">
@@ -690,8 +691,28 @@ export function V3AccountsView({ selectedAccount, goToView }: ChannelConnectorsV
   return (
     <div className="grid gap-[18px]">
       <div className="flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><h2 className="text-lg font-semibold text-ink-strong">渠道账号</h2><p className="text-sm text-muted">每个账号只有一个默认 Agent 工作区；特殊来源通过账号内的例外规则分发。</p></div><Input className="w-full sm:w-72" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索平台 / 账号 / bot" /><Button variant="primary" size="sm" onClick={startCreate}><Plus />新建渠道账号</Button></div>
-      <dl className="grid grid-cols-2 overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-4"><div className="border-b border-r border-line p-3 sm:border-b-0"><dt className="text-xs text-subtle">渠道账号</dt><dd className="text-xl font-semibold text-ink-strong">{config.accounts.length}</dd></div><div className="border-b border-line p-3 sm:border-b-0 sm:border-r"><dt className="text-xs text-subtle">已启用</dt><dd className="text-xl font-semibold text-ink-strong">{enabledCount}</dd></div><div className="border-r border-line p-3"><dt className="text-xs text-subtle">来源例外</dt><dd className="text-xl font-semibold text-ink-strong">{config.deliveryPolicies.reduce((sum, policy) => sum + policy.rules.length, 0)}</dd></div><div className="p-3"><dt className="text-xs text-subtle">需关注</dt><dd className="text-xl font-semibold text-ink-strong">{issueCount + (configQuery.data?.validationIssues.length ?? 0)}</dd></div></dl>
-      {filtered.length === 0 ? <EmptyState title="暂无渠道账号" description="创建飞书或 Octo 账号，并选择默认 Agent 工作区。" action={<Button variant="primary" size="sm" onClick={startCreate}><Plus />新建渠道账号</Button>} /> : (
+      <MetricRail>
+        <MetricTile label="渠道账号" value={config.accounts.length} hint={`${enabledCount} 个已启用`} icon={<RadioTower />} />
+        <MetricTile label="来源例外" value={config.deliveryPolicies.reduce((sum, policy) => sum + policy.rules.length, 0)} hint="默认投递之外的分发规则" icon={<Route />} />
+        <MetricTile label="Agent 工作区" value={config.targets.length} hint="可选默认投递目标" icon={<Bot />} />
+        <MetricTile label="需关注" value={issueCount + (configQuery.data?.validationIssues.length ?? 0)} tone={issueCount + (configQuery.data?.validationIssues.length ?? 0) > 0 ? "warn" : "default"} hint="连接或配置校验异常" icon={<Activity />} />
+      </MetricRail>
+      {config.accounts.length === 0 ? (
+        <EmptyState
+          icon={<RadioTower />}
+          title="尚未连接渠道账号"
+          description="连接飞书或 Octo 账号，把群聊与私聊消息投递到 Agent 工作区。"
+          action={config.targets.length === 0
+            ? <Button variant="primary" size="sm" onClick={() => goToView("workspaces")}><Bot />先创建 Agent 工作区</Button>
+            : <Button variant="primary" size="sm" onClick={startCreate}><Plus />新建渠道账号</Button>}
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="没有匹配的渠道账号"
+          description={`没有符合“${query.trim()}”的账号；调整搜索条件再试。`}
+          action={<Button variant="outline" size="sm" onClick={() => setQuery("")}>清除搜索</Button>}
+        />
+      ) : (
         <Table><TableHeader><TableRow><TableHead>渠道账号</TableHead><TableHead>默认工作区</TableHead><TableHead>来源例外</TableHead><TableHead>运行状态</TableHead><TableHead className="text-right">动作</TableHead></TableRow></TableHeader><TableBody>{filtered.map((account) => {
           const policy = policies.get(account.id); const target = policy ? targets.get(policy.defaultTargetRef) : null; const runtime = accountRuntimeState(account, statusQuery.data?.runtime);
           return <TableRow key={account.id}><TableCell data-label="渠道账号"><div className="flex items-center gap-3"><span className="grid size-8 place-items-center rounded-sm bg-panel-3 text-muted"><RadioTower className="size-4" /></span><span className="grid min-w-0"><strong className="truncate text-ink-strong">{account.displayName}</strong><span className="truncate text-xs text-muted">{account.platform} · {account.externalAccountId || account.id}</span></span></div></TableCell><TableCell data-label="默认工作区">{target ? <button type="button" className="text-left" onClick={() => goToView("workspaces", { target: target.id })}><span className="text-sm font-medium text-ink-strong hover:text-primary">{target.name}</span><span className="block max-w-64 truncate text-xs text-muted">{target.workspace.workDir}</span></button> : <Badge variant="warn">未配置</Badge>}</TableCell><TableCell data-label="来源例外"><Badge variant={policy?.rules.length ? "info" : "mute"}>{policy?.rules.length || 0} 条</Badge></TableCell><TableCell data-label="运行状态"><Badge variant={runtime.variant} title={runtime.detail}>{runtime.label}</Badge></TableCell><TableCell data-label="动作"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="编辑账号" aria-label="编辑账号" onClick={() => setEditing(account)}><Pencil /></Button><Button variant="ghost" size="icon" title="打开运行中心" aria-label="打开运行中心" onClick={() => goToView("runtime", { account: account.id })}><Activity /></Button><Button variant="ghost" size="icon" className="text-danger" title="删除账号" aria-label="删除账号" onClick={() => setDeleteAccount(account)}><Trash2 /></Button></div></TableCell></TableRow>;

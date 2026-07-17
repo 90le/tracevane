@@ -25,26 +25,4 @@ export function registerConfigRoutes(router: TracevaneRouter, ctx: TracevaneApiC
     const payload = await parseJsonBody<ConfigPatchPayload>(req);
     sendJson(res, 200, routeCtx.services.config.patchConfig(payload));
   });
-
-  router.get('/api/config/providers/:providerId/secret', (_req, res, routeCtx, params) => {
-    try {
-      sendJson(res, 200, routeCtx.services.config.getProviderSecret(params.providerId));
-    } catch (error) {
-      sendJson(res, 404, {
-        error: 'provider_secret_not_found',
-        message: error instanceof Error ? error.message : 'Provider secret not found',
-      });
-    }
-  });
-
-  router.get('/api/config/channel-secret/:channelId/:accountId', (_req, res, routeCtx, params) => {
-    try {
-      sendJson(res, 200, routeCtx.services.config.getChannelSecret(params.channelId, params.accountId));
-    } catch (error) {
-      sendJson(res, 404, {
-        error: 'channel_secret_not_found',
-        message: error instanceof Error ? error.message : 'Channel secret not found',
-      });
-    }
-  });
 }

@@ -14,6 +14,7 @@ import {
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { Input } from "@/design/ui/input";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
 import { toast } from "@/design/ui/sonner";
 import {
   FILES_GLOBAL_SCOPE_ID,
@@ -321,7 +322,13 @@ function IndexOverviewStrip({
   health: ContentIndexHealth;
   busy: boolean;
 }) {
-  const cards = [
+  const cards: {
+    icon: typeof Database;
+    label: string;
+    value: React.ReactNode;
+    hint: string;
+    tone?: "default" | "ok" | "warn" | "bad";
+  }[] = [
     {
       icon: Database,
       label: "记录",
@@ -339,6 +346,12 @@ function IndexOverviewStrip({
       label: "状态",
       value: health.label,
       hint: busy ? "读取中" : health.description,
+      tone:
+        health.level === "healthy"
+          ? "ok"
+          : health.level === "stale" || health.level === "large-preview"
+            ? "warn"
+            : "default",
     },
     {
       icon: FileSearch,
@@ -360,22 +373,18 @@ function IndexOverviewStrip({
           </div>
         ))}
       </div>
-      <div className="hidden gap-px bg-line sm:grid sm:grid-cols-2 xl:grid-cols-4">
+      <MetricRail className="hidden px-3 py-2 sm:grid sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <div key={card.label} className="min-w-0 bg-panel px-3 py-2">
-            <div className="flex items-center gap-2 text-2xs font-medium uppercase tracking-wide text-subtle">
-              <card.icon className="size-3.5" />
-              {card.label}
-            </div>
-            <div className="mt-1 truncate text-lg font-semibold text-ink-strong">
-              {card.value}
-            </div>
-            <div className="mt-0.5 truncate text-2xs text-muted" title={card.hint}>
-              {card.hint}
-            </div>
-          </div>
+          <MetricTile
+            key={card.label}
+            icon={<card.icon className="size-4" />}
+            label={card.label}
+            value={card.value}
+            hint={card.hint}
+            tone={card.tone}
+          />
         ))}
-      </div>
+      </MetricRail>
     </div>
   );
 }
@@ -613,7 +622,7 @@ function IndexRecordRow({
         className={cn(
           "w-fit rounded-full px-2 py-0.5",
           record.status === "valid"
-            ? "bg-success/10 text-success"
+            ? "bg-success-soft text-success"
             : "bg-warning-soft text-warning",
         )}
       >

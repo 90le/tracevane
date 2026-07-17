@@ -9,13 +9,11 @@ This file applies under `apps/web/src/features/file-manager/`.
 - Mini Explorer, when implemented, is a lightweight navigation aid inside File Surface. It is not IDE Explorer.
 - Do not add ActivityBar, Dockview workbench layout, project terminal, Git, LSP, Debug, Problems or Output to this feature area.
 
-## Required docs before changes
+## Contracts to check before changes
 
-- `docs/ide-code-editor-solution/03-文件管理器在线编辑器方案.md`
-- `docs/ide-code-editor-solution/10-monaco-first-online-editor-strategy.md`
-- `docs/ide-code-editor-solution/12-file-surface-unification-and-monaco-gap-plan.md`
-- For Mini Explorer work: `docs/ide-code-editor-solution/13-mini-explorer-shared-explorer-plan.md`
-- For theme work: `docs/ide-code-editor-solution/14-视觉主题与设计系统适配.md`
+- `types/files.ts` for the shared file API contracts.
+- `apps/web/src/shared/editor-core/AGENTS.md` for editor-core boundaries.
+- `apps/web/src/design/theme.css` tokens for theme work.
 
 ## Implementation rules
 

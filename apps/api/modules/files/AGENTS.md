@@ -6,11 +6,10 @@ This file applies under `apps/api/modules/files/`.
 
 The Files API is the trusted backend boundary for File Manager, File Surface, Mini Explorer and future IDE Explorer. Frontend code must send root/workspace ids plus relative paths; this module must enforce root guards and permissions.
 
-## Required docs before changes
+## Contracts to check before changes
 
-- `docs/ide-code-editor-solution/06-后端服务与接口方案.md`
-- `docs/ide-code-editor-solution/03-文件管理器在线编辑器方案.md`
-- `docs/ide-code-editor-solution/13-mini-explorer-shared-explorer-plan.md` for tree/explorer behavior
+- `types/files.ts` for the shared request/response contracts.
+- `apps/web/src/features/file-manager/AGENTS.md` for the frontend consumer boundaries.
 
 ## Implementation rules
 

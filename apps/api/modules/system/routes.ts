@@ -11,25 +11,6 @@ export function registerSystemRoutes(
   router: TracevaneRouter,
   ctx: TracevaneApiContext,
 ): void {
-  function readLimit(
-    req: Parameters<TracevaneRouter["get"]>[1] extends (
-      req: infer R,
-      ...args: any[]
-    ) => any
-      ? R
-      : any,
-  ): number {
-    const requestUrl = new URL(
-      req.url || "/",
-      `http://${req.headers.host || "127.0.0.1"}`,
-    );
-    const raw = Number(requestUrl.searchParams.get("limit") || 100);
-    if (!Number.isFinite(raw) || raw <= 0) {
-      return 100;
-    }
-    return Math.floor(raw);
-  }
-
   router.get("/api/system/health", async (_req, res, routeCtx) => {
     sendJson(res, 200, await routeCtx.services.system.getHealth());
   });
@@ -116,20 +97,4 @@ export function registerSystemRoutes(
       );
     },
   );
-
-  router.get("/api/system/events", async (req, res, routeCtx) => {
-    sendJson(
-      res,
-      200,
-      await routeCtx.services.system.listEvents(readLimit(req)),
-    );
-  });
-
-  router.get("/api/system/events/summary", async (req, res, routeCtx) => {
-    sendJson(
-      res,
-      200,
-      await routeCtx.services.system.getEventSummary(readLimit(req)),
-    );
-  });
 }

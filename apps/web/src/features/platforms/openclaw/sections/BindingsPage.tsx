@@ -5,8 +5,10 @@ import { ConfirmDialog } from "@/design/ui/action-dialog";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/design/ui/sheet";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { Skeleton } from "@/shared/states/Skeleton";
+import { LoadingState } from "@/shared/states/LoadingState";
 import {
   useChannelsSummaryQuery,
   useCreateChannelBindingMutation,
@@ -15,6 +17,7 @@ import {
 } from "@/lib/query/channels";
 import type { ChannelBindingInput, ChannelBindingSummary } from "../../../../../../../types/channels";
 import {
+  Panel,
   PanelHead,
   RefreshButton,
   ResponsiveTable,
@@ -24,7 +27,6 @@ import {
   WorkbenchToolbar,
   useSelectedKey,
 } from "../components";
-import { StatTile } from "../../_shared";
 
 interface BindingDraft {
   type: "agent" | "acp";
@@ -181,7 +183,7 @@ export function BindingsPage() {
   const [deleteTarget, setDeleteTarget] = React.useState<ChannelBindingSummary | null>(null);
   const accountOptionsForDraft = (channels.data?.channels.find((channel) => channel.type === draft.channel)?.accounts ?? []).map((account) => account.id);
 
-  if (channels.isLoading) return <div className="grid gap-[18px]" role="status" aria-busy="true"><Skeleton className="h-[118px] w-full" /><Skeleton className="h-[260px] w-full" /></div>;
+  if (channels.isLoading) return <LoadingState title="正在加载 OpenClaw 原生绑定…" />;
   if (channels.error) return <ErrorState title="无法加载 OpenClaw 原生绑定" description={channels.error.message} />;
 
   const openEditor = (nextMode: "edit" | "new", binding?: ChannelBindingSummary) => { setMode(nextMode); setDraft(nextMode === "new" ? { ...emptyDraft, channel: channels.data?.channels[0]?.type ?? "", agentId: channels.data?.agents[0]?.id ?? "main" } : draftFromBinding(binding)); setEditorOpen(true); };
@@ -218,26 +220,47 @@ export function BindingsPage() {
       onError: (error) => toast.error("保存失败", { description: error.message }),
     });
   };
-  return <div className="grid gap-[18px]">
-    <section className="rounded-md border border-line bg-panel shadow-sm">
-      <WorkbenchToolbar title="OpenClaw 原生绑定" description="这里配置 Bot / Account 到 Agent 或 ACP 的 OpenClaw 原生路由关系；编辑在抽屉完成，不使用左右分栏。">
-        <SearchBox value={query} onChange={setQuery} placeholder="搜索 OpenClaw binding / agent" />
-        <Button size="sm" onClick={() => openEditor("new")}><Plus className="size-4" />新增绑定</Button>
-        <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
-        <Badge variant="info">可编辑</Badge>
-      </WorkbenchToolbar>
-      <div className="grid gap-3 p-3">
-        <div className="grid gap-3 md:grid-cols-4">
-          <StatTile label="原生绑定" value={bindings.length} sub="OpenClaw 静态绑定" />
-          <StatTile label="可选 Agent" value={channels.data?.agents.length ?? 0} sub="来自 OpenClaw 配置" />
-          <StatTile label="涉及频道" value={new Set(bindings.map((binding) => binding.channel)).size} sub="按 Channel 去重" />
-          <StatTile label="当前选择" value={selected?.accountId ?? "default"} sub={selected?.channel ?? "—"} />
-        </div>
-        <ResponsiveTable columns={["Bot 匹配", "OpenClaw 目标", "匹配范围", "状态", "操作"]} rows={filtered.map((binding) => <SelectableRow key={binding.id} id={binding.id} selected={selectedKey === binding.id} onSelect={setSelectedKey}><td className="max-w-[360px] truncate px-4 py-3"><div className="font-medium text-ink-strong">{binding.channel} · {binding.accountId ?? "default Bot"}</div><div className="truncate text-xs text-muted">Bot / Account 路由</div></td><td className="max-w-[260px] truncate px-4 py-3 text-muted">{binding.type === "acp" ? "ACP" : "Agent"} → {binding.agentId}</td><td className="max-w-[260px] truncate px-4 py-3 text-muted">{binding.match.peerKind ? `${binding.match.peerKind}${binding.match.peerId ? ` / ${binding.match.peerId}` : ""}` : "任意会话"}</td><td className="px-4 py-3"><StatusPill tone={binding.type === "acp" ? "warn" : "ok"}>{binding.type === "acp" ? "ACP" : "Agent"}</StatusPill></td><td className="px-4 py-3"><div className="flex gap-2"><Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); openEditor("edit", binding); }}><Pencil className="size-4" />编辑</Button><Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setDeleteTarget(binding); }}><Trash2 className="size-4" />删除</Button></div></td></SelectableRow>)} empty="无匹配绑定" />
-        {selected ? <div className="rounded-sm border border-line bg-panel-2 px-4 py-3 text-sm text-muted"><strong className="text-ink-strong">当前规则：</strong>{selected.channel} / {selected.accountId ?? "default Bot"} → {selected.type === "acp" ? "ACP" : "Agent"} {selected.agentId}；匹配 {selected.match.peerKind ?? "任意会话"}{selected.match.peerId ? ` / ${selected.match.peerId}` : ""}</div> : null}
-      </div>
-    </section>
+  const acpCount = bindings.filter((binding) => binding.type === "acp").length;
+  return (
+    <div className="grid gap-[18px]">
+      <MetricRail>
+        <MetricTile label="原生绑定" value={bindings.length} hint="OpenClaw 静态绑定" />
+        <MetricTile label="可选 Agent" value={channels.data?.agents.length ?? 0} hint="来自 OpenClaw 配置" />
+        <MetricTile label="涉及频道" value={new Set(bindings.map((binding) => binding.channel)).size} hint="按 Channel 去重" />
+        <MetricTile label="ACP 绑定" value={acpCount} tone={acpCount > 0 ? "warn" : "default"} hint="外部 ACP 后端路由" />
+      </MetricRail>
+      <Panel>
+        <WorkbenchToolbar title="OpenClaw 原生绑定" description="这里配置 Bot / Account 到 Agent 或 ACP 的 OpenClaw 原生路由关系；编辑在抽屉完成，不使用左右分栏。">
+          <SearchBox value={query} onChange={setQuery} placeholder="搜索 OpenClaw binding / agent" />
+          <Button size="sm" onClick={() => openEditor("new")}><Plus className="size-4" />新增绑定</Button>
+          <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
+          <Badge variant="info">可编辑</Badge>
+        </WorkbenchToolbar>
+        <ResponsiveTable
+          columns={["Bot 匹配", "OpenClaw 目标", "匹配范围", "状态", "操作"]}
+          rows={filtered.map((binding) => (
+            <SelectableRow key={binding.id} id={binding.id} selected={selectedKey === binding.id} onSelect={setSelectedKey}>
+              <td className="max-w-[360px] truncate px-4 py-3">
+                <div className="font-medium text-ink-strong">{binding.channel} · {binding.accountId ?? "default Bot"}</div>
+                <div className="truncate text-xs text-muted">Bot / Account 路由</div>
+              </td>
+              <td className="max-w-[260px] truncate px-4 py-3 text-muted">{binding.type === "acp" ? "ACP" : "Agent"} → {binding.agentId}</td>
+              <td className="max-w-[260px] truncate px-4 py-3 text-muted">{binding.match.peerKind ? `${binding.match.peerKind}${binding.match.peerId ? ` / ${binding.match.peerId}` : ""}` : "任意会话"}</td>
+              <td className="px-4 py-3"><StatusPill tone={binding.type === "acp" ? "warn" : "ok"}>{binding.type === "acp" ? "ACP" : "Agent"}</StatusPill></td>
+              <td className="px-4 py-3">
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); openEditor("edit", binding); }}><Pencil className="size-4" />编辑</Button>
+                  <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setDeleteTarget(binding); }}><Trash2 className="size-4" />删除</Button>
+                </div>
+              </td>
+            </SelectableRow>
+          ))}
+          empty={bindings.length === 0 ? <EmptyState title="暂无 OpenClaw 原生绑定" description="新增一条 Bot / Account 到 Agent 或 ACP 的路由绑定。" action={<Button size="sm" onClick={() => openEditor("new")}><Plus className="size-4" />新增绑定</Button>} /> : "无匹配绑定"}
+        />
+        {selected ? <div className="border-t border-line bg-panel-2 px-4 py-2.5 text-sm text-muted"><strong className="text-ink-strong">当前规则：</strong>{selected.channel} / {selected.accountId ?? "default Bot"} → {selected.type === "acp" ? "ACP" : "Agent"} {selected.agentId}；匹配 {selected.match.peerKind ?? "任意会话"}{selected.match.peerId ? ` / ${selected.match.peerId}` : ""}</div> : null}
+      </Panel>
     <Sheet open={editorOpen} onOpenChange={setEditorOpen}><SheetContent className="w-[min(720px,94vw)]"><SheetHeader><div><SheetTitle>{mode === "new" ? "新增 OpenClaw 原生绑定" : `编辑 ${draft.channel || "绑定"}`}</SheetTitle><SheetDescription>绑定是 Bot/Account 到 Agent/ACP 的路由关系；不会修改 Tracevane IM 动态会话路由。</SheetDescription></div></SheetHeader><SheetBody><PanelHead title="匹配条件" sub="Channel + Account/Bot 是主要关系，peer/team/roles 用于更细粒度匹配。" /><div className="grid gap-3 sm:grid-cols-2"><SelectInput label="目标类型" value={draft.type} onChange={setType} options={[{ value: "agent", label: "Agent：路由到原生 Agent" }, { value: "acp", label: "ACP：路由到外部 ACP 后端" }]} /><SelectInput label="Channel" value={draft.channel} onChange={setField("channel")} options={[...new Set([draft.channel, ...channelOptions].filter(Boolean))].map((value) => ({ value, label: value }))} /><SelectInput label="Agent" value={draft.agentId} onChange={setField("agentId")} options={[...agentSelectOptions, ...(!agentSelectOptions.some((option) => option.value === draft.agentId) && draft.agentId ? [{ value: draft.agentId, label: draft.agentId }] : []), ...(!agentSelectOptions.some((option) => option.value === "main") ? [{ value: "main", label: "main" }] : [])]} /><SelectInput label="Bot / Account ID" value={draft.accountId} onChange={setField("accountId")} options={[{ value: "", label: "default Bot（默认）" }, ...accountOptionsForDraft.map((value) => ({ value, label: value }))]} /><SelectInput label="Peer 类型" value={draft.peerKind} onChange={setField("peerKind")} options={[{ value: "", label: "任意会话" }, { value: "dm", label: "私聊" }, { value: "group", label: "群聊" }, { value: "channel", label: "频道" }, { value: "thread", label: "线程" }]} /><TextInput label="Peer ID" value={draft.peerId} onChange={setField("peerId")} placeholder="精确匹配时填写" /><TextInput label="Guild / 群组 ID" value={draft.guildId} onChange={setField("guildId")} /><TextInput label="Team ID" value={draft.teamId} onChange={setField("teamId")} /></div><PanelHead title="ACP 与备注" sub="普通 Agent 绑定可忽略 ACP 字段。" /><div className="grid gap-3 sm:grid-cols-2"><TextInput label="ACP 后端" value={draft.acpBackend} onChange={setField("acpBackend")} placeholder="仅 ACP 类型使用" /><TextInput label="ACP 模式" value={draft.acpMode} onChange={setField("acpMode")} placeholder="可选" /><TextInput label="ACP 标签" value={draft.acpLabel} onChange={setField("acpLabel")} placeholder="可选" /><TextInput label="ACP 工作目录" value={draft.acpCwd} onChange={setField("acpCwd")} placeholder="可选" /><TextArea label="角色匹配" value={draft.roles} onChange={setField("roles")} placeholder="一行一个角色，或使用英文逗号分隔" /><TextArea label="备注" value={draft.comment} onChange={setField("comment")} placeholder="写给维护者看的 OpenClaw 原生规则说明" /></div></SheetBody><SheetFooter><Button onClick={save} disabled={createBinding.isPending || updateBinding.isPending}>{mode === "new" ? "新增" : "保存"}</Button><Button variant="outline" onClick={() => setEditorOpen(false)}>取消</Button></SheetFooter></SheetContent></Sheet>
     <ConfirmDialog open={Boolean(deleteTarget)} title="删除 OpenClaw 原生绑定" description={deleteTarget ? `删除 ${deleteTarget.id}。这会移除该 Bot / Account 到 Agent 或 ACP 的路由关系。` : undefined} icon={<Trash2 />} tone="danger" confirmLabel="删除" contentDataAttr="openclaw-binding-delete" onCancel={() => setDeleteTarget(null)} onConfirm={() => { if (!deleteTarget) return; const target = deleteTarget; setDeleteTarget(null); deleteBinding.mutate(target.id, { onSuccess: () => { toast.success("OpenClaw 原生绑定已删除"); void channels.refetch(); }, onError: (error) => toast.error("删除失败", { description: error.message }) }); }} />
-  </div>;
+    </div>
+  );
 }

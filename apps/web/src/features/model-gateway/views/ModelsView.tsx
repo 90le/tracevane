@@ -13,6 +13,7 @@ import {
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { PageHeader } from "@/design/ui/page-header";
 import { cn } from "@/design/lib/utils";
 import { Input } from "@/design/ui/input";
 import {
@@ -134,7 +135,6 @@ function buildCatalogUpdate(
 }
 
 export function ModelsView({ goToView }: ModelGatewayViewProps) {
-  void goToView;
   const providersQuery = useModelGatewayProvidersQuery();
   const updateMutation = useUpdateModelGatewayProviderMutation();
 
@@ -248,31 +248,33 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
 
   return (
     <div className="grid gap-4">
-      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
-        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel))] p-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.45fr)] lg:items-start">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="ok">{enabledProviderCount} 个 Provider 启用</Badge>
-              <Badge variant="outline">{defaultModelCount} 个默认模型</Badge>
-            </div>
-            <h2 className="mt-2 text-2xl font-semibold text-ink-strong">模型目录</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-              已启用 Provider 暴露的模型、alias、上下文预算和能力声明。这里维护的是路由目录，不做虚构模型能力。
-            </p>
-          </div>
-          {allRows.length > 0 && (
+      <PageHeader
+        className="px-0"
+        title="模型目录"
+        description="已启用 Provider 暴露的模型、alias、上下文预算和能力声明。这里维护的是路由目录，不做虚构模型能力。"
+        meta={
+          <>
+            <Badge variant="ok">{enabledProviderCount} 个 Provider 启用</Badge>
+            <Badge variant="outline">{defaultModelCount} 个默认模型</Badge>
+          </>
+        }
+        actions={
+          allRows.length > 0 ? (
             <div className="relative min-w-0">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-subtle" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="搜索模型 id / alias / Provider"
-                className="pl-8"
+                className="pl-8 sm:w-72"
                 aria-label="搜索模型"
               />
             </div>
-          )}
-        </div>
+          ) : undefined
+        }
+      />
+
+      <section className="rounded-md border border-line bg-panel shadow-sm">
         <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
           <GatewayMetricCard
             icon={<Box />}
@@ -321,6 +323,11 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
         <EmptyState
           title="尚无模型"
           description="启用的 Provider 还没有配置任何模型，前往 Provider 配置补充模型目录。"
+          action={
+            <Button variant="outline" size="sm" onClick={() => goToView("providers")}>
+              前往 Provider 配置
+            </Button>
+          }
         />
       ) : rows.length === 0 ? (
         <EmptyState

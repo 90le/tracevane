@@ -178,7 +178,7 @@ export function CommandEvidence({
             <span
               className={cn(
                 "inline-flex items-center rounded-full px-[9px] py-[3px] text-xs font-semibold",
-                cmd.ok ? "bg-success/12 text-success" : "bg-danger-soft text-danger",
+                cmd.ok ? "bg-success-soft text-success" : "bg-danger-soft text-danger",
               )}
             >
               {cmd.ok ? "成功" : "失败"}

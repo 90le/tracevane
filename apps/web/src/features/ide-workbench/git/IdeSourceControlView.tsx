@@ -10,6 +10,7 @@ import { applyGitStash, checkoutBranch, commitFiles, createBranch, deleteBranch,
 import { EmptyState } from "@/shared/states/EmptyState";
 import { LoadingState } from "@/shared/states/LoadingState";
 import { appendWorkbenchOutput } from "../output";
+import { SidebarViewHeader } from "../panelHeader";
 import type { GitBlamePayload, GitCommitDetailPayload, GitGraphPayload, GitStashEntry } from "../../../../../../types/git";
 import { labelForGitKind, toneForGitKind, type IdeGitDecoratedChange, type IdeGitDecorationSnapshot } from "./gitDecorations";
 
@@ -723,21 +724,19 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
   if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
   return (
     <aside className="grid h-full max-h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r border-line bg-panel" data-ide-sidebar data-ide-source-control-view>
-      <div className="border-b border-line bg-panel px-2.5 py-2" data-ide-source-control-toolbar>
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="grid size-7 shrink-0 place-items-center rounded-sm border border-primary-line bg-primary-soft text-primary">
-            <GitBranch className="size-4" aria-hidden />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-ink-strong">源代码管理</div>
-            <div className="truncate text-xs text-subtle">{rootLabel || "工作区 Git"}</div>
-          </div>
-          <Button variant="ghost" size="icon" onClick={git.refresh} aria-label="刷新 Git 状态" title="刷新 Git 状态" data-ide-source-control-refresh>
-            {git.loading ? <Loader2 className="animate-spin" /> : <RefreshCcw />}
-          </Button>
-        </div>
+      <div className="border-b border-line bg-panel pb-2" data-ide-source-control-toolbar>
+        <SidebarViewHeader
+          icon={<GitBranch />}
+          title="源代码管理"
+          subtitle={rootLabel || "工作区 Git"}
+          actions={(
+            <Button variant="ghost" size="icon" className="size-7" onClick={git.refresh} aria-label="刷新 Git 状态" title="刷新 Git 状态" data-ide-source-control-refresh>
+              {git.loading ? <Loader2 className="animate-spin" /> : <RefreshCcw />}
+            </Button>
+          )}
+        />
         {!status?.available && (git.error || status?.message) ? (
-          <div className="mt-2 truncate px-1 text-xs text-danger" data-ide-source-control-summary>
+          <div className="mx-2.5 truncate rounded-sm border border-danger-line bg-danger-soft px-2 py-1 text-xs text-danger" data-ide-source-control-summary>
             {git.error || status?.message}
           </div>
         ) : null}

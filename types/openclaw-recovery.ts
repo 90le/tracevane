@@ -112,7 +112,6 @@ export interface OpenClawRecoveryCommand {
   args: string[];
 }
 
-export type OpenClawRecoveryDaemonServiceCommand = OpenClawRecoveryCommand;
 
 export interface OpenClawRecoveryCommandSnapshot
   extends OpenClawRecoveryCommand {

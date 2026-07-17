@@ -257,7 +257,7 @@ export function IssuesView() {
         <div className="grid gap-3 p-4">
           {/* Safe: probe — directly executable. */}
           <div className="flex flex-wrap items-center gap-3 rounded-sm border border-line bg-panel-2 p-3">
-            <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-success/12 text-success [&_svg]:size-4">
+            <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-success-soft text-success [&_svg]:size-4">
               <ScanSearch />
             </span>
             <div className="min-w-0 flex-1">
@@ -295,7 +295,7 @@ export function IssuesView() {
             return (
               <div
                 key={action}
-                className="flex flex-wrap items-center gap-3 rounded-sm border border-warning/40 bg-warning-soft p-3"
+                className="flex flex-wrap items-center gap-3 rounded-sm border border-warning-line bg-warning-soft p-3"
               >
                 <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel text-warning [&_svg]:size-4">
                   <MetaIcon />

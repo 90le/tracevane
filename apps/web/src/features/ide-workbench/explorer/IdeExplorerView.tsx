@@ -19,8 +19,9 @@ import {
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
-import { ActionDialog, TextInputDialog } from "@/design/ui/action-dialog";
+import { TextInputDialog } from "@/design/ui/action-dialog";
 import { Button } from "@/design/ui/button";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/design/ui/dialog";
 import { Input } from "@/design/ui/input";
 import { toast } from "@/design/ui/sonner";
 import { UploadManagerDialog } from "@/features/file-manager/file-tools/UploadManagerDialog";
@@ -256,6 +257,12 @@ export function IdeExplorerView({
   }, [directory.location.directoryPath]);
 
   const activeUpload = uploadJobs.some((job) => job.status === "preparing" || job.status === "uploading");
+
+  const openUploadDialogForCurrentDirectory = React.useCallback(() => {
+    uploadTargetDirectoryRef.current = directory.location.directoryPath;
+    setUploadDialog({ open: true, targetDirectory: directory.location.directoryPath, files: [], conflictPolicy: "rename" });
+    setUploadJobs([]);
+  }, [directory.location.directoryPath]);
 
   const startUpload = React.useCallback(async () => {
     if (!rootId || uploadDialog.files.length === 0 || activeUpload) return;
@@ -673,7 +680,7 @@ export function IdeExplorerView({
       }}
       onDrop={(event) => handleExplorerDrop(event, directory.location.directoryPath)}
     >
-      <div className="relative border-b border-line bg-panel px-2.5 py-2" data-ide-explorer-toolbar>
+      <div className="border-b border-line bg-panel" data-ide-explorer-toolbar>
         <input
           ref={fileInputRef}
           type="file"
@@ -697,36 +704,34 @@ export function IdeExplorerView({
           {...{ webkitdirectory: "", directory: "" }}
           data-ide-explorer-folder-upload-input
         />
-        <div className="min-w-0 pr-24 sm:pr-32">
-          <div className="truncate text-sm font-semibold text-ink-strong">资源管理器</div>
-          <div className="truncate text-xs text-subtle">{rootLabel || "Workspace Explorer"}</div>
-        </div>
-        <div className="absolute right-2 top-2 flex max-w-[calc(100%-1rem)] items-center gap-1 overflow-x-auto rounded-md bg-panel/95 opacity-100 shadow-sm transition-opacity [scrollbar-width:none] sm:opacity-0 group-hover/ide-explorer:opacity-100 group-focus-within/ide-explorer:opacity-100 [&::-webkit-scrollbar]:hidden">
-          <ExplorerToolbarIconButton
-            label="新建文件"
-            onClick={() => setFlow({ kind: "new-file", directoryPath: directory.location.directoryPath })}
-          >
-            <FilePlus2 />
-          </ExplorerToolbarIconButton>
-          <ExplorerToolbarIconButton
-            label="新建目录"
-            onClick={() => setFlow({ kind: "new-directory", directoryPath: directory.location.directoryPath })}
-          >
-            <FolderPlus />
-          </ExplorerToolbarIconButton>
-          <ExplorerToolbarIconButton label="上传文件" onClick={() => {
-            uploadTargetDirectoryRef.current = directory.location.directoryPath;
-            setUploadDialog({ open: true, targetDirectory: directory.location.directoryPath, files: [], conflictPolicy: "rename" });
-            setUploadJobs([]);
-          }} disabled={activeUpload}>
-            <Upload />
-          </ExplorerToolbarIconButton>
-          <ExplorerToolbarIconButton label="刷新" onClick={() => void refreshDirectory()}>
-            <RefreshCcw />
-          </ExplorerToolbarIconButton>
-          <ExplorerToolbarIconButton label="折叠所有文件夹" onClick={() => setExpandedKeys([])}>
-            <ListCollapse />
-          </ExplorerToolbarIconButton>
+        <div className="flex min-w-0 items-center gap-2 px-2.5 py-2">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold text-ink-strong">资源管理器</div>
+            <div className="truncate text-2xs text-subtle">{rootLabel || "Workspace Explorer"}</div>
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <ExplorerToolbarIconButton
+              label="新建文件"
+              onClick={() => setFlow({ kind: "new-file", directoryPath: directory.location.directoryPath })}
+            >
+              <FilePlus2 />
+            </ExplorerToolbarIconButton>
+            <ExplorerToolbarIconButton
+              label="新建目录"
+              onClick={() => setFlow({ kind: "new-directory", directoryPath: directory.location.directoryPath })}
+            >
+              <FolderPlus />
+            </ExplorerToolbarIconButton>
+            <ExplorerToolbarIconButton label="上传文件" onClick={openUploadDialogForCurrentDirectory} disabled={activeUpload}>
+              <Upload />
+            </ExplorerToolbarIconButton>
+            <ExplorerToolbarIconButton label="刷新" onClick={() => void refreshDirectory()}>
+              <RefreshCcw />
+            </ExplorerToolbarIconButton>
+            <ExplorerToolbarIconButton label="折叠所有文件夹" onClick={() => setExpandedKeys([])}>
+              <ListCollapse />
+            </ExplorerToolbarIconButton>
+          </div>
         </div>
       </div>
       <div
@@ -765,7 +770,24 @@ export function IdeExplorerView({
             }
           />
         ) : directory.entries.length === 0 ? (
-          <ExplorerEmptyState className="min-h-full" title="目录为空" description="当前工作区目录没有文件。" />
+          <ExplorerEmptyState
+            className="min-h-full"
+            title="目录为空"
+            description="当前目录还没有文件。可以新建文件或目录，或上传本地文件到这里。"
+            action={
+              <>
+                <Button type="button" size="sm" onClick={() => setFlow({ kind: "new-file", directoryPath: directory.location.directoryPath })}>
+                  新建文件
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setFlow({ kind: "new-directory", directoryPath: directory.location.directoryPath })}>
+                  新建目录
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={openUploadDialogForCurrentDirectory} disabled={activeUpload}>
+                  上传文件
+                </Button>
+              </>
+            }
+          />
         ) : (
           <div className="grid gap-0.5" role="tree" aria-label="IDE 资源管理器" data-ide-explorer-tree>
             {directory.entries.map((entry) => (
@@ -1425,23 +1447,27 @@ function DeleteDialog({
     }
   }
   return (
-    <ActionDialog
-      open
-      title="删除项目"
-      description={<span className="font-mono">{entry.path}</span>}
-      icon={<Trash2 />}
-      tone="danger"
-      contentDataAttr="explorer-delete"
-      onOpenChange={(open) => { if (!open && !busy) onCancel(); }}
-      footer={(
-        <>
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>取消</Button>
-          <Button variant="danger" size="sm" onClick={() => void submit()} disabled={busy || confirmText !== "DELETE"}>
-            {busy ? "处理中…" : permanent ? "永久删除" : "移入回收站"}
-          </Button>
-        </>
-      )}
-    >
+    <Dialog open onOpenChange={(open) => { if (!open && !busy) onCancel(); }}>
+      <DialogContent
+        showClose={false}
+        className="w-[min(560px,94vw)] max-w-none overflow-hidden rounded-xl p-0 shadow-2xl sm:rounded-2xl"
+        data-action-dialog="explorer-delete"
+        data-ide-explorer-delete-dialog
+      >
+        <DialogHeader className="items-start border-b border-line bg-panel-2/80 px-4 pb-3 pt-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-md border border-danger/30 bg-danger-soft text-danger [&_svg]:size-4">
+              <Trash2 />
+            </span>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="truncate text-base">删除项目</DialogTitle>
+              <DialogDescription className="mt-1 break-words text-sm leading-5">
+                <span className="font-mono">{entry.path}</span>
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+        <DialogBody className="grid gap-3 px-4 py-4 text-sm">
           <div className="rounded border border-danger/20 bg-danger-soft p-3 text-danger">
             <div className="font-semibold">危险操作</div>
             <div className="mt-1 text-xs">默认移入回收站；勾选永久删除才会直接从文件系统移除。</div>
@@ -1471,7 +1497,15 @@ function DeleteDialog({
             />
             <span><strong className="text-danger">永久删除</strong>：跳过回收站。</span>
           </label>
-    </ActionDialog>
+        </DialogBody>
+        <DialogFooter className="border-t border-line bg-panel-2/80 px-4 py-3">
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>取消</Button>
+          <Button variant="danger" size="sm" onClick={() => void submit()} disabled={busy || confirmText !== "DELETE"}>
+            {busy ? "处理中…" : permanent ? "永久删除" : "移入回收站"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

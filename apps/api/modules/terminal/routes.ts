@@ -252,41 +252,6 @@ export function registerTerminalRoutes(
     sendJson(res, 200, await routeCtx.services.terminal.installCli(target));
   });
 
-  router.post("/api/terminal/install/stream", async (req, res, routeCtx) => {
-    const body = await parseJsonBody<{ cli?: TerminalInstallRequestId }>(req);
-    const target = body.cli || "all-missing";
-
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    res.flushHeaders?.();
-
-    try {
-      await routeCtx.services.terminal.streamInstallCli(
-        target,
-        async (event) => {
-          if (res.writableEnded) return;
-          res.write(`${JSON.stringify(event)}\n`);
-        },
-      );
-    } catch (error) {
-      if (!res.writableEnded) {
-        res.write(
-          `${JSON.stringify({
-            type: "error",
-            message:
-              error instanceof Error
-                ? error.message
-                : "terminal_install_failed",
-          })}\n`,
-        );
-      }
-    } finally {
-      res.end();
-    }
-  });
-
   router.post("/api/terminal/end", async (req, res, routeCtx) => {
     const body = await parseJsonBody<TerminalEndPayload>(req);
     sendJson(res, 200, await routeCtx.services.terminal.endSession(body));

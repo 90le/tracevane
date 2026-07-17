@@ -489,53 +489,6 @@ export function normalizeTracevaneDeliveryInput(raw: unknown): TracevaneDelivery
   return normalizeTracevaneDeliveryInputDetailed(raw).payload;
 }
 
-export function extractTracevaneDeliveryPayload(raw: unknown): TracevaneDeliveryResult | null {
-  if (!raw || typeof raw !== 'object') {
-    return null;
-  }
-  const record = raw as Record<string, unknown>;
-  if (record.type !== 'tracevane_delivery') {
-    return null;
-  }
-  const version = normalizeVersion(record.version);
-  if (!version) {
-    return null;
-  }
-  return normalizeTracevaneDeliveryInput(record);
-}
-
-export function summarizeTracevaneDeliveryText(payload: Pick<TracevaneDeliveryResult, 'blocks' | 'resources'>): string {
-  const resourceMap = new Map(payload.resources.map((resource) => [resource.id, resource] as const));
-  const lines: string[] = [];
-
-  for (const block of payload.blocks) {
-    if (block.type === 'text') {
-      const text = block.text.trim();
-      if (text) {
-        lines.push(text);
-      }
-      continue;
-    }
-
-    if (block.type === 'paragraph') {
-      const summary = block.segments
-        .map((segment) => {
-          if (segment.type === 'text') {
-            return segment.text;
-          }
-          return resourceMap.get(segment.resourceId)?.fileName || '';
-        })
-        .join('')
-        .trim();
-      if (summary) {
-        lines.push(summary);
-      }
-    }
-  }
-
-  return lines.join('\n');
-}
-
 export const TRACEVANE_AGENT_CHAT_CHANNEL = 'agent-chat';
 export const TRACEVANE_LEGACY_WEBCHAT_CHANNEL = 'webchat';
 
@@ -564,12 +517,4 @@ export function isTracevaneManagedAgentChatSession(params: {
   const channel = normalizedMessageChannel ? normalizedMessageChannel.toLowerCase() : '';
   if (!channel) return true;
   return channel === expectedChannel || (expectedChannel === TRACEVANE_LEGACY_WEBCHAT_CHANNEL && channel === 'webchat');
-}
-
-/** @deprecated Use isTracevaneManagedAgentChatSession. Kept for legacy plugin/test callers. */
-export function isTracevaneManagedWebchatSession(params: {
-  sessionKey?: string | null;
-  messageChannel?: string | null;
-}): boolean {
-  return isTracevaneManagedAgentChatSession(params);
 }

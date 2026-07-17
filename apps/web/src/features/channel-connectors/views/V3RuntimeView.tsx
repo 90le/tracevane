@@ -6,6 +6,7 @@ import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
 import {
   useChannelConnectorsDaemonConfigQuery,
   useChannelConnectorsDaemonLogsQuery,
@@ -70,6 +71,8 @@ export function V3RuntimeView({ goToView, selectedAccount }: ChannelConnectorsVi
   const runtime = status?.runtime;
   const accounts = configQuery.data.config.accounts.map((account) => ({ account, state: connectionState(account, runtime) })).sort((left, right) => Number(right.account.id === selectedAccount) - Number(left.account.id === selectedAccount));
   const issues = accounts.filter(({ state }) => state.variant === "warn").length;
+  const enabledCount = accounts.filter(({ account }) => account.lifecycle === "enabled").length;
+  const receivingCount = accounts.filter(({ state }) => state.variant === "ok").length;
   const ingress = runtime?.ingressQueue;
   const reload = runtime?.reload;
   const lines = logsQuery.data?.lines ?? [];
@@ -83,11 +86,18 @@ export function V3RuntimeView({ goToView, selectedAccount }: ChannelConnectorsVi
         <Button variant="outline" size="sm" disabled={statusQuery.isFetching} onClick={() => { void statusQuery.refetch(); void logsQuery.refetch(); }}><RefreshCw className={statusQuery.isFetching ? "animate-spin" : undefined} />刷新</Button>
       </div>
 
+      <MetricRail>
+        <MetricTile label="接收中账号" value={`${receivingCount}/${enabledCount}`} hint="真实入站已验证 / 已启用" tone={issues > 0 ? "warn" : "default"} icon={<RadioTower />} />
+        <MetricTile label="入站排队" value={ingress?.queued ?? 0} hint={`${ingress?.duplicates ?? 0} 条重复事件已拦截`} tone={(ingress?.queued ?? 0) > 0 ? "warn" : "default"} icon={<Workflow />} />
+        <MetricTile label="回复待发送" value={runtime?.replyOutbox.pending ?? 0} hint={`${runtime?.replyOutbox.deadLetter ?? 0} 条死信`} tone={(runtime?.replyOutbox.deadLetter ?? 0) > 0 ? "warn" : "default"} icon={<MessageSquare />} />
+        <MetricTile label="待恢复任务" value={runtime?.pendingAgentRuns.count ?? 0} hint="进程中断后待恢复的 Agent 任务" tone={(runtime?.pendingAgentRuns.count ?? 0) > 0 ? "warn" : "default"} icon={<Clock3 />} />
+      </MetricRail>
+
       <Panel>
         <PanelHead title="账号连接" sub={issues ? `${issues} 个账号需要处理` : "启用账号按一账号一连接运行"} action={<Button variant="ghost" size="sm" onClick={() => goToView("accounts")}><RadioTower />渠道账号</Button>} />
         {accounts.length === 0 ? <div className="p-4"><EmptyState title="暂无渠道账号" description="创建账号后，这里会显示连接与真实入站状态。" /></div> : <div className="divide-y divide-line">{accounts.map(({ account, state }) => (
-          <div key={account.id} ref={account.id === selectedAccount ? selectedRef : undefined} className={account.id === selectedAccount ? "bg-primary-soft/40" : undefined}>
-            <Row icon={<RadioTower />} iconClass={state.variant === "ok" ? "bg-success/10 text-success" : state.variant === "warn" ? "bg-warning-soft text-warning" : undefined} title={account.displayName} subtitle={`${account.platform} · ${state.detail}${state.receivedAt ? ` · ${formatTime(state.receivedAt)}` : ""}`} subtitleClassName="whitespace-normal break-words" trailing={<Badge variant={state.variant}>{state.label}</Badge>} onClick={() => goToView("accounts", { account: account.id })} />
+          <div key={account.id} ref={account.id === selectedAccount ? selectedRef : undefined} className={account.id === selectedAccount ? "bg-primary-soft" : undefined}>
+            <Row icon={<RadioTower />} iconClass={state.variant === "ok" ? "bg-success-soft text-success" : state.variant === "warn" ? "bg-warning-soft text-warning" : undefined} title={account.displayName} subtitle={`${account.platform} · ${state.detail}${state.receivedAt ? ` · ${formatTime(state.receivedAt)}` : ""}`} subtitleClassName="whitespace-normal break-words" trailing={<Badge variant={state.variant}>{state.label}</Badge>} onClick={() => goToView("accounts", { account: account.id })} />
           </div>
         ))}</div>}
       </Panel>
@@ -129,7 +139,7 @@ export function V3RuntimeView({ goToView, selectedAccount }: ChannelConnectorsVi
         <PanelHead title="守护日志" sub={logsQuery.data?.logFile || "daemon log"} action={<div className="flex gap-2"><Button variant="ghost" size="sm" onClick={() => setShowRawLogs((value) => !value)}>{showRawLogs ? "收起原始日志" : "原始日志"}</Button><Button variant="outline" size="sm" onClick={() => void logsQuery.refetch()}><RefreshCw />刷新</Button></div>} />
         {lines.length === 0 ? <div className="p-4"><EmptyState title="暂无日志" description="守护进程尚未输出日志。" icon={<ScrollText />} /></div> : <div className="grid gap-3 p-3">
           <div className="grid gap-2 sm:grid-cols-3"><div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">日志行数</div><div className="text-lg font-semibold text-ink-strong">{lines.length}</div></div><div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">问题行</div><div className="text-lg font-semibold text-ink-strong">{lines.filter(isProblem).length}</div></div><div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">最新输出</div><div className="truncate text-sm text-muted">{truncate(lines.at(-1) || "—", 110)}</div></div></div>
-          {problemLines.map((line, index) => <code key={`${index}:${line}`} className="block max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-sm border border-warning/40 bg-warning-soft px-3 py-2 font-mono text-xs text-warning">{truncate(line)}</code>)}
+          {problemLines.map((line, index) => <code key={`${index}:${line}`} className="block max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-sm border border-warning-line bg-warning-soft px-3 py-2 font-mono text-xs text-warning">{truncate(line)}</code>)}
           {showRawLogs && <pre className="max-h-[min(52vh,520px)] overflow-auto whitespace-pre-wrap break-all rounded-sm border border-line bg-panel-2 p-3 font-mono text-xs text-muted">{lines.slice(-180).join("\n")}</pre>}
         </div>}
       </Panel>

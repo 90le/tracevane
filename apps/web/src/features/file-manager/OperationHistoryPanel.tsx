@@ -4,6 +4,7 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { Input } from "@/design/ui/input";
 import { toast } from "@/design/ui/sonner";
+import { EmptyState } from "@/shared/states/EmptyState";
 
 const OPERATION_HISTORY_STORAGE_KEY = "tracevane:file-manager:operation-history";
 export const MAX_OPERATION_RECORDS = 50;
@@ -46,45 +47,52 @@ export function OperationHistoryPanel({
     .slice(0, 20);
   const visibleSourceRecords = visibleRecords.length ? visibleRecords : records;
   const header = (
-    <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-3 py-2 text-xs" data-file-manager-operation-history-controls>
-      <span className="font-semibold text-ink-strong">操作结果</span>
-      <span className={cn(
-        "rounded-full px-2 py-0.5 font-medium",
-        latest.status === "success" && "bg-primary-soft text-primary",
-        latest.status === "partial" && "bg-warning/10 text-warning",
-        latest.status === "error" && "bg-danger/10 text-danger",
-      )}>
-        最近一次：{statusLabel}
-      </span>
-      <span className="text-muted">成功 {latest.successCount} / 失败 {latest.failureCount}</span>
-      <span className="rounded border border-line bg-panel px-2 py-1 text-subtle">总计 {operationStats.total} · 成功 {operationStats.success} · 部分 {operationStats.partial} · 失败 {operationStats.error}</span>
-      <span className="rounded border border-line bg-panel px-2 py-1 text-subtle">平均耗时 {formatDuration(operationStats.averageDurationMs)}</span>
-      <Input
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="搜索操作 / 路径 / 错误"
-        className="h-7 w-full min-w-44 max-w-72 text-xs md:w-64"
-        aria-label="搜索操作历史"
-      />
-      <div className="ml-auto inline-flex rounded border border-line bg-panel p-0.5">
-        {(["all", "success", "partial", "error"] as const).map((status) => (
-          <button
-            key={status}
-            type="button"
-            onClick={() => setStatusFilter(status)}
-            className={cn(
-              "rounded px-2 py-1 text-2xs text-muted hover:text-ink-strong",
-              statusFilter === status && "bg-primary-soft text-primary",
-            )}
-          >
-            {status === "all" ? "全部" : status === "success" ? "成功" : status === "partial" ? "部分" : "失败"}
-          </button>
-        ))}
+    <div className="grid gap-2 border-b border-line bg-panel-2 px-3 py-2 text-xs" data-file-manager-operation-history-controls>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-semibold text-ink-strong">操作结果</span>
+        <span className={cn(
+          "rounded-full px-2 py-0.5 font-medium",
+          latest.status === "success" && "bg-primary-soft text-primary",
+          latest.status === "partial" && "bg-warning-soft text-warning",
+          latest.status === "error" && "bg-danger-soft text-danger",
+        )}>
+          最近一次：{statusLabel}
+        </span>
+        <span className="text-muted">成功 {latest.successCount} / 失败 {latest.failureCount}</span>
+        <span className="min-w-0 truncate text-subtle">
+          总计 {operationStats.total} · 成功 {operationStats.success} · 部分 {operationStats.partial} · 失败 {operationStats.error} · 平均耗时 {formatDuration(operationStats.averageDurationMs)}
+        </span>
+        <div className="ml-auto inline-flex rounded border border-line bg-panel p-0.5">
+          {(["all", "success", "partial", "error"] as const).map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setStatusFilter(status)}
+              className={cn(
+                "rounded px-2 py-1 text-2xs text-muted hover:text-ink-strong",
+                statusFilter === status && "bg-primary-soft text-primary",
+              )}
+            >
+              {status === "all" ? "全部" : status === "success" ? "成功" : status === "partial" ? "部分" : "失败"}
+            </button>
+          ))}
+        </div>
       </div>
-      <Button variant="ghost" size="sm" onClick={() => copyOperationHistory(visibleSourceRecords)}>复制当前结果</Button>
-      <Button variant="ghost" size="sm" onClick={() => copyOperationFailures(visibleSourceRecords)} disabled={!visibleSourceRecords.some((record) => record.errorMessages.length)}>复制错误报告</Button>
-      <Button variant="ghost" size="sm" onClick={() => exportOperationHistoryCsv(visibleSourceRecords)}>导出 CSV</Button>
-      <Button variant="ghost" size="sm" onClick={onClear}>清空记录</Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="搜索操作 / 路径 / 错误"
+          className="h-7 w-full min-w-44 max-w-72 text-xs md:w-64"
+          aria-label="搜索操作历史"
+        />
+        <div className="ml-auto flex flex-wrap items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => copyOperationHistory(visibleSourceRecords)}>复制当前结果</Button>
+          <Button variant="ghost" size="sm" onClick={() => copyOperationFailures(visibleSourceRecords)} disabled={!visibleSourceRecords.some((record) => record.errorMessages.length)}>复制错误报告</Button>
+          <Button variant="ghost" size="sm" onClick={() => exportOperationHistoryCsv(visibleSourceRecords)}>导出 CSV</Button>
+          <Button variant="ghost" size="sm" onClick={onClear}>清空记录</Button>
+        </div>
+      </div>
     </div>
   );
 
@@ -128,7 +136,11 @@ export function OperationHistoryPanel({
           </article>
         );
       }) : (
-        <div className="px-3 py-4 text-center text-xs text-muted">当前筛选没有操作记录。</div>
+        <EmptyState
+          className="px-3 py-6"
+          title="当前筛选没有操作记录"
+          description="调整状态筛选或搜索关键词后再试。"
+        />
       )}
     </div>
   );
@@ -141,8 +153,8 @@ export function OperationHistoryPanel({
           <span className={cn(
             "rounded-full px-2 py-0.5 font-medium",
             latest.status === "success" && "bg-primary-soft text-primary",
-            latest.status === "partial" && "bg-warning/10 text-warning",
-            latest.status === "error" && "bg-danger/10 text-danger",
+            latest.status === "partial" && "bg-warning-soft text-warning",
+            latest.status === "error" && "bg-danger-soft text-danger",
           )}>最近一次：{statusLabel}</span>
           <span className="text-subtle">展开</span>
         </summary>
@@ -244,7 +256,7 @@ function OperationRecordDetails({ record, onRevealPath }: { record: FileOperatio
       {record.errorMessages.length ? (
         <div>
           <div className="mb-1 text-2xs font-medium uppercase tracking-wide text-danger">错误</div>
-          <div className="max-h-32 overflow-auto rounded border border-danger/20 bg-danger/5 p-2 font-mono text-2xs text-danger">
+          <div className="max-h-32 overflow-auto rounded border border-danger-line bg-danger-soft p-2 font-mono text-2xs text-danger">
             {record.errorMessages.map((error, index) => <div key={`${record.id}:error:${index}`}>{error}</div>)}
           </div>
         </div>

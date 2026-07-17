@@ -29,14 +29,9 @@ export function ToneBadge({ tone, children }: { tone: PlatformTone; children: Re
   return <Badge variant={TONE_BADGE[tone]}>{children}</Badge>;
 }
 
-export function StatTile({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
-  return (
-    <div className="rounded-sm border border-line bg-panel p-3">
-      <span className="text-xs text-subtle">{label}</span>
-      <div className="mt-1 truncate text-xl font-semibold text-ink-strong">{value}</div>
-      {sub && <span className="text-xs text-muted">{sub}</span>}
-    </div>
-  );
+/** Map a platform tone onto a MetricTile tone ("info" has no metric tint). */
+export function metricTone(tone: PlatformTone): "default" | "ok" | "warn" | "bad" {
+  return tone === "info" ? "default" : tone;
 }
 
 export function EvidenceRow({ label, value }: { label: string; value: React.ReactNode }) {

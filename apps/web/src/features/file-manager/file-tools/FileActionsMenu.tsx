@@ -392,7 +392,7 @@ export function FileActionsMenu({
           "flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors outline-none",
           "focus-visible:shadow-[var(--ring)]",
           tone === "danger"
-            ? "text-danger hover:bg-danger/10"
+            ? "text-danger hover:bg-danger-soft"
             : "text-ink hover:bg-panel-2",
         )}
       >
@@ -871,13 +871,13 @@ function UnarchiveDryRunSummary({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-ink-strong">解压预检</span>
         <span className="rounded-full bg-panel px-2 py-0.5 text-muted">{counts.total} 项</span>
-        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">{counts.ready} 就绪</span>
+        <span className="rounded-full bg-success-soft px-2 py-0.5 text-success">{counts.ready} 就绪</span>
         {counts.rename ? <span className="rounded-full bg-primary-soft px-2 py-0.5 text-primary">{counts.rename} 重命名</span> : null}
         {counts.skip ? <span className="rounded-full bg-panel px-2 py-0.5 text-muted">{counts.skip} 跳过</span> : null}
         {risky ? <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning">{risky} 风险</span> : null}
       </div>
       {counts.conflicts || counts.errors ? (
-        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
+        <div className="rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger">
           存在阻塞冲突或不安全条目，请调整冲突策略或检查归档。
         </div>
       ) : null}
@@ -1112,7 +1112,7 @@ function TransferDryRunSummary({
   }
   if (errorMessage) {
     return (
-      <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-xs text-danger">
+      <div className="rounded border border-danger-line bg-danger-soft px-2 py-1 text-xs text-danger">
         预检失败：{errorMessage}
       </div>
     );
@@ -1133,7 +1133,7 @@ function TransferDryRunSummary({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-ink-strong">转移预检</span>
-        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">
+        <span className="rounded-full bg-success-soft px-2 py-0.5 text-success">
           {dryRun.counts.ready} 就绪
         </span>
         {dryRun.counts.rename ? (
@@ -1164,7 +1164,7 @@ function TransferDryRunSummary({
         </div>
       ) : null}
       {dryRun.counts.conflicts || dryRun.counts.errors ? (
-        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
+        <div className="rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger">
           存在阻塞冲突或无效来源，不能执行。
         </div>
       ) : null}

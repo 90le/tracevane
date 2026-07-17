@@ -20,6 +20,8 @@ import {
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { PageHeader } from "@/design/ui/page-header";
+import { SectionNav } from "@/design/ui/section-nav";
 import {
   Dialog,
   DialogBody,
@@ -75,12 +77,12 @@ import {
 
 type Section = "guide" | "basic" | "endpoint" | "models" | "advanced";
 
-const SECTIONS: ReadonlyArray<{ id: Section; label: string; icon: React.ComponentType<{ className?: string }> }> = [
-  { id: "guide", label: "向导", icon: Wand2 },
-  { id: "basic", label: "基础", icon: Info },
-  { id: "endpoint", label: "Endpoint", icon: Plug },
-  { id: "models", label: "模型", icon: Box },
-  { id: "advanced", label: "高级", icon: Settings2 },
+const SECTIONS: ReadonlyArray<{ id: Section; label: string }> = [
+  { id: "guide", label: "向导" },
+  { id: "basic", label: "基础" },
+  { id: "endpoint", label: "Endpoint" },
+  { id: "models", label: "模型" },
+  { id: "advanced", label: "高级" },
 ];
 
 const API_FORMAT_LABEL: Record<ModelGatewayApiFormat, string> = {
@@ -689,27 +691,24 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
   if (isCreate && !onboardingChosen) {
     return (
       <div className="grid gap-4">
-        <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
-          <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--violet)_4%,var(--panel))] p-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center">
-            <Button variant="ghost" size="icon" onClick={() => goToView("providers")} title="返回" aria-label="返回">
+        <PageHeader
+          className="px-0"
+          title="添加 Provider"
+          description="选择一种接入方式；普通 API Provider 只需要名称、Base URL 和密钥，协议、模型和能力可以由探测结果自动填充。"
+          meta={
+            <>
+              <Badge variant="outline">Configuration Studio</Badge>
+              <Badge variant="ok">向导优先</Badge>
+              <span className="hidden sm:inline">选择方式 → 探测 → 保存 → 绑定客户端</span>
+            </>
+          }
+          actions={
+            <Button variant="ghost" size="sm" onClick={() => goToView("providers")} title="返回" aria-label="返回">
               <ArrowLeft />
+              返回
             </Button>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">Configuration Studio</Badge>
-                <Badge variant="ok">向导优先</Badge>
-              </div>
-              <h2 className="mt-2 text-2xl font-semibold text-ink-strong">添加 Provider</h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-                选择一种接入方式；普通 API Provider 只需要名称、Base URL 和密钥，协议、模型和能力可以由探测结果自动填充。
-              </p>
-            </div>
-            <div className="hidden rounded-sm border border-line bg-panel px-3 py-2 text-right text-xs text-muted sm:block">
-              <span className="block font-medium text-ink-strong">推荐流程</span>
-              <span>选择方式 → 探测 → 保存 → 绑定客户端</span>
-            </div>
-          </div>
-        </section>
+          }
+        />
         <ProviderOnboardingChooser
           selectedMode={onboardingMode}
           onSelectMode={setOnboardingMode}
@@ -1312,49 +1311,51 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
 
   return (
     <div className="grid gap-4">
-      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
-        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel))] p-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
-          <Button variant="ghost" size="icon" onClick={leaveToList} title="返回" aria-label="返回">
-            <ArrowLeft />
-          </Button>
-          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3">
-            <GatewayMark identity={providerIdentityFromText(providerDisplayName)} size="lg" />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={form.enabled ? "ok" : "mute"}>{form.enabled ? "启用" : "停用"}</Badge>
-                <Badge variant={isDirty ? "warn" : "outline"}>{isDirty ? "有未保存更改" : "已同步"}</Badge>
-                {configRiskCount > 0 && <Badge variant="warn">{configRiskCount} 个风险</Badge>}
-              </div>
-              <h2 className="mt-2 truncate text-2xl font-semibold text-ink-strong" title={providerDisplayName}>
-                {isCreate ? "新建 API Provider" : `配置 · ${providerDisplayName}`}
-              </h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-                baseUrl / 协议 / 模型 / endpoint / 网络 / 推理集中编辑；保存前内联校验，危险操作留在高级分区。
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            {isCreate && (
+      <div className="flex items-start gap-3">
+        <Button variant="ghost" size="icon" onClick={leaveToList} title="返回" aria-label="返回" className="mt-1 shrink-0">
+          <ArrowLeft />
+        </Button>
+        <span className="mt-1 hidden shrink-0 sm:block">
+          <GatewayMark identity={providerIdentityFromText(providerDisplayName)} size="lg" />
+        </span>
+        <PageHeader
+          className="min-w-0 flex-1 px-0 py-0 sm:px-0"
+          title={isCreate ? "新建 API Provider" : `配置 · ${providerDisplayName}`}
+          description="baseUrl / 协议 / 模型 / endpoint / 网络 / 推理集中编辑；保存前内联校验，危险操作留在高级分区。"
+          meta={
+            <>
+              <Badge variant={form.enabled ? "ok" : "mute"}>{form.enabled ? "启用" : "停用"}</Badge>
+              <Badge variant={isDirty ? "warn" : "outline"}>{isDirty ? "有未保存更改" : "已同步"}</Badge>
+              {configRiskCount > 0 && <Badge variant="warn">{configRiskCount} 个风险</Badge>}
+            </>
+          }
+          actions={
+            <>
+              {isCreate && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setOnboardingChosen(false)}
+                >
+                  <ArrowLeft />
+                  返回添加方式
+                </Button>
+              )}
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                onClick={() => setOnboardingChosen(false)}
+                onClick={handleDetect}
+                disabled={detectMutation.isPending}
               >
-                <ArrowLeft />
-                返回添加方式
+                <ScanSearch />
+                {detectMutation.isPending ? "探测中…" : "探测/识别配置"}
               </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleDetect}
-              disabled={detectMutation.isPending}
-            >
-              <ScanSearch />
-              {detectMutation.isPending ? "探测中…" : "探测/识别配置"}
-            </Button>
-          </div>
-        </div>
+            </>
+          }
+        />
+      </div>
+
+      <section className="rounded-md border border-line bg-panel shadow-sm">
         <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
           <GatewayMetricCard
             icon={<Box />}
@@ -1400,25 +1401,12 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
       </section>
 
       {/* Section nav */}
-      <nav className="flex flex-wrap gap-1 border-b border-line pb-2" aria-label="配置分区">
-        {SECTIONS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            aria-current={section === id ? "page" : undefined}
-            onClick={() => setSection(id)}
-            className={cn(
-              "inline-flex h-9 items-center gap-[7px] rounded-sm px-3 text-base outline-none transition-colors [&_svg]:size-[15px] focus-visible:shadow-[var(--ring)]",
-              section === id
-                ? "bg-primary-soft text-ink-strong [&_svg]:text-primary"
-                : "text-muted hover:bg-panel-2 hover:text-ink",
-            )}
-          >
-            <Icon />
-            {label}
-          </button>
-        ))}
-      </nav>
+      <SectionNav
+        items={SECTIONS.map(({ id, label }) => ({ id, label }))}
+        value={section}
+        onChange={(id) => setSection(id as Section)}
+        ariaLabel="配置分区"
+      />
 
       {/* Section body */}
       <div className="grid gap-4">

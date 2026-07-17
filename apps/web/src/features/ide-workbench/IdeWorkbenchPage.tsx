@@ -6,6 +6,7 @@ import {
   Bug,
   Command,
   Files,
+  FolderOpen,
   GitBranch,
   ListChecks,
   ChevronDown,
@@ -26,7 +27,8 @@ import { NAV_ITEMS } from "@/app/navigation";
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/design/ui/dialog";
-import { EmptyState } from "@/design/ui/state";
+import { EmptyState, ErrorState } from "@/design/ui/state";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/design/ui/tooltip";
 import { useFilesSummaryQuery } from "@/lib/query/files";
 import { editorDocumentId, editorTitleForPath } from "@/shared/editor-core";
 import type { EditorSaveState } from "@/shared/editor-core";
@@ -38,7 +40,7 @@ import { saveIdeEditorTab } from "./editor/ideEditorRuntime";
 import { IdeExplorerView } from "./explorer";
 import { IdeSearchView, type IdeSearchResultOpenRequest } from "./search";
 import { IdeSourceControlView, type IdeGitDecoratedChange, useIdeGitStatus } from "./git";
-import { IdeProblemsPanel, appendWorkbenchProblem, removeWorkbenchProblem, type WorkbenchProblem } from "./problems";
+import { IdeProblemsPanel, appendWorkbenchProblem, removeWorkbenchProblem, useWorkbenchProblems, type WorkbenchProblem } from "./problems";
 import { IdeOutputPanel, appendWorkbenchOutput } from "./output";
 import { DebugConsolePanel, DebugGatewayBridge, IdeDebugView, useIdeDebugSnapshot } from "./debug";
 import { TerminalPanel } from "./terminal";
@@ -619,6 +621,10 @@ export function IdeWorkbenchPage() {
     />
   );
 
+  const gitActivityChangeCount = gitStatus.status?.available ? gitStatus.status.changes.length : 0;
+  const workspaceLoadFailed = summary.isError;
+  const workspaceMissing = summary.isSuccess && roots.length === 0;
+
   return (
     <div className="grid h-dvh min-h-0 w-screen max-w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink" data-ide-workbench>
       <DebugGatewayBridge enabled={Boolean(rootId)} />
@@ -632,8 +638,17 @@ export function IdeWorkbenchPage() {
         onOpenCommandPalette={openCommandPalette}
       />
       <div className="grid min-h-0 min-w-0 grid-cols-[44px_minmax(0,1fr)] overflow-hidden border-b border-line" data-ide-main-area>
+        {workspaceLoadFailed || workspaceMissing ? (
+          <WorkspaceGuidanceView
+            kind={workspaceLoadFailed ? "error" : "empty"}
+            errorMessage={summary.error?.message ?? null}
+            onRetry={() => void summary.refetch()}
+          />
+        ) : (
+        <>
         <ActivityBar
           activeActivityId={layout.activeActivityId}
+          gitChangeCount={gitActivityChangeCount}
           onSelect={(activityId) => {
             if (activityId === "explorer" && layout.activeActivityId === "explorer") {
               layoutApi.toggleSidebar();
@@ -719,6 +734,8 @@ export function IdeWorkbenchPage() {
             />
           </div>
         </div>
+        </>
+        )}
       </div>
       <IdeCommandPalette
         open={commandPaletteOpen}
@@ -1158,6 +1175,9 @@ function WorkbenchHeader({
               {rootLabel}
             </span>
           </div>
+          <div className="hidden min-w-0 truncate font-mono text-2xs text-subtle lg:block" title={rootTitle}>
+            {rootTitle}
+          </div>
         </div>
       </div>
 
@@ -1288,37 +1308,62 @@ function SidebarResizeHandle({
 
 function ActivityBar({
   activeActivityId,
+  gitChangeCount,
   onSelect,
 }: {
   activeActivityId: WorkbenchActivityId;
+  gitChangeCount: number;
   onSelect: (id: WorkbenchActivityId) => void;
 }) {
   return (
-    <aside className="flex min-h-0 flex-col items-center gap-1 border-r border-line bg-panel-2 py-2" data-ide-activity-bar>
-      {ACTIVITY_ITEMS.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          disabled={item.disabled}
-          aria-label={IDE_ACTIVITY_LABELS[item.id]}
-          title={
-            item.disabled
-              ? `${IDE_ACTIVITY_LABELS[item.id]}（暂不可用）`
-              : IDE_ACTIVITY_LABELS[item.id]
-          }
-          onClick={() => onSelect(item.id)}
-          className={cn(
-            "grid size-9 place-items-center rounded-sm border border-transparent text-muted outline-none transition-colors focus-visible:shadow-[var(--ring)] [&_svg]:size-4",
-            activeActivityId === item.id &&
-              "border-primary-line bg-primary-soft text-primary",
-            !item.disabled && "hover:border-line hover:bg-panel hover:text-ink",
-            item.disabled && "cursor-not-allowed opacity-45",
-          )}
-        >
-          {item.icon}
-        </button>
-      ))}
-    </aside>
+    <TooltipProvider delayDuration={280}>
+      <aside className="flex min-h-0 w-11 flex-col items-center gap-1 border-r border-line bg-panel-2 py-2" data-ide-activity-bar>
+        {ACTIVITY_ITEMS.map((item) => {
+          const active = activeActivityId === item.id;
+          const label = IDE_ACTIVITY_LABELS[item.id];
+          return (
+            <Tooltip key={item.id}>
+              <TooltipTrigger asChild>
+                <span className="grid place-items-center outline-none">
+                  <button
+                    type="button"
+                    disabled={item.disabled}
+                    aria-label={label}
+                    aria-pressed={active}
+                    onClick={() => onSelect(item.id)}
+                    className={cn(
+                      "relative grid size-9 place-items-center rounded-md text-muted outline-none transition-colors focus-visible:shadow-[var(--ring)] [&_svg]:size-4",
+                      active && "bg-primary-soft text-primary",
+                      !item.disabled && !active && "hover:bg-panel hover:text-ink",
+                      item.disabled && "cursor-not-allowed opacity-45",
+                    )}
+                  >
+                    {active ? (
+                      <span
+                        aria-hidden
+                        className="absolute left-0 top-1/2 h-[18px] w-0.5 -translate-y-1/2 rounded-full bg-primary"
+                      />
+                    ) : null}
+                    {item.icon}
+                    {item.id === "git" && gitChangeCount > 0 ? (
+                      <span
+                        className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full border-2 border-panel-2 bg-primary px-0.5 text-[9px] font-semibold leading-none text-primary-ink"
+                        data-ide-source-control-activity-count
+                      >
+                        {gitChangeCount > 99 ? "99+" : gitChangeCount}
+                      </span>
+                    ) : null}
+                  </button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {item.disabled ? `${label}（暂不可用）` : label}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </aside>
+    </TooltipProvider>
   );
 }
 
@@ -1332,6 +1377,45 @@ function IdePendingActivityView({ hidden, title }: { hidden: boolean; title: str
         description="该视图暂不可用。"
       />
     </aside>
+  );
+}
+
+function WorkspaceGuidanceView({
+  kind,
+  errorMessage,
+  onRetry,
+}: {
+  kind: "empty" | "error";
+  errorMessage: string | null;
+  onRetry: () => void;
+}) {
+  const navigate = useNavigate();
+  return (
+    <div className="col-span-2 grid min-h-0 min-w-0 place-items-center overflow-auto bg-canvas p-6" data-ide-workspace-guidance={kind}>
+      {kind === "error" ? (
+        <ErrorState
+          title="工作区信息加载失败"
+          description={errorMessage || "无法读取文件根目录配置，请检查服务状态后重试。"}
+          action={(
+            <Button type="button" variant="outline" onClick={onRetry} data-ide-workspace-guidance-retry>
+              <RefreshCw />
+              重试
+            </Button>
+          )}
+        />
+      ) : (
+        <EmptyState
+          icon={<FolderOpen />}
+          title="尚未配置工作区"
+          description="IDE 工作台基于文件根目录运行。请先在文件管理中添加一个根目录作为工作区，然后回到这里开始浏览、编辑与调试。"
+          action={(
+            <Button type="button" onClick={() => navigate("/file-manager")} data-ide-workspace-guidance-open-file-manager>
+              前往文件管理
+            </Button>
+          )}
+        />
+      )}
+    </div>
   );
 }
 
@@ -1369,6 +1453,8 @@ function PanelArea({
   onOpenProblem: (problem: WorkbenchProblem) => void;
 }) {
   const isRight = panel.placement === "right";
+  const problems = useWorkbenchProblems();
+  const problemCount = problems.length;
   const panelStyle = panel.maximized
     ? { width: "100%", height: "100%" }
     : isRight
@@ -1394,25 +1480,37 @@ function PanelArea({
       {!panel.maximized ? (
         <PanelResizeHandle placement={panel.placement} size={panel.size} onResize={onResizePanel} />
       ) : null}
-      <div className="flex min-h-9 min-w-0 items-center gap-1 border-b border-line bg-panel-2 px-2">
-        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-          {(Object.keys(IDE_PANEL_LABELS) as WorkbenchPanelId[]).map((id) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => onActivePanelChange(id)}
-              className={cn(
-                "inline-flex min-h-7 shrink-0 items-center gap-1.5 rounded-sm border border-transparent px-2 text-sm text-muted outline-none focus-visible:shadow-[var(--ring)] [&_svg]:size-3.5",
-                panel.activePanelId === id &&
-                  "border-primary-line bg-primary-soft text-ink-strong",
-              )}
-            >
-              {PANEL_ICONS[id]}
-              {IDE_PANEL_LABELS[id]}
-            </button>
-          ))}
+      <div className="flex min-h-9 min-w-0 items-stretch gap-1 border-b border-line bg-panel-2 pl-2 pr-1">
+        <div className="flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="面板切换">
+          {(Object.keys(IDE_PANEL_LABELS) as WorkbenchPanelId[]).map((id) => {
+            const active = panel.activePanelId === id;
+            const badgeCount = id === "problems" ? problemCount : 0;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onActivePanelChange(id)}
+                title={IDE_PANEL_LABELS[id]}
+                className={cn(
+                  "relative inline-flex shrink-0 items-center gap-1.5 px-2.5 text-xs font-medium outline-none transition-colors focus-visible:shadow-[var(--ring)] [&_svg]:size-3.5",
+                  active ? "text-ink-strong" : "text-muted hover:text-ink",
+                )}
+              >
+                {PANEL_ICONS[id]}
+                {IDE_PANEL_LABELS[id]}
+                {badgeCount > 0 ? (
+                  <span className="grid h-4 min-w-4 place-items-center rounded-full bg-danger-soft px-1 text-2xs font-semibold leading-none text-danger" data-ide-panel-problems-count>
+                    {badgeCount > 99 ? "99+" : badgeCount}
+                  </span>
+                ) : null}
+                {active ? (
+                  <span aria-hidden className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />
+                ) : null}
+              </button>
+            );
+          })}
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {isRight ? (
             <Button
               variant="ghost"
@@ -1713,52 +1811,83 @@ function WorkbenchStatusBar({
   const gitSummary = git?.available ? formatGitStatusBar(git) : null;
   const lspSummary = summarizeExternalLspProviders(lspStatus);
   return (
-    <footer className="flex min-h-6 items-center gap-3 overflow-hidden border-t border-line bg-panel-2 px-3 font-mono text-2xs text-muted" data-ide-status-bar>
-      <span className="truncate">root: {rootId || "pending"}</span>
-      <span className="truncate">path: /{directoryPath}</span>
-      {git?.available ? (
-        <span className="inline-flex max-w-[34vw] shrink-0 items-center gap-1 truncate text-primary" title={gitSummary ?? undefined} data-ide-status-git>
-          <GitBranch className="size-3" aria-hidden />
-          <span className="truncate" data-ide-status-git-branch>{git.branch || "HEAD"}</span>
-          {git.upstream ? <span className="hidden truncate text-subtle sm:inline" data-ide-status-git-upstream>→ {git.upstream}</span> : null}
-          {(git.ahead || git.behind) ? <span className="shrink-0" data-ide-status-git-ahead-behind>↑{git.ahead} ↓{git.behind}</span> : null}
-          <span className="shrink-0 text-subtle" data-ide-status-git-change-count>{gitChangeCount}</span>
+    <footer className="flex min-h-6 items-center gap-0.5 overflow-hidden border-t border-line bg-panel-2 px-1.5 text-2xs text-muted" data-ide-status-bar>
+      {/* 左侧：工作区上下文 */}
+      <div className="flex min-w-0 shrink items-center gap-0.5">
+        <span
+          className="inline-flex h-6 max-w-[16rem] items-center gap-1 rounded-sm px-1.5 font-mono"
+          title={`文件根目录：${rootId || "pending"}`}
+        >
+          <FolderOpen className="size-3 shrink-0 text-subtle" aria-hidden />
+          <span className="truncate">root: {rootId || "pending"}</span>
         </span>
-      ) : null}
-      <span className="shrink-0">sidebar: {sideBarCollapsed ? "collapsed" : "visible"}</span>
-      <span className="shrink-0">panel: {panelCollapsed ? "collapsed" : activePanelId}</span>
-      <button
-        type="button"
-        className={cn(
-          "inline-flex max-w-[12rem] shrink-0 items-center gap-1 truncate rounded px-1 py-0.5 outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)]",
-          lspSummary.tone === "available" && "text-success",
-          lspSummary.tone === "attention" && "text-danger",
-          lspSummary.tone === "stopped" && "text-muted",
-          lspSummary.tone === "none" && "text-subtle",
+        <span
+          className="hidden h-6 max-w-[22rem] items-center gap-1 rounded-sm px-1.5 font-mono md:inline-flex"
+          title={`当前目录：/${directoryPath}`}
+        >
+          <span className="truncate">path: /{directoryPath}</span>
+        </span>
+        {git?.available ? (
+          <>
+            <StatusBarDivider />
+            <span className="inline-flex h-6 max-w-[30vw] shrink-0 items-center gap-1 truncate rounded-sm px-1.5 text-primary" title={gitSummary ?? undefined} data-ide-status-git>
+              <GitBranch className="size-3" aria-hidden />
+              <span className="truncate" data-ide-status-git-branch>{git.branch || "HEAD"}</span>
+              {git.upstream ? <span className="hidden truncate text-subtle sm:inline" data-ide-status-git-upstream>→ {git.upstream}</span> : null}
+              {(git.ahead || git.behind) ? <span className="shrink-0" data-ide-status-git-ahead-behind>↑{git.ahead} ↓{git.behind}</span> : null}
+              <span className="shrink-0 text-subtle" data-ide-status-git-change-count>{gitChangeCount}</span>
+            </span>
+          </>
+        ) : null}
+        <StatusBarDivider />
+        <button
+          type="button"
+          className={cn(
+            "inline-flex h-6 max-w-[12rem] shrink-0 items-center gap-1 truncate rounded-sm px-1.5 outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)]",
+            lspSummary.tone === "available" && "text-success",
+            lspSummary.tone === "attention" && "text-danger",
+            lspSummary.tone === "stopped" && "text-muted",
+            lspSummary.tone === "none" && "text-subtle",
+          )}
+          title={lspSummary.title}
+          onClick={onOpenLspStatus}
+          data-ide-status-lsp
+          data-ide-status-lsp-tone={lspSummary.tone}
+        >
+          <Server className="size-3" aria-hidden />
+          <span className="truncate">{lspSummary.label}</span>
+        </button>
+      </div>
+      {/* 右侧：布局状态与当前文件 */}
+      <div className="ml-auto flex min-w-0 shrink-0 items-center gap-0.5">
+        <span className="hidden h-6 items-center rounded-sm px-1.5 lg:inline-flex" title="侧边栏状态">
+          sidebar: {sideBarCollapsed ? "collapsed" : "visible"}
+        </span>
+        <span className="hidden h-6 items-center rounded-sm px-1.5 lg:inline-flex" title="面板状态">
+          panel: {panelCollapsed ? "collapsed" : activePanelId}
+        </span>
+        <StatusBarDivider className="hidden lg:block" />
+        {activeTab ? (
+          <span className="inline-flex h-6 min-w-0 items-center gap-1.5 rounded-sm px-1.5" data-ide-status-active-file>
+            <span className="truncate font-mono" title={activeTab.ref.path} data-ide-status-active-file-path>{activeTab.ref.path}</span>
+            <StatusBarDivider />
+            <span className="shrink-0" data-ide-editor-save-state>{fileState}</span>
+            {metadata?.language ? <span className="shrink-0">{metadata.language}</span> : null}
+            {metadata?.mimeType && metadata.previewKind !== "text" ? <span className="hidden shrink-0 xl:inline">{metadata.mimeType}</span> : null}
+            {typeof metadata?.size === "number" ? <span className="hidden shrink-0 sm:inline">{formatStatusBytes(metadata.size)}</span> : null}
+            {metadata?.readonly ? <span className="shrink-0 text-warning">readonly</span> : null}
+            {activeTab.preview && !activeTab.pinned ? <span className="shrink-0">preview</span> : null}
+          </span>
+        ) : (
+          <span className="inline-flex h-6 items-center rounded-sm px-1.5">IDE Workbench</span>
         )}
-        title={lspSummary.title}
-        onClick={onOpenLspStatus}
-        data-ide-status-lsp
-        data-ide-status-lsp-tone={lspSummary.tone}
-      >
-        <Server className="size-3" aria-hidden />
-        <span className="truncate">{lspSummary.label}</span>
-      </button>
-      {activeTab ? (
-        <span className="ml-auto inline-flex min-w-0 items-center gap-2" data-ide-status-active-file>
-          <span className="truncate" data-ide-status-active-file-path>{activeTab.ref.path}</span>
-          <span className="shrink-0" data-ide-editor-save-state>{fileState}</span>
-          {metadata?.language ? <span className="shrink-0">{metadata.language}</span> : null}
-          {metadata?.mimeType && metadata.previewKind !== "text" ? <span className="shrink-0">{metadata.mimeType}</span> : null}
-          {typeof metadata?.size === "number" ? <span className="shrink-0">{formatStatusBytes(metadata.size)}</span> : null}
-          {metadata?.readonly ? <span className="shrink-0 text-warning">readonly</span> : null}
-          {activeTab.preview && !activeTab.pinned ? <span className="shrink-0">preview</span> : null}
-        </span>
-      ) : (
-        <span className="ml-auto">IDE Workbench</span>
-      )}
+      </div>
     </footer>
   );
+}
+
+function StatusBarDivider({ className }: { className?: string }) {
+  return <span aria-hidden className={cn("mx-0.5 h-3 w-px shrink-0 bg-line", className)} />;
 }
 
 function formatStatusBytes(bytes: number): string {

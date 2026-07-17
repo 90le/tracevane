@@ -5,7 +5,6 @@ import {
   ChevronRight,
   CornerUpLeft,
   Copy,
-  Database,
   Eye,
   EyeOff,
   FilePlus,
@@ -28,6 +27,7 @@ import {
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { SectionNav } from "@/design/ui/section-nav";
 import {
   Dialog,
   DialogBody,
@@ -44,6 +44,12 @@ import type {
 } from "@/features/file-manager/file-tools";
 
 export type FileManagerViewMode = "files" | "index" | "trash";
+
+const FILE_MANAGER_VIEW_ITEMS: { id: FileManagerViewMode; label: string }[] = [
+  { id: "files", label: "文件" },
+  { id: "index", label: "索引" },
+  { id: "trash", label: "回收站" },
+];
 
 export interface FileManagerLocation {
   rootId: string;
@@ -116,48 +122,13 @@ export function FileManagerHeader({
       </div>
 
       <div className="ml-auto flex min-w-0 items-center gap-1.5">
-        <div
-          className="hidden items-center gap-1 rounded-full border border-line bg-panel p-0.5 sm:flex"
-          data-file-manager-view-switcher
-        >
-          <button
-            type="button"
-            className={cn(
-              "rounded-full px-2.5 py-1 text-xs",
-              viewMode === "files"
-                ? "bg-primary text-primary-ink"
-                : "text-muted hover:bg-panel-2 hover:text-ink",
-            )}
-            onClick={() => onChangeViewMode("files")}
-          >
-            文件
-          </button>
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs",
-              viewMode === "index"
-                ? "bg-primary text-primary-ink"
-                : "text-muted hover:bg-panel-2 hover:text-ink",
-            )}
-            onClick={() => onChangeViewMode("index")}
-          >
-            <Database className="size-3.5" />
-            索引
-          </button>
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs",
-              viewMode === "trash"
-                ? "bg-primary text-primary-ink"
-                : "text-muted hover:bg-panel-2 hover:text-ink",
-            )}
-            onClick={() => onChangeViewMode("trash")}
-          >
-            <Trash2 className="size-3.5" />
-            回收站
-          </button>
+        <div className="hidden sm:block" data-file-manager-view-switcher>
+          <SectionNav
+            items={FILE_MANAGER_VIEW_ITEMS}
+            value={viewMode}
+            onChange={(mode) => onChangeViewMode(mode as FileManagerViewMode)}
+            ariaLabel="文件管理器视图"
+          />
         </div>
 
         <Button
@@ -560,7 +531,7 @@ function BookmarkDeleteDialog({
             将从收藏夹中移除“{state.title}”。这不会删除真实文件或目录。
           </DialogDescription>
           {isFolder && state.childCount > 0 ? (
-            <p className="rounded border border-danger/25 bg-danger/10 px-3 py-2 text-sm text-danger">
+            <p className="rounded border border-danger-line bg-danger-soft px-3 py-2 text-sm text-danger">
               其中 {state.childCount} 个子项也会从收藏夹中移除。
             </p>
           ) : null}
@@ -912,7 +883,7 @@ function FavoriteMenuItem({
         "flex w-full items-center gap-2.5 py-1.5 pr-3 text-left transition-colors outline-none",
         "focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-40",
         tone === "danger"
-          ? "text-danger hover:bg-danger/10"
+          ? "text-danger hover:bg-danger-soft"
           : "text-ink hover:bg-panel-2",
       )}
       style={{ paddingLeft: `${12 + inset * 14}px` }}
@@ -1956,7 +1927,7 @@ export function FileManagerNavigationBar({
         </div>
         {filterText ? (
           <div
-            className="flex min-w-0 items-center"
+            className="flex min-w-0 items-center sm:hidden"
             data-file-manager-visible-filter-actions
           >
             <span className="min-w-0 truncate rounded-full border border-line bg-panel-2 px-2 py-1 text-2xs text-subtle">
@@ -2000,7 +1971,7 @@ export function FileManagerNavigationBar({
                 <button
                   type="button"
                   onClick={onClearRecentLocations}
-                  className="rounded-md px-2 py-1 text-left text-danger hover:bg-danger/10"
+                  className="rounded-md px-2 py-1 text-left text-danger hover:bg-danger-soft"
                   data-file-manager-clear-recent-locations
                 >
                   清空最近
@@ -2044,8 +2015,6 @@ export function FileManagerNavigationBar({
               className="h-9 pl-9 text-sm sm:h-10"
             />
           </label>
-
-          <span className="hidden sm:inline-flex" aria-hidden="true" />
         </div>
       </details>
     </div>

@@ -125,7 +125,7 @@ function shouldHandleTracevaneReplyDispatch(event: TracevaneReplyDispatchEvent):
   });
 }
 
-export function buildTracevaneReplyDispatchConfigOverride(
+function buildTracevaneReplyDispatchConfigOverride(
   config: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> {
   const deny = Array.from(new Set([

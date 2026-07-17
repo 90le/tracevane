@@ -149,7 +149,7 @@ export function TerminalManagerDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-[rgba(8,12,22,.5)] p-3 backdrop-blur-[3px]"
+      className="fixed inset-0 z-[60] grid place-items-center bg-canvas/70 p-3 backdrop-blur-sm"
       role="presentation"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onOpenChange(false);
@@ -375,7 +375,7 @@ function groupSessions(sessions: TerminalSessionDescriptor[], currentRootId: str
 }
 
 function StatusBadge({ status }: { status: TerminalSessionDescriptor["status"] }) {
-  const tone = status === "running" ? "bg-success/10 text-success" : "bg-warning-soft text-warning";
+  const tone = status === "running" ? "bg-success-soft text-success" : "bg-warning-soft text-warning";
   return <span className={cn("rounded px-1.5 py-0.5 text-2xs", tone)}>{formatStatus(status)}</span>;
 }
 

@@ -47,7 +47,7 @@ export function V3PlanDialog({
           {!plan ? (
             <p>正在计算账号连接、分发规则与 Agent 工作区的变更范围…</p>
           ) : plan.validationIssues.length > 0 ? (
-            <div className="rounded-sm border border-danger/30 bg-danger-soft p-3">
+            <div className="rounded-sm border border-danger-line bg-danger-soft p-3">
               <div className="flex items-center gap-2 font-medium text-danger">
                 <AlertTriangle className="size-4" />
                 配置未通过校验

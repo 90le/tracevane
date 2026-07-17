@@ -11,6 +11,9 @@ import {
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { Input } from "@/design/ui/input";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { ErrorState } from "@/shared/states/ErrorState";
+import { LoadingState } from "@/shared/states/LoadingState";
 import { useFilesSearchQuery } from "@/lib/query/files";
 import type { FileSearchResult } from "../../../../../types/files";
 
@@ -146,39 +149,13 @@ export function FileManagerSearchPanel({
   );
 
   return (
-    <>
-      <details
-        className="group rounded-md border border-line bg-panel-2 text-xs md:hidden"
-        aria-label="文件名和内容搜索"
-        data-file-manager-search-panel
-        data-file-manager-search-panel-mobile
-      >
-        <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 marker:hidden">
-          <span className="inline-flex min-w-0 items-center gap-1.5 font-semibold text-ink-strong">
-            <Search className="size-3.5 shrink-0 text-subtle" />
-            <span>文件搜索</span>
-          </span>
-          <span className="min-w-0 flex-1 truncate text-right text-subtle">
-            {query ? `${results.length} 个结果` : "按需展开"}
-          </span>
-          <ChevronDown className="size-3.5 shrink-0 text-subtle transition-transform group-open:rotate-180" />
-        </summary>
-        <div
-          className="hidden gap-2 border-t border-line p-3 group-open:grid"
-          data-file-manager-search-mobile-body
-        >
-          {searchBody}
-        </div>
-      </details>
-      <section
-        className="hidden gap-2 rounded-md border border-line bg-panel-2 p-3 md:grid"
-        aria-label="文件名和内容搜索"
-        data-file-manager-search-panel
-        data-file-manager-search-panel-desktop
-      >
-        {searchBody}
-      </section>
-    </>
+    <section
+      className="grid gap-2 rounded-md border border-line bg-panel-2 p-3"
+      aria-label="文件名和内容搜索"
+      data-file-manager-search-panel
+    >
+      {searchBody}
+    </section>
   );
 }
 
@@ -282,23 +259,28 @@ function FileManagerSearchResults({
 }) {
   if (loading) {
     return (
-      <div className="rounded border border-line bg-panel px-3 py-2 text-xs text-subtle">
-        正在搜索文件名和内容…
-      </div>
+      <LoadingState
+        className="rounded border border-line bg-panel px-3 py-6"
+        title="正在搜索文件名和内容…"
+      />
     );
   }
   if (error) {
     return (
-      <div className="rounded border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
-        搜索失败：{error}
-      </div>
+      <ErrorState
+        className="rounded border border-danger-line bg-panel px-3 py-6"
+        title="搜索失败"
+        description={error}
+      />
     );
   }
   if (!results.length) {
     return (
-      <div className="rounded border border-line bg-panel px-3 py-2 text-xs text-subtle">
-        没有匹配结果。
-      </div>
+      <EmptyState
+        className="rounded border border-line bg-panel px-3 py-6"
+        title="没有匹配结果"
+        description="调整关键词、路径或搜索选项后再试。"
+      />
     );
   }
   return (
@@ -436,7 +418,7 @@ function HighlightedText({
   return (
     <>
       {text.slice(0, match.index)}
-      <mark className="rounded bg-warning/20 px-0.5 text-ink-strong">
+      <mark className="rounded bg-warning-soft px-0.5 text-ink-strong">
         {text.slice(match.index, match.index + match.length)}
       </mark>
       {text.slice(match.index + match.length)}

@@ -1,7 +1,6 @@
 import type {
   ChatPermissionRequestCard,
   ChatProcessBlock,
-  ChatRunOverlay,
   ChatSideResult,
   ChatToolCard,
 } from '../types/chat.js';
@@ -53,14 +52,6 @@ export type AgentProgressTimelineItem =
   | { kind: 'permission'; id: string; requestId: string; permission: ChatPermissionRequestCard }
   | { kind: 'side_result'; id: string; result: ChatSideResult };
 
-export function mergeAgentProgressText(current: string, incoming: string): string {
-  if (!incoming) return current;
-  if (!current) return incoming;
-  if (incoming.startsWith(current)) return incoming;
-  if (current.startsWith(incoming)) return current;
-  return incoming.length >= current.length ? incoming : current;
-}
-
 function trimTimeline(items: AgentProgressTimelineItem[], limit = AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT): AgentProgressTimelineItem[] {
   return trimAgentProgressEntries(items, limit);
 }
@@ -92,51 +83,4 @@ export function upsertAgentProgressTool(
   return trimTimeline(existing >= 0
     ? items.map((item, index) => (index === existing ? entry : item))
     : [...items, entry], limit);
-}
-
-export function upsertAgentProgressThinking(
-  items: AgentProgressTimelineItem[],
-  block: ChatProcessBlock,
-  limit = AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT,
-): AgentProgressTimelineItem[] {
-  const existing = items.findIndex((item) => item.kind === 'thinking' && item.blockId === block.id);
-  const entry: AgentProgressTimelineItem = { kind: 'thinking', id: `thinking:${block.id}`, blockId: block.id, block };
-  return trimTimeline(existing >= 0
-    ? items.map((item, index) => (index === existing ? entry : item))
-    : [...items, entry], limit);
-}
-
-export function upsertAgentProgressPermission(
-  items: AgentProgressTimelineItem[],
-  permission: ChatPermissionRequestCard,
-  limit = AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT,
-): AgentProgressTimelineItem[] {
-  const existing = items.findIndex((item) => item.kind === 'permission' && item.requestId === permission.requestId);
-  const entry: AgentProgressTimelineItem = { kind: 'permission', id: `permission:${permission.requestId}`, requestId: permission.requestId, permission };
-  return trimTimeline(existing >= 0
-    ? items.map((item, index) => (index === existing ? entry : item))
-    : [...items, entry], limit);
-}
-
-export function appendAgentProgressSideResult(
-  items: AgentProgressTimelineItem[],
-  result: ChatSideResult,
-  limit = AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT,
-): AgentProgressTimelineItem[] {
-  return trimTimeline([
-    ...items,
-    { kind: 'side_result', id: `side:${Date.now()}:${items.length}`, result },
-  ], limit);
-}
-
-export function mergeAgentProgressOverlay(
-  items: AgentProgressTimelineItem[],
-  overlay: Pick<ChatRunOverlay, 'previewText' | 'toolCalls'>,
-  limit = AGENT_PROGRESS_TIMELINE_DEFAULT_LIMIT,
-): AgentProgressTimelineItem[] {
-  let next = upsertAgentProgressAssistant(items, overlay.previewText || '', limit);
-  for (const tool of overlay.toolCalls) {
-    next = upsertAgentProgressTool(next, { ...tool }, limit);
-  }
-  return next;
 }

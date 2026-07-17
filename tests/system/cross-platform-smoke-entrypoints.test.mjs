@@ -66,12 +66,3 @@ test("obsolete POSIX-only launchers stay deleted and Gateway foundation has a No
   assert.match(script, /stopOwnedProcess/);
   assert.doesNotMatch(script, /shell:\s*true|\bmktemp\b|\bcurl\b|spawn\(['"]bash['"]/);
 });
-
-test("the active Monaco verification guide uses the public npm alias on both shells", () => {
-  const guide = source(
-    "docs/ide-code-editor-solution/10-monaco-first-online-editor-strategy.md",
-  );
-  assert.doesNotMatch(guide, /scripts\/dev-web-smoke\.sh/);
-  assert.match(guide, /\$env:TRACEVANE_WEB_PORT\s*=\s*["']5177["']/);
-  assert.match(guide, /TRACEVANE_WEB_PORT=5177 npm run smoke:file-manager:online-editor/);
-});

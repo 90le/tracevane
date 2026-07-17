@@ -12,6 +12,7 @@ import {
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
 import { toast } from "@/design/ui/sonner";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
@@ -184,9 +185,9 @@ export function TrashManager({
       className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-panel"
       data-file-manager-trash-manager
     >
-      <header className="grid gap-3 border-b border-line px-3 py-2 md:px-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <header className="grid gap-3 border-b border-line bg-panel-2 px-3 py-2 md:px-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-danger/10 text-danger">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-danger-soft text-danger">
             <Trash2 className="size-4" />
           </span>
           <div className="min-w-0">
@@ -239,16 +240,16 @@ export function TrashManager({
           <TrashChip label="文件" value={`${summary.files}`} />
           <TrashChip label="策略" value={conflictPolicyLabel(conflictPolicy)} />
         </div>
-        <div className="hidden gap-2 px-3 py-2 sm:grid sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(220px,0.9fr)] lg:px-4">
-          <TrashMetric icon={<ArchiveRestore className="size-4" />} label="全部项目" value={`${totalItems}`} hint={`${summary.rootCount} 个 root`} />
-          <TrashMetric icon={<FolderOpen className="size-4" />} label="目录" value={`${summary.directories}`} hint="可整目录恢复" />
-          <TrashMetric icon={<FileText className="size-4" />} label="文件" value={`${summary.files}`} hint={formatBytes(summary.size)} />
-          <TrashMetric icon={<ShieldAlert className="size-4" />} label="恢复策略" value={conflictPolicyLabel(conflictPolicy)} hint="默认保留两者" />
-          <label className="flex min-w-0 items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-xs shadow-sm">
+        <MetricRail className="hidden px-3 py-2 sm:grid sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(220px,0.9fr)] lg:px-4">
+          <MetricTile icon={<ArchiveRestore className="size-4" />} label="全部项目" value={totalItems} hint={`${summary.rootCount} 个 root`} />
+          <MetricTile icon={<FolderOpen className="size-4" />} label="目录" value={summary.directories} hint="可整目录恢复" />
+          <MetricTile icon={<FileText className="size-4" />} label="文件" value={summary.files} hint={formatBytes(summary.size)} />
+          <MetricTile icon={<ShieldAlert className="size-4" />} label="恢复策略" value={conflictPolicyLabel(conflictPolicy)} hint="默认保留两者" />
+          <label className="flex min-w-0 items-center gap-2 rounded-md border border-line bg-panel px-3 text-xs">
             <Search className="size-4 shrink-0 text-subtle" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="筛选名称、原路径、root" className="min-w-0 flex-1 bg-transparent text-sm text-ink-strong outline-none placeholder:text-subtle" aria-label="筛选回收站" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="筛选名称、原路径、root" className="h-full min-h-11 min-w-0 flex-1 bg-transparent text-sm text-ink-strong outline-none placeholder:text-subtle" aria-label="筛选回收站" />
           </label>
-        </div>
+        </MetricRail>
         <label className="mx-3 mb-2 flex min-w-0 items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-xs shadow-sm sm:hidden">
           <Search className="size-3.5 shrink-0 text-subtle" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="筛选回收站" className="min-w-0 flex-1 bg-transparent text-xs text-ink-strong outline-none placeholder:text-subtle" aria-label="筛选回收站" />
@@ -681,33 +682,6 @@ function TrashChip({ label, value }: { label: string; value: string }) {
     <div className="flex shrink-0 items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5">
       <span className="text-2xs text-muted">{label}</span>
       <span className="max-w-[90px] truncate text-xs font-semibold text-ink-strong">{value}</span>
-    </div>
-  );
-}
-
-function TrashMetric({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 rounded-xl border border-line bg-panel px-3 py-2 shadow-sm">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <div className="truncate text-xs text-subtle">{label}</div>
-        <div className="truncate text-sm font-semibold text-ink-strong">
-          {value}
-        </div>
-        <div className="truncate text-[11px] text-muted">{hint}</div>
-      </div>
     </div>
   );
 }

@@ -1,8 +1,29 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Aurora design system — Tailwind v4 token layer
-   Source of truth: this token layer + docs/界面设计守则.md
+   Aurora design system — the single design source of truth.
+
+   This file IS the design foundation for Tracevane; there is no
+   separate design document. It defines, and every feature must
+   consume, the complete token layer:
+
+     · Aurora CSS custom properties — light + dark themes and the
+       4 accent palettes (default indigo / teal / violet / graphite)
+     · semantic color aliases — danger / warning / success / info
+       (plus -soft / -line variants) mapped onto the Aurora palette
+     · the dense type scale — --text-2xs (10.5px) … --text-2xl (21px)
+     · radii, shadows, focus ring, fonts, and the shared
+       component-layer utilities below (.tv-table-*, .tv-console-*)
+
+   Rules for consumers:
+     · reference semantic tokens only (bg-panel, text-ink-strong,
+       border-line, text-success, shadow-sm, rounded-md, …) —
+       never raw palette hexes or one-off color-mix values
+     · compose the canonical primitives in src/design/ui/*
+       (state, skeleton, page-header, section-nav, metric, …)
+       instead of writing ad-hoc markup
+     · if a visual decision is not expressed here or in
+       design/ui/*, it does not exist — add it here first
    ============================================================ */
 
 /* dark mode is driven by [data-theme="dark"] on a wrapping element */

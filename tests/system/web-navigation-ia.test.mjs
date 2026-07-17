@@ -65,14 +65,3 @@ test("dashboard and platform wording route integration evidence through support 
   assert.doesNotMatch(platformAggregate, /id: "external-mcp"/);
   assert.match(platformAggregate, /to: "\/platforms\/openclaw\/guard"/);
 });
-
-test("authoritative docs record the IA correction and non-core status", () => {
-  const design = read("DESIGN.md");
-  const research = read("docs/研究先行开发清单.md");
-
-  assert.match(design, /OpenClaw Recovery is nested under Platforms \/ OpenClaw guard/);
-  assert.match(design, /Recovery\/System guard is a Platforms section/);
-  assert.match(design, /`\/recovery` is a compatibility redirect/);
-  assert.doesNotMatch(design, /Platforms, Recovery and Dashboard remain separate/);
-  assert.match(research, /Model Gateway、Channel Connectors、OpenClaw Recovery/);
-});

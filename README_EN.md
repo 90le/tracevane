@@ -93,7 +93,6 @@ Development is supported on Windows, macOS, and Linux. Do not share `node_module
 - [Installation and uninstall](docs/installation.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Model Gateway acceptance boundaries](docs/model-gateway/README.md)
-- [IDE and online editor design](docs/ide-code-editor-solution/00-README.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

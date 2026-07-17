@@ -434,16 +434,3 @@ export interface ConfigSaveResponse {
   message: string;
   config: ConfigSummaryPayload;
 }
-
-export interface ConfigProviderSecretPayload {
-  checkedAt: string;
-  providerId: string;
-  apiKey: string;
-}
-
-export interface ConfigChannelSecretPayload {
-  checkedAt: string;
-  channelId: string;
-  accountId: string;
-  token: string;
-}

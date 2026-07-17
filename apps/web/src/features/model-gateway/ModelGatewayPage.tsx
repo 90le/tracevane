@@ -1,8 +1,7 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { BarChart3, Box, LayoutDashboard, Route } from "lucide-react";
 
-import { cn } from "@/design/lib/utils";
+import { SectionNav } from "@/design/ui/section-nav";
 import { LoadingState } from "@/shared/states/LoadingState";
 
 import {
@@ -19,12 +18,11 @@ import {
 const PRIMARY_TABS: ReadonlyArray<{
   view: ModelGatewayView;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
 }> = [
-  { view: "overview", label: "概览", icon: LayoutDashboard },
-  { view: "providers", label: "服务商", icon: Route },
-  { view: "models", label: "模型", icon: Box },
-  { view: "usage", label: "用量", icon: BarChart3 },
+  { view: "overview", label: "概览" },
+  { view: "providers", label: "服务商" },
+  { view: "models", label: "模型" },
+  { view: "usage", label: "用量" },
 ];
 
 /** Each sub-view maps back to the primary tab that should stay highlighted. */
@@ -189,31 +187,13 @@ export function ModelGatewayPage() {
           ))}
         </select>
       </div>
-      <nav
-        className="hidden flex-wrap gap-1 border-b border-line pb-2 sm:flex"
-        aria-label="模型路由视图"
-      >
-        {PRIMARY_TABS.map(({ view, label, icon: Icon }) => {
-          const active = activeTab === view;
-          return (
-            <button
-              key={view}
-              type="button"
-              aria-current={active ? "page" : undefined}
-              onClick={() => goToView(view)}
-              className={cn(
-                "inline-flex h-9 items-center gap-[7px] rounded-sm px-3 text-base outline-none transition-colors",
-                "[&_svg]:size-[15px] focus-visible:shadow-[var(--ring)]",
-                active
-                  ? "bg-primary-soft text-ink-strong [&_svg]:text-primary"
-                  : "text-muted hover:bg-panel-2 hover:text-ink",
-              )}
-            >
-              <Icon />
-              {label}
-            </button>
-          );
-        })}
+      <nav className="hidden flex-wrap gap-1 border-b border-line pb-2 sm:flex">
+        <SectionNav
+          items={PRIMARY_TABS.map(({ view, label }) => ({ id: view, label }))}
+          value={activeTab}
+          onChange={(id) => goToView(id as ModelGatewayView)}
+          ariaLabel="模型路由视图"
+        />
       </nav>
 
       <React.Suspense fallback={<ModelGatewayViewFallback />}>

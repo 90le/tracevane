@@ -1,3 +1,5 @@
+import { Upload } from "lucide-react";
+
 import type { UploadJob } from "./uploadManager";
 import { estimateRemaining, formatBytes } from "./uploadFormatting";
 
@@ -60,46 +62,53 @@ export function UploadTaskStrip({
   const remaining = live ? estimateRemaining(total, loaded, speed) : "待恢复";
 
   return (
-    <div className="border-t border-line bg-panel-2 px-2 py-2 text-xs" data-upload-task-strip>
-      <button
-        type="button"
-        className="mb-1 flex w-full items-center justify-between gap-2 text-left text-muted hover:text-ink"
-        onClick={onOpen}
-      >
-        <span className="truncate">
-          {live ? "上传任务" : "待恢复上传"} {done}/{rows.length}
-          {failed ? ` · ${failed} 失败` : ""}
-        </span>
-        <span className="shrink-0 text-primary">{percent}%</span>
-      </button>
-      <div className="mb-1 h-1 overflow-hidden rounded-full bg-panel">
-        <div
-          className="h-full bg-primary transition-all"
-          style={{ width: `${Math.min(100, percent)}%` }}
-        />
-      </div>
-      <div className="mb-1 flex items-center justify-between gap-2 text-2xs text-subtle">
-        <span>
+    <div
+      className="border-t border-line bg-panel-2 px-3 py-1.5 text-xs"
+      data-upload-task-strip
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <button
+          type="button"
+          className="inline-flex min-w-0 items-center gap-1.5 text-left font-medium text-ink-strong hover:text-primary"
+          onClick={onOpen}
+        >
+          <Upload className="size-3.5 shrink-0 text-primary" />
+          <span className="truncate">
+            {live ? "上传任务" : "待恢复上传"} {done}/{rows.length}
+            {failed ? ` · ${failed} 失败` : ""}
+          </span>
+        </button>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="h-1 min-w-16 flex-1 overflow-hidden rounded-full bg-panel">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${Math.min(100, percent)}%` }}
+            />
+          </div>
+          <span className="shrink-0 tabular-nums text-primary">{percent}%</span>
+        </div>
+        <span className="min-w-0 shrink truncate text-2xs text-subtle">
           {live ? `速度 ${formatBytes(speed)}/s` : `${rows.length} 个任务快照`}
+          {" · 剩余 "}
+          {remaining}
         </span>
-        <span>剩余 {remaining}</span>
-      </div>
-      <div className="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          className="text-primary hover:text-ink"
-          onClick={live ? (active ? onPause : onResume) : onOpen}
-        >
-          {live ? (active ? "暂停" : "继续") : "重新选择文件恢复"}
-        </button>
-        <button
-          type="button"
-          className="text-muted hover:text-danger disabled:opacity-40"
-          onClick={onCancel}
-          disabled={!live}
-        >
-          取消
-        </button>
+        <div className="ml-auto flex shrink-0 items-center gap-2 sm:ml-0">
+          <button
+            type="button"
+            className="text-primary hover:text-ink"
+            onClick={live ? (active ? onPause : onResume) : onOpen}
+          >
+            {live ? (active ? "暂停" : "继续") : "重新选择文件恢复"}
+          </button>
+          <button
+            type="button"
+            className="text-muted hover:text-danger disabled:opacity-40"
+            onClick={onCancel}
+            disabled={!live}
+          >
+            取消
+          </button>
+        </div>
       </div>
     </div>
   );

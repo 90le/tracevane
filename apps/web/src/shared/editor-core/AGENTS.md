@@ -13,11 +13,10 @@ This file applies under `apps/web/src/shared/editor-core/`.
 - Preserve stable document identity rules across File Surface and future IDE Workbench.
 - Keep functions small, typed, and testable; avoid generic managers unless two real call sites need the boundary now.
 
-## Required docs before changes
+## Contracts to check before changes
 
-- `docs/ide-code-editor-solution/02-共享内核与总体架构.md`
-- `docs/ide-code-editor-solution/05-前端实现方案.md`
-- capability-specific docs for the caller surface.
+- `types/files.ts` for the shared file contracts.
+- the AGENTS.md of the caller surface (File Manager, IDE Workbench) for capability-specific boundaries.
 
 ## Verification
 

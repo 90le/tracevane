@@ -4,9 +4,7 @@ import type {
   ConfigPatchPayload,
   ConfigProviderInput,
   ConfigProviderModelSummary,
-  ConfigProviderSecretPayload,
   ConfigProviderSummary,
-  ConfigChannelSecretPayload,
   ConfigChannelAccountSummary,
   ConfigSaveResponse,
   ConfigSummaryPayload,
@@ -3329,11 +3327,6 @@ function resolveConfigPatchPayload(
 
 export interface ConfigService {
   getSummary(): ConfigSummaryPayload;
-  getProviderSecret(providerId: string): ConfigProviderSecretPayload;
-  getChannelSecret(
-    channelId: string,
-    accountId: string,
-  ): ConfigChannelSecretPayload;
   saveConfig(payload: ConfigUpdatePayload): ConfigSaveResponse;
   patchConfig(payload: ConfigPatchPayload): ConfigSaveResponse;
 }
@@ -3477,46 +3470,6 @@ export function createConfigService(config: TracevaneServerConfig): ConfigServic
     getSummary(): ConfigSummaryPayload {
       const openclawConfig = readOpenClawConfig(config);
       return buildSummary(config, openclawConfig);
-    },
-
-    getProviderSecret(providerId: string): ConfigProviderSecretPayload {
-      const normalizedProviderId = normalizeString(providerId);
-      const openclawConfig = readOpenClawConfig(config);
-      const provider = openclawConfig.models?.providers?.[normalizedProviderId];
-      if (!provider || typeof provider !== "object") {
-        throw new Error(`Provider "${normalizedProviderId}" not found`);
-      }
-
-      return {
-        checkedAt: new Date().toISOString(),
-        providerId: normalizedProviderId,
-        apiKey: normalizeString((provider as Record<string, unknown>).apiKey),
-      };
-    },
-
-    getChannelSecret(
-      channelId: string,
-      accountId: string,
-    ): ConfigChannelSecretPayload {
-      const normalizedChannelId = normalizeString(channelId);
-      const normalizedAccountId = normalizeString(accountId);
-      const openclawConfig = readOpenClawConfig(config);
-      const account =
-        openclawConfig.channels?.[normalizedChannelId]?.accounts?.[
-          normalizedAccountId
-        ];
-      if (!account || typeof account !== "object") {
-        throw new Error(
-          `Channel account "${normalizedChannelId}/${normalizedAccountId}" not found`,
-        );
-      }
-
-      return {
-        checkedAt: new Date().toISOString(),
-        channelId: normalizedChannelId,
-        accountId: normalizedAccountId,
-        token: normalizeString((account as Record<string, unknown>).token),
-      };
     },
 
     saveConfig(payload: ConfigUpdatePayload): ConfigSaveResponse {

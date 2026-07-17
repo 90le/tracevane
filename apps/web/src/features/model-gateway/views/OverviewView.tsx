@@ -16,6 +16,7 @@ import {
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { PageHeader } from "@/design/ui/page-header";
 import {
   Table,
   TableBody,
@@ -372,9 +373,6 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const clientConfigured = configuredConnectionCount;
   const clientTotal = appConnections.length;
 
-  const degraded =
-    (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
-
   const smokeActiveRoute = async (route: ModelGatewayActiveRouteStatus) => {
     setSmokingScope(route.scope);
     try {
@@ -421,53 +419,40 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   };
 
   return (
-    <div className="grid gap-[18px]">
-      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
-        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel))] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={routeAlerts.length > 0 || smokeFailed > 0 ? "warn" : "ok"} className="gap-1.5">
-                {routeAlerts.length > 0 || smokeFailed > 0 ? <RouteOff className="size-3.5" /> : <Check className="size-3.5" />}
-                {smokeFailed > 0
-                  ? `${smokeFailed} 条路由验证失败`
-                  : routeAlerts.length > 0
-                    ? `${routeAlerts.length} 条配置告警`
-                    : `已解析 ${routeReady}/${routeTotal}`}
-              </Badge>
-              <Badge variant={clientAuthConfigured ? "ok" : "mute"} className="gap-1.5">
-                <KeyRound className="size-3.5" />
-                {clientAuthConfigured ? "网关密钥已启用" : "网关密钥未启用"}
-              </Badge>
-            </div>
-            <h2 className="mt-3 text-2xl font-semibold tracking-normal text-ink-strong">
-              模型网关运营总览
-            </h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-              汇总真实 Provider 健康、客户端路由、账号池可用性和最近 smoke 结果；配置和运行态分离，避免用静态卡片误判网关状态。
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 tabular-nums">
-                <Network className="size-3.5 text-primary" />
-                {listener ? `${listener.host}:${listener.port}` : "监听信息不可用"}
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-2.5 py-1 tabular-nums">
-                <ServerCog className="size-3.5 text-primary" />
-                {providerTotal} Providers · {routeTotal} routes
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            <Button variant="outline" size="sm" onClick={() => goToView("providers")}>
-              <ServerCog className="size-3.5" />
-              服务商
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setKeyDialogOpen(true)}>
+    <div className="grid gap-4">
+      <PageHeader
+        className="px-0"
+        title="模型网关"
+        description="汇总真实 Provider 健康、客户端路由、账号池可用性和最近 smoke 结果；配置和运行态分离，避免用静态卡片误判网关状态。"
+        meta={
+          <>
+            <Badge variant={routeAlerts.length > 0 || smokeFailed > 0 ? "warn" : "ok"} className="gap-1.5">
+              {routeAlerts.length > 0 || smokeFailed > 0 ? <RouteOff className="size-3.5" /> : <Check className="size-3.5" />}
+              {smokeFailed > 0
+                ? `${smokeFailed} 条路由验证失败`
+                : routeAlerts.length > 0
+                  ? `${routeAlerts.length} 条配置告警`
+                  : `已解析 ${routeReady}/${routeTotal}`}
+            </Badge>
+            <Badge variant={clientAuthConfigured ? "ok" : "mute"} className="gap-1.5">
               <KeyRound className="size-3.5" />
-              网关密钥
-            </Button>
-          </div>
-        </div>
+              {clientAuthConfigured ? "网关密钥已启用" : "网关密钥未启用"}
+            </Badge>
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <Network className="size-3.5 text-primary" />
+              {listener ? `${listener.host}:${listener.port}` : "监听信息不可用"}
+            </span>
+          </>
+        }
+        actions={
+          <Button variant="ghost" size="sm" onClick={() => setKeyDialogOpen(true)}>
+            <KeyRound className="size-3.5" />
+            网关密钥
+          </Button>
+        }
+      />
 
+      <section className="rounded-md border border-line bg-panel shadow-sm">
         <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
           <GatewayMetricCard
             icon={<RouteOff />}
@@ -529,7 +514,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
       </section>
 
       {/* Route cockpit — Gateway owns routing; CLI Agents owns runtime. */}
-      <Panel className="overflow-hidden border-primary-line/40 bg-panel-2">
+      <Panel className="overflow-hidden">
         <PanelHead
           title="模型路由总览"
           sub="每个客户端入口的真实 Provider、模型预算、配置状态与最近检查"
@@ -778,7 +763,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
         </div>
       </Panel>
 
-      <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
         {/* Health overview — only live provider health */}
         <Panel>
           <PanelHead

@@ -614,7 +614,7 @@ function EditorDockTab({
               />
               <EditorTabMenuButton
                 icon={<X />}
-                label="全部关闭"
+                label="关闭全部"
                 onClick={() => runMenuAction(() => onRequestCloseTabs(tabs.map((item) => item.id)))}
                 dataAttr="close-all"
               />

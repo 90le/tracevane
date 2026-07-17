@@ -715,7 +715,7 @@ export function FileManagerActionDialog({
           </div>
         ) : (
           <div className="grid gap-3 px-5 py-3 text-sm text-muted">
-            <div className="rounded border border-danger/20 bg-danger-soft p-3 text-danger">
+            <div className="rounded border border-danger-line bg-danger-soft p-3 text-danger">
               <div className="font-semibold text-danger">
                 危险操作：默认移入回收站
               </div>
@@ -834,7 +834,7 @@ function ArchiveDryRunSummary({
       <div
         className={
           errorMessage
-            ? "mt-3 rounded border border-danger/20 bg-danger-soft px-2 py-2 text-xs text-danger"
+            ? "mt-3 rounded border border-danger-line bg-danger-soft px-2 py-2 text-xs text-danger"
             : "mt-3 rounded border border-line bg-panel-2 px-2 py-2 text-xs text-subtle"
         }
         data-file-manager-archive-dry-run
@@ -855,7 +855,7 @@ function ArchiveDryRunSummary({
         <span className="rounded-full bg-panel px-2 py-0.5 text-muted">
           {preview.counts.total} 项
         </span>
-        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">
+        <span className="rounded-full bg-success-soft px-2 py-0.5 text-success">
           {preview.counts.ready} 可打包
         </span>
         <span className="rounded-full bg-primary-soft px-2 py-0.5 text-primary">
@@ -876,7 +876,7 @@ function ArchiveDryRunSummary({
         输出：{preview.archivePath}
       </div>
       {preview.destinationExists ? (
-        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
+        <div className="rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger">
           目标归档文件已经存在。为避免静默覆盖，请更换打包文件名。
         </div>
       ) : null}
@@ -905,7 +905,7 @@ function ChmodDryRunSummary({
 }) {
   if (!modeValid)
     return (
-      <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
+      <div className="rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger">
         请输入 3-4 位八进制权限，例如 644 或 0755。
       </div>
     );
@@ -940,7 +940,7 @@ function ChmodDryRunSummary({
         </span>
       </div>
       {preview.truncated ? (
-        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
+        <div className="rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger">
           影响范围超过安全预览上限，请缩小选择后再执行。
         </div>
       ) : null}
@@ -986,7 +986,7 @@ function UnarchiveDryRunSummary({
       <div
         className={
           errorMessage
-            ? "rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger"
+            ? "rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger"
             : "rounded border border-line bg-panel px-2 py-1 text-subtle"
         }
       >
@@ -1008,7 +1008,7 @@ function UnarchiveDryRunSummary({
         <span className="rounded-full bg-panel-2 px-2 py-0.5 text-muted">
           {counts.total} 项
         </span>
-        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">
+        <span className="rounded-full bg-success-soft px-2 py-0.5 text-success">
           {counts.ready} 就绪
         </span>
         {counts.rename ? (
@@ -1033,7 +1033,7 @@ function UnarchiveDryRunSummary({
         ) : null}
       </div>
       {counts.conflicts || counts.errors ? (
-        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
+        <div className="rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger">
           存在阻塞冲突或不安全条目，请选择覆盖、跳过或保留两者后再执行。
         </div>
       ) : null}
@@ -1092,7 +1092,7 @@ function TransferDryRunSummary({
       <div
         className={
           errorMessage
-            ? "rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger"
+            ? "rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger"
             : "rounded border border-line bg-panel px-2 py-1 text-subtle"
         }
       >
@@ -1114,7 +1114,7 @@ function TransferDryRunSummary({
         <span className="rounded-full bg-panel-2 px-2 py-0.5 text-muted">
           {counts.total} 项
         </span>
-        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">
+        <span className="rounded-full bg-success-soft px-2 py-0.5 text-success">
           {counts.ready} 就绪
         </span>
         {counts.rename ? (
@@ -1139,7 +1139,7 @@ function TransferDryRunSummary({
         ) : null}
       </div>
       {counts.conflicts ? (
-        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
+        <div className="rounded border border-danger-line bg-danger-soft px-2 py-1 text-danger">
           存在阻塞冲突，请选择覆盖、跳过或保留两者后再执行。
         </div>
       ) : null}

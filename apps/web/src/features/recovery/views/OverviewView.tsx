@@ -10,9 +10,10 @@ import {
   Wifi,
 } from "lucide-react";
 
+import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
-import { EmptyState } from "@/shared/states/EmptyState";
+import { MetricRail, MetricTile, type MetricTone } from "@/design/ui/metric";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
 import {
@@ -23,7 +24,7 @@ import {
 
 import { useSystemHealthQuery } from "@/lib/query/dashboard";
 import { useRecoveryStatusQuery } from "@/lib/query/recovery";
-import type { RecoveryViewProps } from "../types";
+import type { OpenClawRecoveryStateKind, RecoveryViewProps } from "../types";
 import {
   Panel,
   PanelHead,
@@ -40,11 +41,46 @@ function flag(value: boolean | undefined): { variant: "ok" | "mute"; label: stri
   return value ? { variant: "ok", label: "已开启" } : { variant: "mute", label: "未开启" };
 }
 
+/** Current-state banner tone per live recovery state (semantic tokens only). */
+const BANNER_TONE: Record<
+  OpenClawRecoveryStateKind,
+  { shell: string; chip: string }
+> = {
+  healthy: {
+    shell: "border-success-line bg-success-soft",
+    chip: "bg-panel text-success",
+  },
+  degraded: {
+    shell: "border-warning-line bg-warning-soft",
+    chip: "bg-panel text-warning",
+  },
+  repairing: {
+    shell: "border-warning-line bg-warning-soft",
+    chip: "bg-panel text-warning",
+  },
+  failed: {
+    shell: "border-danger-line bg-danger-soft",
+    chip: "bg-panel text-danger",
+  },
+  unknown: {
+    shell: "border-line bg-panel-2",
+    chip: "bg-panel-3 text-muted",
+  },
+};
+
+/** Service badge variant → MetricTile tone (mute stays neutral). */
+const SERVICE_METRIC_TONE: Record<string, MetricTone> = {
+  ok: "ok",
+  warn: "warn",
+  bad: "bad",
+};
+
 /**
- * Recovery overview / status console. Aggregates the live recovery state
- * (`/status`), the runtime health snapshot (reused `useSystemHealthQuery`), and
- * the guarded recovery service panel. Pure read surface plus the guarded
- * service controls — issue repair lives in the Issues view.
+ * Recovery overview — the status page. Leads with the current-state banner
+ * (tone from the live `status`), a MetricRail of the four load-bearing facts,
+ * then the detailed recovery-chain / policy evidence and the guarded service
+ * controls. Pure read surface plus the guarded service controls — issue
+ * repair lives in the Issues view.
  */
 export function OverviewView({ goToView }: RecoveryViewProps) {
   const statusQuery = useRecoveryStatusQuery();
@@ -53,7 +89,13 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
   if (statusQuery.isLoading) {
     return (
       <div className="grid gap-[18px]" role="status" aria-busy="true">
-        <Skeleton className="h-[150px] w-full" />
+        <Skeleton className="h-[120px] w-full" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Skeleton className="h-[92px] w-full" />
+          <Skeleton className="h-[92px] w-full" />
+          <Skeleton className="h-[92px] w-full" />
+          <Skeleton className="h-[92px] w-full" />
+        </div>
         <Panel>
           <Skeleton className="h-12 w-full rounded-b-none" />
           <div className="py-1.5">
@@ -84,6 +126,7 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
   const status = statusQuery.data!;
   const health = healthQuery.data;
   const stateBadge = RECOVERY_STATE_BADGE[status.status] ?? RECOVERY_STATE_BADGE.unknown;
+  const bannerTone = BANNER_TONE[status.status] ?? BANNER_TONE.unknown;
   const probe = status.probe;
   const repair = status.lastRepair;
   const policy = status.policy;
@@ -101,72 +144,85 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
 
   return (
     <div className="grid gap-[18px]">
-      {/* Hero: live recovery state + version. */}
-      <section className="rounded-md border border-line bg-panel-2 p-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <Badge variant={stateBadge.variant} className="gap-1.5">
-            <HeartPulse className="size-3.5" />
-            OpenClaw 平台守护 · {stateBadge.label}
-          </Badge>
-          <span className="text-sm text-muted">
-            守护进程 v{status.daemon.version}
-            {health?.version && (
-              <>
-                <span className="text-subtle"> · </span>
-                运行时 v{health.version}
-              </>
+      {/* Current-state banner — the status-page headline. */}
+      <section className={cn("rounded-md border p-4 shadow-sm sm:p-5", bannerTone.shell)}>
+        <div className="flex flex-wrap items-start gap-3">
+          <span
+            className={cn(
+              "grid size-10 shrink-0 place-items-center rounded-[10px] [&_svg]:size-5",
+              bannerTone.chip,
             )}
+          >
+            <HeartPulse />
           </span>
-          <span className="ml-auto text-sm text-subtle">
-            检查于 {formatTime(status.checkedAt)}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => void statusQuery.refetch()}>
-            <RefreshCw />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-ink-strong">OpenClaw 平台守护</h2>
+              <Badge variant={stateBadge.variant}>{stateBadge.label}</Badge>
+            </div>
+            <p className="mt-1 text-sm text-ink">
+              {probe.gatewayReachable === true
+                ? "网关可达，OpenClaw 平台守护处于待命状态。"
+                : probe.gatewayReachable === false
+                  ? "网关探测失败，OpenClaw 平台守护正在跟踪故障窗口。"
+                  : "网关探测状态未知。"}
+            </p>
+            <p className="mt-1.5 text-xs text-subtle">
+              守护进程 v{status.daemon.version}
+              {health?.version && <> · 运行时 v{health.version}</>}
+              {" · 检查于 "}
+              {formatTime(status.checkedAt)}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-panel"
+            onClick={() => void statusQuery.refetch()}
+            disabled={statusQuery.isFetching}
+          >
+            <RefreshCw className={statusQuery.isFetching ? "animate-spin" : undefined} />
             刷新
           </Button>
         </div>
-        <p className="mt-3 text-base text-ink-strong">
-          {probe.gatewayReachable === true
-            ? "网关可达，OpenClaw 平台守护处于待命状态。"
-            : probe.gatewayReachable === false
-              ? "网关探测失败，OpenClaw 平台守护正在跟踪故障窗口。"
-              : "网关探测状态未知。"}
-        </p>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">网关探测</span>
-            <div className="mt-1 text-xl font-semibold text-ink-strong">
-              {reachabilityLabel(probe.gatewayReachable)}
-            </div>
-            <span className="text-xs text-muted">下次 {formatTime(probe.nextCheckAt)}</span>
-          </div>
-          <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">守护进程</span>
-            <div className="mt-1 text-xl font-semibold text-ink-strong">
-              {status.daemon.pid ?? "—"}
-            </div>
-            <span className="text-xs text-muted">
-              心跳 {formatTime(status.daemon.heartbeatAt)}
-            </span>
-          </div>
-          <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">上次修复</span>
-            <div className="mt-1 text-xl font-semibold text-ink-strong">
-              {repair ? (repair.ok ? "成功" : "失败") : "无"}
-            </div>
-            <span className="text-xs text-muted">
-              {repair ? formatTime(repair.finishedAt) : "尚未执行修复"}
-            </span>
-          </div>
-          <div className="rounded-sm border border-line bg-panel p-3">
-            <span className="text-xs text-subtle">平台守护服务</span>
-            <div className="mt-1 text-xl font-semibold text-ink-strong">
-              {serviceLabel}
-            </div>
-            <span className="text-xs text-muted">{serviceSupervisor}</span>
-          </div>
-        </div>
       </section>
+
+      {/* Key health facts. */}
+      <MetricRail aria-label="平台守护关键指标">
+        <MetricTile
+          label="网关探测"
+          value={reachabilityLabel(probe.gatewayReachable)}
+          hint={`下次 ${formatTime(probe.nextCheckAt)}`}
+          tone={
+            probe.gatewayReachable === true
+              ? "ok"
+              : probe.gatewayReachable === false
+                ? "bad"
+                : "default"
+          }
+          icon={<Wifi />}
+        />
+        <MetricTile
+          label="守护进程"
+          value={status.daemon.pid ?? "—"}
+          hint={`心跳 ${formatTime(status.daemon.heartbeatAt)}`}
+          icon={<HeartPulse />}
+        />
+        <MetricTile
+          label="上次修复"
+          value={repair ? (repair.ok ? "成功" : "失败") : "无"}
+          hint={repair ? formatTime(repair.finishedAt) : "尚未执行修复"}
+          tone={repair ? (repair.ok ? "ok" : "bad") : "default"}
+          icon={<History />}
+        />
+        <MetricTile
+          label="平台守护服务"
+          value={serviceLabel}
+          hint={serviceSupervisor}
+          tone={SERVICE_METRIC_TONE[serviceBadge] ?? "default"}
+          icon={<Server />}
+        />
+      </MetricRail>
 
       <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
         {/* Recovery chain — task-continuity facts only. */}
@@ -186,7 +242,7 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
               icon={<Wifi />}
               iconClass={
                 probe.gatewayReachable === true
-                  ? "bg-success/12 text-success"
+                  ? "bg-success-soft text-success"
                   : probe.gatewayReachable === false
                     ? "bg-danger-soft text-danger"
                     : undefined
@@ -302,7 +358,7 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
         </Panel>
       </div>
 
-      {/* Notes surfaced by the recovery daemon — live, not fabricated. */}
+      {/* Notes surfaced by the recovery daemon — only when it has some. */}
       {status.notes.length > 0 && (
         <Panel>
           <PanelHead title="守护说明" sub="OpenClaw 平台守护给出的最新说明" />
@@ -313,15 +369,6 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
               </p>
             ))}
           </div>
-        </Panel>
-      )}
-
-      {status.notes.length === 0 && (
-        <Panel>
-          <EmptyState
-            title="暂无守护说明"
-            description="没有说明不代表不可用，继续以上方的状态 / 探测 / 服务为准。"
-          />
         </Panel>
       )}
 

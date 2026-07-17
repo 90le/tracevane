@@ -3,6 +3,7 @@ import { Activity, Bot, Check, Copy, ExternalLink, FlaskConical, KeyRound, Loade
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { PageHeader } from "@/design/ui/page-header";
 import {
   Dialog,
   DialogBody,
@@ -454,21 +455,20 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
   return (
     <TooltipProvider delayDuration={200}>
       <div className="grid gap-4">
-        <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
-          <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--teal)_4%,var(--panel))] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={openCircuits > 0 ? "warn" : "ok"}>
-                  {openCircuits > 0 ? `${openCircuits} 个熔断点` : "Provider 路由可用"}
-                </Badge>
-                <Badge variant="outline">{enabledProviders} 个启用</Badge>
-              </div>
-              <h2 className="mt-3 text-2xl font-semibold text-ink-strong">服务商控制台</h2>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-                管理 API Key、账号制 Provider、协议端点和当前活跃路由；列表优先展示状态、模型、scope 与常用动作。
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 lg:justify-end">
+        <PageHeader
+          className="px-0"
+          title="服务商"
+          description="管理 API Key、账号制 Provider、协议端点和当前活跃路由；列表优先展示状态、模型、scope 与常用动作。"
+          meta={
+            <>
+              <Badge variant={openCircuits > 0 ? "warn" : "ok"}>
+                {openCircuits > 0 ? `${openCircuits} 个熔断点` : "Provider 路由可用"}
+              </Badge>
+              <Badge variant="outline">{enabledProviders} 个启用</Badge>
+            </>
+          }
+          actions={
+            <>
               <Button
                 variant="primary"
                 size="sm"
@@ -486,8 +486,11 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                 <Bot />
                 {codexLoginMutation.isPending ? "发起中…" : "Codex 账户登录"}
               </Button>
-            </div>
-          </div>
+            </>
+          }
+        />
+
+        <section className="rounded-md border border-line bg-panel shadow-sm">
           <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
             <GatewayMetricCard
               icon={<Settings2 />}
@@ -535,7 +538,28 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
       {providers.length === 0 ? (
         <EmptyState
           title="尚无 Provider"
-          description="使用上方入口添加 API Provider、本地服务或登录一个 Codex 账户。"
+          description="添加一个 API Provider、本地服务，或登录一个 Codex 账户后即可开始路由。"
+          action={
+            <>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => goToView("providercfg", { create: true })}
+              >
+                <KeyRound />
+                添加 Provider
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCodexLogin}
+                disabled={codexLoginMutation.isPending}
+              >
+                <Bot />
+                Codex 账户登录
+              </Button>
+            </>
+          }
         />
       ) : (
         <Table>

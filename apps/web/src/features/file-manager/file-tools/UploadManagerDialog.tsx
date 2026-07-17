@@ -337,7 +337,7 @@ function UploadFailureSummary({ jobs }: { jobs: UploadJob[] }) {
   const failures = jobs.filter((job) => job.status === "error" || job.status === "canceled");
   if (!failures.length) return null;
   return (
-    <div className="mt-2 rounded border border-danger/20 bg-danger-soft p-2 text-2xs text-danger" data-upload-manager-failure-summary>
+    <div className="mt-2 rounded border border-danger-line bg-danger-soft p-2 text-2xs text-danger" data-upload-manager-failure-summary>
       <div className="font-semibold">失败/取消任务 {failures.length} 个</div>
       <div className="mt-1 grid max-h-20 gap-1 overflow-auto">
         {failures.slice(0, 4).map((job) => (

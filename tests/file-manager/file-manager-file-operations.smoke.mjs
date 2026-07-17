@@ -322,7 +322,7 @@ async function run() {
     await page.locator(`${trashItemSelector(trashItem.trashPath)} [data-file-manager-trash-restore]`).click();
     await waitForEntryApiPath(rootId, movedPath);
 
-    await page.locator('[data-file-manager-view-switcher]').getByRole('button', { name: '文件' }).click();
+    await page.locator('[data-file-manager-view-switcher]').getByRole('tab', { name: '文件' }).click();
     await jumpToPath(page, `${smokeDir}/${moveTargetName}`);
     await page.getByRole('button', { name: '刷新文件列表' }).click();
     await waitForEntry(page, movedPath);

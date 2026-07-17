@@ -510,7 +510,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
   return (
     <div className="grid gap-[18px]">
       {!runtimeReachable ? (
-        <div className="flex items-start gap-2 rounded-sm border border-amber/30 bg-amber-soft px-4 py-3 text-sm text-amber" role="status">
+        <div className="flex items-start gap-2 rounded-sm border border-warning-line bg-warning-soft px-4 py-3 text-sm text-warning" role="status">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span><strong>守护离线，会话运行态暂不可用。</strong>当前显示已保存的策略；启动消息守护后会恢复会话、事件与管理操作。</span>
         </div>
@@ -558,7 +558,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           <div
             className={
               policyNotice.tone === "ok"
-                ? "border-t border-line bg-success/10 px-4 py-2.5 text-sm text-success"
+                ? "border-t border-line bg-success-soft px-4 py-2.5 text-sm text-success"
                 : policyNotice.tone === "bad"
                   ? "border-t border-line bg-danger-soft px-4 py-2.5 text-sm text-danger"
                   : "border-t border-line bg-warning-soft px-4 py-2.5 text-sm text-warning"

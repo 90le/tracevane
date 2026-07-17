@@ -499,11 +499,21 @@ export function TerminalPaneView({
         <header className="flex min-h-8 items-center gap-1 border-b border-line bg-panel-2 px-2 text-xs">
           <button
             type="button"
-            className="min-w-0 flex-1 truncate text-left text-ink-strong outline-none focus-visible:shadow-[var(--ring)]"
+            className="min-w-0 flex-1 truncate text-left font-medium text-ink-strong outline-none focus-visible:shadow-[var(--ring)]"
             onClick={() => onFocus(paneId)}
           >
             {title}
-            <span className="ml-2 rounded bg-panel px-1 text-2xs text-muted">{formatPaneStatus(status)}</span>
+            <span
+              className={cn(
+                "ml-2 rounded px-1 py-px text-2xs",
+                status === "running" && "bg-success-soft text-success",
+                status === "error" && "bg-danger-soft text-danger",
+                (status === "creating" || status === "connecting") && "bg-primary-soft text-primary",
+                (status === "idle" || status === "closed") && "bg-panel-3 text-muted",
+              )}
+            >
+              {formatPaneStatus(status)}
+            </span>
             {shell ? (
               <span className="ml-1 rounded bg-panel px-1 font-mono text-2xs text-muted" title="Shell / 终端配置" data-ide-terminal-shell>
                 {shell}
@@ -518,6 +528,7 @@ export function TerminalPaneView({
           <Button
             variant="ghost"
             size="icon"
+            className="size-7"
             onClick={closePane}
             disabled={closing}
             aria-label={closing ? "正在关闭终端窗格" : "强制关闭终端窗格"}
@@ -529,11 +540,11 @@ export function TerminalPaneView({
       ) : null}
       <div className="relative min-h-0 min-w-0" data-ide-terminal-pane-body>
         {status === "error" ? (
-          <div className="absolute inset-x-3 top-3 z-10 flex items-start gap-2 rounded-md border border-danger/40 bg-danger-soft p-2 text-xs text-ink-strong" role="status">
-            <AlertTriangle className="mt-0.5 size-4 text-danger" />
-            <div>
-              <div className="font-medium">终端不可用</div>
-              <div className="text-muted">{message}</div>
+          <div className="absolute inset-x-3 top-3 z-10 flex items-start gap-2 rounded-md border border-danger-line bg-danger-soft p-3 text-xs text-ink-strong shadow-sm" role="status">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" />
+            <div className="min-w-0">
+              <div className="font-semibold text-danger">终端不可用</div>
+              <div className="mt-0.5 leading-relaxed text-ink">{message}</div>
             </div>
           </div>
         ) : null}

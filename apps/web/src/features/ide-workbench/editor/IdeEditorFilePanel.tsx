@@ -4,6 +4,7 @@ import { AlertTriangle, FileQuestion, FileText, RefreshCw } from "lucide-react";
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
+import { EmptyState, ErrorState, LoadingState } from "@/design/ui/state";
 import { isApiError } from "@/lib/api/errors";
 import { CodeEditor } from "@/features/file-manager/code-editor/CodeEditor";
 import { FileSurfacePreviewPanel } from "@/shared/file-surface";
@@ -567,33 +568,23 @@ function IdeEditorStatePanel({
   children?: React.ReactNode;
   dataState?: string;
 }) {
+  const StateComponent = tone === "loading" ? LoadingState : tone === "danger" ? ErrorState : EmptyState;
   return (
-    <div
-      className="grid h-full min-h-0 place-items-center bg-canvas p-6 text-ink"
+    <StateComponent
+      className="h-full min-h-0 bg-canvas"
+      icon={tone === "warning" ? <span className="text-warning">{icon}</span> : icon}
+      title={title}
+      description={description}
+      action={action}
       data-ide-editor-panel
       data-ide-editor-panel-state={dataState ?? tone}
+      data-ide-editor-panel-title={title}
     >
-      <div className="max-w-xl rounded-lg border border-line bg-panel p-5 text-center shadow-sm">
-        <div
-          className={cn(
-            "mx-auto mb-3 grid size-11 place-items-center rounded-md [&_svg]:size-5",
-            tone === "danger" && "bg-danger-soft text-danger",
-            tone === "warning" && "bg-warning-soft text-warning",
-            tone === "loading" && "bg-primary-soft text-primary",
-            tone === "muted" && "bg-panel-2 text-subtle",
-          )}
-        >
-          {icon}
-        </div>
-        <div className="text-sm font-semibold text-ink-strong" data-ide-editor-panel-title>{title}</div>
-        <div className="mt-2 text-sm text-muted">{description}</div>
-        <div className="mt-3 rounded-md border border-line bg-canvas px-3 py-2 text-left font-mono text-2xs text-subtle" data-ide-editor-panel-path>
-          path: {path}
-        </div>
-        {children}
-        {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
+      <div className="max-w-full rounded-md border border-line bg-panel px-3 py-2 text-left font-mono text-2xs text-subtle" data-ide-editor-panel-path>
+        path: {path}
       </div>
-    </div>
+      {children}
+    </StateComponent>
   );
 }
 

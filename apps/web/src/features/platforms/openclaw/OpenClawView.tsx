@@ -1,22 +1,29 @@
+import * as React from "react";
 import { Link } from "react-router-dom";
 import {
-  ArrowLeft,
+  Bot,
   Gauge,
   HeartPulse,
   LifeBuoy,
-  Route,
+  Link2,
+  Puzzle,
+  RadioTower,
+  ScrollText,
   Server,
+  ServerCog,
   Settings2,
   ShieldCheck,
 } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
 import { ErrorState } from "@/shared/states/ErrorState";
-import { Skeleton } from "@/shared/states/Skeleton";
+import { LoadingState } from "@/shared/states/LoadingState";
 
-import { Panel, PanelHead, EvidenceRow, StatTile, ToneBadge } from "../_shared";
+import { Panel, PanelHead, EvidenceRow, ToneBadge, metricTone } from "../_shared";
 import { OPENCLAW_SECTIONS } from "../sections";
+import type { PlatformSectionId } from "../types";
 import { usePlatformsAggregate } from "../usePlatformsAggregate";
 
 function fmtUptime(seconds: number | undefined): string {
@@ -35,17 +42,24 @@ function fmtTime(value: string | null | undefined): string {
 
 const primarySections = OPENCLAW_SECTIONS.filter((section) => ["guard", "config", "agents", "channels", "bindings", "skills", "services", "logs", "diagnostics"].includes(section.id));
 
+const SECTION_ICONS: Partial<Record<PlatformSectionId, React.ReactNode>> = {
+  guard: <LifeBuoy />,
+  config: <Settings2 />,
+  agents: <Bot />,
+  channels: <RadioTower />,
+  bindings: <Link2 />,
+  skills: <Puzzle />,
+  services: <ServerCog />,
+  logs: <ScrollText />,
+  diagnostics: <HeartPulse />,
+};
+
 export function OpenClawView() {
   const { isLoading, allFailed, error, refetchAll, sources, recoveryTone } =
     usePlatformsAggregate({ includeDiagnostics: false });
 
   if (isLoading) {
-    return (
-      <div className="grid gap-[18px]" role="status" aria-busy="true">
-        <Skeleton className="h-[120px] w-full" />
-        <Skeleton className="h-[220px] w-full" />
-      </div>
-    );
+    return <LoadingState title="正在加载 OpenClaw 平台摘要…" />;
   }
 
   if (allFailed) {
@@ -66,52 +80,37 @@ export function OpenClawView() {
 
   return (
     <div className="grid gap-[18px]">
-      <section className="rounded-md border border-line bg-panel shadow-sm">
-        <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-stretch">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="ghost" size="sm" asChild><Link to="/platforms"><ArrowLeft />平台目录</Link></Button>
-              <Badge variant={gatewayUp ? "ok" : "warn"} className="gap-1.5"><Server className="size-3.5" />运行时 {gatewayUp ? "在线" : "需关注"}</Badge>
-              {health?.version ? <Badge variant="mute">v{health.version}</Badge> : null}
-              <Badge variant="mute" className="gap-1.5"><Gauge className="size-3.5" />轻量总览</Badge>
-            </div>
-            <h2 className="mt-4 text-xl font-semibold text-ink-strong">OpenClaw 平台运行摘要</h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-              总览只请求轻量 health / recovery 数据，不触发 doctor、命令探测或完整诊断；需要配置、Agent、Channel、绑定、服务、日志和诊断时进入下方子页面。
-            </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <StatTile label="网关" value={<ToneBadge tone={gatewayUp ? "ok" : "warn"}>{gatewayUp ? "在线" : "离线"}</ToneBadge>} sub={health ? `端口 ${health.gatewayPort}` : "等待健康数据"} />
-              <StatTile label="守护" value={recState ? <ToneBadge tone={recoveryTone(recState)}>{recState}</ToneBadge> : "—"} sub={daemonRunning ? `pid ${recovery?.daemon.pid}` : "daemon 未运行"} />
-              <StatTile label="运行时" value={health?.version ? `v${health.version}` : "—"} sub={health?.nodeVersion ? `node ${health.nodeVersion}` : ""} />
-              <StatTile label="运行时长" value={fmtUptime(health?.uptime)} sub={health ? `pid ${health.pid}` : ""} />
-            </div>
-          </div>
-          <div className="grid content-between gap-3 rounded-md border border-line bg-panel-2 p-3">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-ink-strong"><ShieldCheck className="size-4 text-primary" />边界说明</div>
-              <p className="mt-2 text-sm leading-6 text-muted">Platform 管第三方平台原生能力；模型网关、IM、CLI、Workspace 的写入口仍在各自 owner 域，避免重复配置。</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" asChild><Link to="/platforms/openclaw/guard"><LifeBuoy />平台守护</Link></Button>
-              <Button variant="outline" size="sm" asChild><Link to="/platforms/openclaw/diagnostics"><HeartPulse />诊断</Link></Button>
-            </div>
-          </div>
-        </div>
-      </section>
+      <MetricRail>
+        <MetricTile label="网关" value={gatewayUp ? "在线" : "离线"} tone={gatewayUp ? "ok" : "warn"} hint={health ? `端口 ${health.gatewayPort}` : "等待健康数据"} icon={<Server />} />
+        <MetricTile label="守护" value={recState ?? "—"} tone={recState ? metricTone(recoveryTone(recState)) : "default"} hint={daemonRunning ? `pid ${recovery?.daemon.pid}` : "daemon 未运行"} icon={<LifeBuoy />} />
+        <MetricTile label="运行时" value={health?.version ? `v${health.version}` : "—"} hint={health?.nodeVersion ? `node ${health.nodeVersion}` : "版本未就绪"} icon={<Gauge />} />
+        <MetricTile label="运行时长" value={fmtUptime(health?.uptime)} hint={health ? `pid ${health.pid}` : "等待健康数据"} icon={<HeartPulse />} />
+      </MetricRail>
 
-      <section className="rounded-md border border-line bg-panel shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-panel px-4 py-3 shadow-sm">
+        <div className="flex min-w-0 flex-1 items-start gap-2 text-sm leading-6 text-muted">
+          <ShieldCheck className="mt-1 size-4 shrink-0 text-primary" />
+          <span>总览只请求轻量 health / recovery 数据，不触发 doctor、命令探测或完整诊断；Platform 管第三方平台原生能力，模型网关、IM、CLI、Workspace 的写入口仍在各自 owner 域。</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" asChild><Link to="/platforms/openclaw/guard"><LifeBuoy />平台守护</Link></Button>
+          <Button variant="outline" size="sm" asChild><Link to="/platforms/openclaw/diagnostics"><HeartPulse />诊断</Link></Button>
+        </div>
+      </div>
+
+      <Panel>
         <PanelHead title="子页面入口" sub="按对象分层进入，不在总览堆叠所有表单与日志。" action={<Badge variant="mute">9 个子页</Badge>} />
         <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">
           {primarySections.map((section) => (
             <Link key={section.id} to={section.path} className="group min-w-0 rounded-sm border border-line bg-panel-2 px-3 py-3 transition hover:border-primary-line hover:bg-primary-soft/40">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel text-muted group-hover:text-primary"><Route className="size-4" /></span>
+                <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel text-muted group-hover:text-primary [&_svg]:size-4">{SECTION_ICONS[section.id] ?? <Server />}</span>
                 <span className="min-w-0 flex-1"><strong className="block truncate text-sm text-ink-strong">{section.label}</strong><span className="line-clamp-2 text-xs leading-5 text-muted">{section.description}</span></span>
               </div>
             </Link>
           ))}
         </div>
-      </section>
+      </Panel>
 
       <div className="grid gap-[18px] lg:grid-cols-2">
         <Panel>

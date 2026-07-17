@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   CheckCircle2,
   CircleSlash,
+  Clock,
   Copy,
   Download,
   ExternalLink,
@@ -12,6 +13,7 @@ import {
   Settings2,
   ShieldCheck,
   Terminal,
+  Wrench,
 } from "lucide-react";
 
 import { Button } from "@/design/ui/button";
@@ -23,7 +25,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/design/ui/dialog";
+import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { toast } from "@/design/ui/sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/design/ui/tooltip";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 
@@ -201,6 +211,13 @@ export function CliRuntimeView() {
     (ptyAvailable === false ? 1 : 0) +
     (terminalStatus.error ? 1 : 0);
 
+  const refreshing = terminalStatus.isFetching || gateway.isFetching;
+  const envPending = statusPending || gatewayPending;
+  const envReadyCount =
+    (gatewayReady ? 1 : 0) + (ptyAvailable === true ? 1 : 0);
+  const showInstallGuide =
+    !statusPending && !terminalStatus.error && installedCount === 0;
+
   const selectedDescriptor = installTarget
     ? AGENT_CLI_ROSTER.find((item) => item.id === installTarget)
     : null;
@@ -216,6 +233,12 @@ export function CliRuntimeView() {
     void terminalStatus.refetch();
     void gateway.refetch();
   };
+
+  const copyAllInstallCommands = () =>
+    copyText(
+      AGENT_CLI_ROSTER.map((item) => item.installHint).join("\n"),
+      "安装命令已复制",
+    );
 
   const openInstallDialog = (
     cli: TerminalAgentCliId,
@@ -242,395 +265,441 @@ export function CliRuntimeView() {
   };
 
   return (
-    <div className="grid gap-4" data-cli-agents-management-page>
-      <Panel className="bg-panel-2">
-        <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <div className="min-w-0">
-            <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-ink-strong">
-              <ShieldCheck className="size-4 text-primary" />
-              安装、配置、重装与修复 Codex / Claude Code / OpenCode
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-              统一管理本机 Agent CLI 的安装、配置与修复；安装状态、模型网关与终端能力在后台检测完成后自动更新。
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 lg:justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={refreshReadiness}
-              disabled={terminalStatus.isFetching || gateway.isFetching}
-            >
-              <RefreshCw />
-              刷新检测
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                copyText(
-                  AGENT_CLI_ROSTER.map((item) => item.installHint).join("\n"),
-                  "安装命令已复制",
-                )
-              }
-            >
-              <Copy />
-              复制全部安装命令
-            </Button>
-          </div>
-        </div>
-        <div className="grid border-t border-line sm:grid-cols-4 divide-y divide-line sm:divide-x sm:divide-y-0">
-          <Fact label="已安装 Agent CLI">
-            {statusPending
-              ? "检测中"
-              : `${installedCount}/${AGENT_CLI_ROSTER.length}`}
-          </Fact>
-          <Fact label="默认模型">
-            {config?.model || (statusPending ? "检测中" : "—")}
-          </Fact>
-          <Fact label="模型网关">
-            {gatewayPending ? "检测中" : gatewayReady ? "可用" : "需检查"}
-          </Fact>
-          <Fact label="检查时间">
-            {formatTime(terminalStatus.data?.checkedAt)}
-          </Fact>
-        </div>
-      </Panel>
-
-      <Panel>
-        <PanelHead
-          title="Agent CLI 列表"
-          sub="安装状态与修复建议在后台检测完成后自动更新。"
-          action={
-            <ToneBadge
-              tone={
-                repairCount > 0
-                  ? "warn"
-                  : statusPending || gatewayPending
-                    ? "info"
-                    : "ok"
-              }
-            >
-              {repairCount > 0
-                ? `${repairCount} 项待修复`
-                : statusPending || gatewayPending
-                  ? "检测中"
-                  : "就绪"}
-            </ToneBadge>
-          }
-        />
-        <div className="grid divide-y divide-line">
-          {AGENT_CLI_ROSTER.map((item) => {
-            const binary = byId.get(item.id);
-            const target = fallbackInstallTarget(
-              item,
-              installTargetById.get(item.id),
-            );
-            const installed = binary?.installed ?? false;
-            const tone = cliTone(binary, statusPending);
-            return (
-              <article
-                key={item.id}
-                className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1fr)_auto] lg:items-center"
+    <TooltipProvider delayDuration={200}>
+      <div className="grid gap-4" data-cli-agents-management-page>
+        <PageHeader
+          className="px-0"
+          title="Agent CLI"
+          description="安装、配置、重装与修复 Codex / Claude Code / OpenCode；安装状态、模型网关与终端能力在后台检测完成后自动更新。"
+          actions={
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshReadiness}
+                disabled={refreshing}
               >
-                <div className="flex min-w-0 items-start gap-3">
-                  <span
-                    className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-md ${toneIconClass(tone)}`}
-                  >
-                    {installed ? (
-                      <CheckCircle2 className="size-4" />
-                    ) : statusPending ? (
-                      <RefreshCw className="size-4 animate-spin" />
-                    ) : (
-                      <CircleSlash className="size-4" />
-                    )}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold text-ink-strong">
-                        {item.label}
-                      </h3>
-                      <ToneBadge tone={tone}>
-                        {cliStatusLabel(binary, statusPending)}
-                      </ToneBadge>
-                    </div>
-                    <p className="mt-1 text-sm text-muted">{item.purpose}</p>
-                    <p className="mt-1 truncate text-xs text-subtle">
-                      {binary?.path || binary?.version || item.docsHint}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid min-w-0 gap-2 rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm lg:mx-2">
-                  <div className="flex min-w-0 items-center gap-2 text-ink">
-                    <Terminal className="size-4 text-muted" />
-                    <code className="truncate text-xs sm:text-sm">
-                      {target.installHint}
-                    </code>
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs text-subtle">
-                    <span>
-                      版本：
-                      {binary?.version || (statusPending ? "检测中" : "—")}
-                    </span>
-                    <span>包：{target.packageName || "本地脚本/手动"}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 lg:justify-end">
-                  <Button
-                    variant={installed ? "outline" : "primary"}
-                    size="sm"
-                    onClick={() =>
-                      openInstallDialog(
-                        item.id,
-                        installed ? "reinstall" : "install",
-                      )
-                    }
-                  >
-                    {installed ? <RotateCcw /> : <Download />}
-                    {installed ? "重装/修复" : "安装"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyText(target.installHint)}
-                  >
-                    <Copy />
-                    复制命令
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openHash(item.configHref)}
-                  >
-                    <Settings2 />
-                    {item.configLabel}
-                  </Button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </Panel>
-
-      {terminalStatus.error ? (
-        <ErrorState
-          title="无法加载本机 CLI 状态"
-          description={terminalStatus.error.message}
-          action={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void terminalStatus.refetch()}
-            >
-              重试
-            </Button>
+                <RefreshCw className={refreshing ? "animate-spin" : undefined} />
+                刷新检测
+              </Button>
+              <Button variant="outline" size="sm" onClick={copyAllInstallCommands}>
+                <Copy />
+                复制全部安装命令
+              </Button>
+            </>
           }
         />
-      ) : null}
 
-      {installResult ? (
+        <MetricRail>
+          <MetricTile
+            icon={<Terminal />}
+            label="已安装运行时"
+            tone={
+              statusPending
+                ? "default"
+                : installedCount === AGENT_CLI_ROSTER.length
+                  ? "ok"
+                  : "warn"
+            }
+            value={
+              statusPending
+                ? "检测中"
+                : `${installedCount}/${AGENT_CLI_ROSTER.length}`
+            }
+            hint="Codex · Claude Code · OpenCode"
+          />
+          <MetricTile
+            icon={<ShieldCheck />}
+            label="运行环境"
+            tone={
+              envPending ? "default" : envReadyCount === 2 ? "ok" : "warn"
+            }
+            value={envPending ? "检测中" : `${envReadyCount}/2`}
+            hint="模型网关 · 终端 PTY"
+          />
+          <MetricTile
+            icon={<Wrench />}
+            label="待修复"
+            tone={repairCount > 0 ? "warn" : "ok"}
+            value={repairCount}
+            hint={repairCount > 0 ? "见下方修复队列" : "没有阻断项"}
+          />
+          <MetricTile
+            icon={<Clock />}
+            label="最近检测"
+            tone={terminalStatus.error ? "bad" : "default"}
+            value={
+              statusPending
+                ? "检测中"
+                : terminalStatus.error
+                  ? "检测失败"
+                  : formatTime(terminalStatus.data?.checkedAt)
+            }
+            hint="本机状态缓存 30 秒"
+          />
+        </MetricRail>
+
         <Panel>
           <PanelHead
-            title="安装 / 修复结果"
-            sub={installResult.message}
+            title="运行时"
+            sub="安装状态与修复建议在后台检测完成后自动更新。"
+          />
+          {showInstallGuide ? (
+            <EmptyState
+              className="border-b border-line"
+              icon={<Download />}
+              title="尚未检测到已安装的 Agent CLI"
+              description="在下方任一运行时行点击“安装”由后端完成安装，或复制全部安装命令在本机终端手动执行，完成后点击“刷新检测”。"
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={copyAllInstallCommands}
+                >
+                  <Copy />
+                  复制全部安装命令
+                </Button>
+              }
+            />
+          ) : null}
+          <div className="grid divide-y divide-line">
+            {AGENT_CLI_ROSTER.map((item) => {
+              const binary = byId.get(item.id);
+              const target = fallbackInstallTarget(
+                item,
+                installTargetById.get(item.id),
+              );
+              const installed = binary?.installed ?? false;
+              const tone = cliTone(binary, statusPending);
+              return (
+                <article
+                  key={item.id}
+                  className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1fr)_auto] lg:items-center"
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span
+                      className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-md ${toneIconClass(tone)}`}
+                    >
+                      {installed ? (
+                        <CheckCircle2 className="size-4" />
+                      ) : statusPending ? (
+                        <RefreshCw className="size-4 animate-spin" />
+                      ) : (
+                        <CircleSlash className="size-4" />
+                      )}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-ink-strong">
+                          {item.label}
+                        </h3>
+                        <ToneBadge tone={tone}>
+                          {cliStatusLabel(binary, statusPending)}
+                        </ToneBadge>
+                      </div>
+                      <p className="mt-1 text-sm text-muted">{item.purpose}</p>
+                      <p className="mt-1 truncate text-xs text-subtle">
+                        {binary?.path || binary?.version || item.docsHint}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid min-w-0 gap-2 rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm lg:mx-2">
+                    <div className="flex min-w-0 items-center gap-2 text-ink">
+                      <Terminal className="size-4 text-muted" />
+                      <code className="truncate font-mono text-xs sm:text-sm">
+                        {target.installHint}
+                      </code>
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-subtle">
+                      <span>
+                        版本：
+                        {binary?.version || (statusPending ? "检测中" : "—")}
+                      </span>
+                      <span>包：{target.packageName || "本地脚本/手动"}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                    <Button
+                      variant={installed ? "outline" : "primary"}
+                      size="sm"
+                      onClick={() =>
+                        openInstallDialog(
+                          item.id,
+                          installed ? "reinstall" : "install",
+                        )
+                      }
+                    >
+                      {installed ? <RotateCcw /> : <Download />}
+                      {installed ? "重装/修复" : "安装"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openHash(item.configHref)}
+                    >
+                      <Settings2 />
+                      {item.configLabel}
+                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          aria-label="复制安装命令"
+                          onClick={() => copyText(target.installHint)}
+                        >
+                          <Copy />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>复制安装命令</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="grid border-t border-line sm:grid-cols-4 divide-y divide-line sm:divide-x sm:divide-y-0">
+            <Fact label="默认模型">
+              {config?.model || (statusPending ? "检测中" : "—")}
+            </Fact>
+            <Fact label="默认 Provider">
+              {config?.provider || (statusPending ? "检测中" : "—")}
+            </Fact>
+            <Fact label="模型网关">
+              {gatewayPending ? "检测中" : gatewayReady ? "可用" : "需检查"}
+            </Fact>
+            <Fact label="终端 PTY">
+              {statusPending
+                ? "检测中"
+                : ptyAvailable === false
+                  ? "不可用"
+                  : ptyAvailable
+                    ? "可用"
+                    : "—"}
+            </Fact>
+          </div>
+        </Panel>
+
+        {terminalStatus.error ? (
+          <ErrorState
+            title="无法加载本机 CLI 状态"
+            description={terminalStatus.error.message}
             action={
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setInstallResult(null)}
+                onClick={() => void terminalStatus.refetch()}
               >
-                清除
+                重试
               </Button>
             }
           />
-          <div className="grid gap-2 p-4">
-            {installResult.results.length === 0 ? (
-              <EmptyState
-                title="没有需要变更的 CLI"
-                description="后端未返回任何安装或修复记录。"
+        ) : null}
+
+        {installResult ? (
+          <Panel>
+            <PanelHead
+              title="安装 / 修复结果"
+              sub={installResult.message}
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInstallResult(null)}
+                >
+                  清除
+                </Button>
+              }
+            />
+            <div className="grid gap-2 p-4">
+              {installResult.results.length === 0 ? (
+                <EmptyState
+                  title="没有需要变更的 CLI"
+                  description="后端未返回任何安装或修复记录。"
+                />
+              ) : null}
+              {installResult.results.map((result) => (
+                <div
+                  key={result.cli}
+                  className="rounded-md border border-line bg-panel-2 p-3"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <strong className="text-ink-strong">{result.label}</strong>
+                    <ToneBadge tone={result.success ? "ok" : "bad"}>
+                      {result.success
+                        ? result.alreadyInstalled
+                          ? "已存在"
+                          : "成功"
+                        : "失败"}
+                    </ToneBadge>
+                  </div>
+                  <div className="mt-1 text-sm text-muted">
+                    {result.command ||
+                      result.error ||
+                      result.path ||
+                      "无安装命令记录"}
+                  </div>
+                  {result.output ? (
+                    <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-panel px-2 py-1 text-xs text-muted">
+                      {result.output}
+                    </pre>
+                  ) : null}
+                  {result.stderr ? (
+                    <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-panel px-2 py-1 text-xs text-danger">
+                      {result.stderr}
+                    </pre>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </Panel>
+        ) : null}
+
+        <Panel>
+          <PanelHead
+            title="修复队列"
+            sub="只列出会阻断安装、配置或本地登录修复的事项。"
+            action={
+              <ToneBadge
+                tone={
+                  repairCount > 0
+                    ? "warn"
+                    : statusPending || gatewayPending
+                      ? "info"
+                      : "ok"
+                }
+              >
+                {repairCount} 项
+              </ToneBadge>
+            }
+          />
+          <div className="divide-y divide-line">
+            {statusPending ? (
+              <RepairRow
+                icon={<RefreshCw className="animate-spin" />}
+                title="正在检测本机 CLI 安装状态"
+                subtitle="列表已可操作；检测结果返回后会自动更新每行状态。"
               />
             ) : null}
-            {installResult.results.map((result) => (
-              <div
-                key={result.cli}
-                className="rounded-md border border-line bg-panel-2 p-3"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <strong className="text-ink-strong">{result.label}</strong>
-                  <ToneBadge tone={result.success ? "ok" : "bad"}>
-                    {result.success
-                      ? result.alreadyInstalled
-                        ? "已存在"
-                        : "成功"
-                      : "失败"}
-                  </ToneBadge>
-                </div>
-                <div className="mt-1 text-sm text-muted">
-                  {result.command ||
-                    result.error ||
-                    result.path ||
-                    "无安装命令记录"}
-                </div>
-                {result.output ? (
-                  <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-panel px-2 py-1 text-xs text-muted">
-                    {result.output}
-                  </pre>
-                ) : null}
-                {result.stderr ? (
-                  <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-panel px-2 py-1 text-xs text-danger">
-                    {result.stderr}
-                  </pre>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </Panel>
-      ) : null}
-
-      <Panel>
-        <PanelHead
-          title="修复队列"
-          sub="只列出会阻断安装、配置或本地登录修复的事项。"
-          action={
-            <ToneBadge
-              tone={
-                repairCount > 0
-                  ? "warn"
-                  : statusPending || gatewayPending
-                    ? "info"
-                    : "ok"
-              }
-            >
-              {repairCount} 项
-            </ToneBadge>
-          }
-        />
-        <div className="divide-y divide-line">
-          {statusPending ? (
-            <RepairRow
-              icon={<RefreshCw className="animate-spin" />}
-              title="正在检测本机 CLI 安装状态"
-              subtitle="列表已可操作；检测结果返回后会自动更新每行状态。"
-            />
-          ) : null}
-          {missingAgentBinaries.map((item) => {
-            const target = fallbackInstallTarget(
-              item,
-              installTargetById.get(item.id),
-            );
-            return (
+            {missingAgentBinaries.map((item) => {
+              const target = fallbackInstallTarget(
+                item,
+                installTargetById.get(item.id),
+              );
+              return (
+                <RepairRow
+                  key={item.id}
+                  icon={<Download />}
+                  title={`安装 ${item.label}`}
+                  subtitle={target.installHint}
+                  action={
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => openInstallDialog(item.id, "install")}
+                    >
+                      安装
+                    </Button>
+                  }
+                />
+              );
+            })}
+            {!gatewayPending && !gatewayReady ? (
               <RepairRow
-                key={item.id}
-                icon={<Download />}
-                title={`安装 ${item.label}`}
-                subtitle={target.installHint}
+                icon={<Plug />}
+                title="检查模型网关路由 / Provider"
+                subtitle={
+                  health
+                    ? `${health.okProviders} 正常 · ${health.degradedProviders} 降级 · ${health.openCircuits} 熔断`
+                    : "状态未加载"
+                }
                 action={
                   <Button
-                    variant="primary"
+                    variant="outline"
                     size="sm"
-                    onClick={() => openInstallDialog(item.id, "install")}
+                    onClick={() => openHash("#/model-gateway")}
                   >
-                    安装
+                    打开网关
+                    <ExternalLink />
                   </Button>
                 }
               />
-            );
-          })}
-          {!gatewayPending && !gatewayReady ? (
-            <RepairRow
-              icon={<Plug />}
-              title="检查模型网关路由 / Provider"
-              subtitle={
-                health
-                  ? `${health.okProviders} 正常 · ${health.degradedProviders} 降级 · ${health.openCircuits} 熔断`
-                  : "状态未加载"
-              }
-              action={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openHash("#/model-gateway")}
-                >
-                  打开网关
-                  <ExternalLink />
-                </Button>
-              }
-            />
-          ) : null}
-          {ptyAvailable === false ? (
-            <RepairRow
-              icon={<Terminal />}
-              title="PTY 不可用，无法完成本地登录/修复"
-              subtitle="请到 Workspace 终端检查 node-pty 或本机 shell 环境。"
-              action={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate("/ide")}
-                >
-                  打开 IDE 工作台
-                  <ExternalLink />
-                </Button>
-              }
-            />
-          ) : null}
-          {!statusPending && !gatewayPending && repairCount === 0 ? (
-            <EmptyState
-              icon={<CheckCircle2 />}
-              title="没有阻断项"
-              description="需要重装时可在上方任意 CLI 行点击“重装/修复”。"
-            />
-          ) : null}
-        </div>
-      </Panel>
-
-      <Dialog
-        open={Boolean(installTarget)}
-        onOpenChange={(open) => !open && setInstallTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {installMode === "reinstall" ? "重装/修复" : "安装"}{" "}
-              {selectedInstallTarget?.label ||
-                selectedDescriptor?.label ||
-                installTarget}
-            </DialogTitle>
-          </DialogHeader>
-          <DialogBody>
-            <p>
-              这会在本机执行后端安装流程，用于安装、重装或修复 CLI
-              二进制。它不会登录你的 OpenAI / Anthropic / OpenCode
-              账号，也不会写入模型 Provider 密钥。
-            </p>
-            {selectedBinary?.path ? (
-              <p className="mt-2 text-sm text-muted">
-                当前检测路径：{selectedBinary.path}
-              </p>
             ) : null}
-            <div className="mt-3 rounded-md border border-line bg-panel-2 p-3 text-sm text-ink">
-              {selectedInstallTarget?.installHint ||
-                selectedInstallTarget?.packageName ||
-                "后端将选择可用安装方式。"}
-            </div>
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setInstallTarget(null)}>
-              取消
-            </Button>
-            <Button
-              variant="primary"
-              disabled={!installTarget || installCli.isPending}
-              onClick={runInstall}
-            >
-              {installMode === "reinstall" ? "确认重装/修复" : "确认安装"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            {ptyAvailable === false ? (
+              <RepairRow
+                icon={<Terminal />}
+                title="PTY 不可用，无法完成本地登录/修复"
+                subtitle="请到 Workspace 终端检查 node-pty 或本机 shell 环境。"
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/ide")}
+                  >
+                    打开 IDE 工作台
+                    <ExternalLink />
+                  </Button>
+                }
+              />
+            ) : null}
+            {!statusPending && !gatewayPending && repairCount === 0 ? (
+              <EmptyState
+                icon={<CheckCircle2 />}
+                title="没有阻断项"
+                description="需要重装时可在上方任意 CLI 行点击“重装/修复”。"
+              />
+            ) : null}
+          </div>
+        </Panel>
+
+        <Dialog
+          open={Boolean(installTarget)}
+          onOpenChange={(open) => !open && setInstallTarget(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {installMode === "reinstall" ? "重装/修复" : "安装"}{" "}
+                {selectedInstallTarget?.label ||
+                  selectedDescriptor?.label ||
+                  installTarget}
+              </DialogTitle>
+            </DialogHeader>
+            <DialogBody>
+              <p>
+                这会在本机执行后端安装流程，用于安装、重装或修复 CLI
+                二进制。它不会登录你的 OpenAI / Anthropic / OpenCode
+                账号，也不会写入模型 Provider 密钥。
+              </p>
+              {selectedBinary?.path ? (
+                <p className="mt-2 text-sm text-muted">
+                  当前检测路径：{selectedBinary.path}
+                </p>
+              ) : null}
+              <div className="mt-3 rounded-md border border-line bg-panel-2 p-3 text-sm text-ink">
+                {selectedInstallTarget?.installHint ||
+                  selectedInstallTarget?.packageName ||
+                  "后端将选择可用安装方式。"}
+              </div>
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setInstallTarget(null)}>
+                取消
+              </Button>
+              <Button
+                variant="primary"
+                disabled={!installTarget || installCli.isPending}
+                onClick={runInstall}
+              >
+                {installMode === "reinstall" ? "确认重装/修复" : "确认安装"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   );
 }
 

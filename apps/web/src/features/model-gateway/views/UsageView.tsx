@@ -13,7 +13,9 @@ import {
   X,
 } from "lucide-react";
 
+import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { PageHeader } from "@/design/ui/page-header";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton } from "@/shared/states/Skeleton";
@@ -279,16 +281,94 @@ export function UsageView(_props: ModelGatewayViewProps) {
 
   return (
     <div className="grid gap-4">
-      <UsageHeader
-        queryLabel={rangeLabel(usage?.query)}
-        usageRange={usageRange}
-        setUsageRange={setUsageRange}
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        setDateFrom={setDateFrom}
-        setDateTo={setDateTo}
-        requestCount={totals?.requestCount ?? 0}
+      <PageHeader
+        className="px-0"
+        title="用量"
+        description="模型路由的请求与 token 账本。优先采信 provider usage；缺失时自动估算输入和输出，确保每次请求都进入账本。"
+        meta={
+          <>
+            <Badge variant="ok" className="gap-1.5">
+              <ShieldCheck className="size-3.5" />
+              统计完整
+            </Badge>
+            <Badge variant="outline" className="gap-1.5">
+              <CalendarDays className="size-3.5" />
+              {rangeLabel(usage?.query)}
+            </Badge>
+            <span className="inline-flex items-center gap-1">
+              <CheckCircle2 className="size-3.5 text-success" />
+              已入账 {numberText(totals?.requestCount ?? 0)} 次
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Sparkles className="size-3.5 text-primary" />
+              本地估算兜底已启用
+            </span>
+          </>
+        }
+        actions={
+          <div className="flex flex-wrap gap-1 rounded-md border border-line bg-panel-2 p-1" aria-label="日期范围">
+            {RANGE_OPTIONS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                aria-pressed={usageRange === option.key}
+                className={[
+                  "h-8 rounded-sm px-2.5 text-xs font-medium transition-colors",
+                  usageRange === option.key
+                    ? "bg-primary text-primary-ink shadow-sm"
+                    : "text-muted hover:bg-panel-3 hover:text-ink",
+                ].join(" ")}
+                onClick={() => {
+                  setUsageRange(option.key);
+                  if (option.key !== "custom") {
+                    setDateFrom("");
+                    setDateTo("");
+                  }
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        }
       />
+
+      {usageRange === "custom" && (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="grid gap-1 text-xs text-subtle">
+            开始日期
+            <input
+              type="date"
+              value={dateFrom}
+              className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none focus:border-primary"
+              onChange={(event) => setDateFrom(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-1 text-xs text-subtle">
+            结束日期
+            <input
+              type="date"
+              value={dateTo}
+              className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none focus:border-primary"
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+          </label>
+          {(dateFrom || dateTo) && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDateFrom("");
+                setDateTo("");
+              }}
+            >
+              <X className="size-3.5" />
+              清除
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 min-[520px]:grid-cols-2 xl:grid-cols-4">
         <GatewayMetricCard
@@ -362,120 +442,6 @@ export function UsageView(_props: ModelGatewayViewProps) {
         </>
       )}
     </div>
-  );
-}
-
-function UsageHeader({
-  queryLabel,
-  usageRange,
-  setUsageRange,
-  dateFrom,
-  dateTo,
-  setDateFrom,
-  setDateTo,
-  requestCount,
-}: {
-  queryLabel: string;
-  usageRange: UsageRange;
-  setUsageRange: (range: UsageRange) => void;
-  dateFrom: string;
-  dateTo: string;
-  setDateFrom: (value: string) => void;
-  setDateTo: (value: string) => void;
-  requestCount: number;
-}) {
-  return (
-    <section className="grid gap-4 rounded-md border border-line bg-panel p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-lg font-semibold text-ink-strong">用量</h2>
-          <span className="inline-flex items-center gap-1 rounded-sm border border-primary-line bg-primary-soft px-2 py-1 text-xs font-medium text-primary">
-            <ShieldCheck className="size-3.5" />
-            统计完整
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-sm border border-line bg-panel-2 px-2 py-1 text-xs text-muted">
-            <CalendarDays className="size-3.5" />
-            {queryLabel}
-          </span>
-        </div>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          模型路由的请求与 token 账本。优先采信 provider usage；缺失时自动估算输入和输出，确保每次请求都进入账本。
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
-          <span className="inline-flex items-center gap-1 rounded-sm bg-panel-2 px-2 py-1">
-            <CheckCircle2 className="size-3.5 text-success" />
-            已入账 {numberText(requestCount)} 次
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-sm bg-panel-2 px-2 py-1">
-            <Sparkles className="size-3.5 text-primary" />
-            本地估算兜底已启用
-          </span>
-        </div>
-      </div>
-
-      <div className="grid gap-2 lg:justify-items-end">
-        <div className="flex flex-wrap gap-1 rounded-md border border-line bg-panel-2 p-1" aria-label="日期范围">
-          {RANGE_OPTIONS.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              aria-pressed={usageRange === option.key}
-              className={[
-                "h-8 rounded-sm px-2.5 text-xs font-medium transition-colors",
-                usageRange === option.key
-                  ? "bg-primary text-primary-ink shadow-sm"
-                  : "text-muted hover:bg-panel-3 hover:text-ink",
-              ].join(" ")}
-              onClick={() => {
-                setUsageRange(option.key);
-                if (option.key !== "custom") {
-                  setDateFrom("");
-                  setDateTo("");
-                }
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-        {usageRange === "custom" && (
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="grid gap-1 text-xs text-subtle">
-              开始日期
-              <input
-                type="date"
-                value={dateFrom}
-                className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none focus:border-primary"
-                onChange={(event) => setDateFrom(event.target.value)}
-              />
-            </label>
-            <label className="grid gap-1 text-xs text-subtle">
-              结束日期
-              <input
-                type="date"
-                value={dateTo}
-                className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none focus:border-primary"
-                onChange={(event) => setDateTo(event.target.value)}
-              />
-            </label>
-            {(dateFrom || dateTo) && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setDateFrom("");
-                  setDateTo("");
-                }}
-              >
-                <X className="size-3.5" />
-                清除
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
-    </section>
   );
 }
 

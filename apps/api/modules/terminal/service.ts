@@ -719,10 +719,6 @@ export interface TerminalService {
   installCli(
     target: TerminalInstallRequestId,
   ): Promise<TerminalInstallResponse>;
-  streamInstallCli(
-    target: TerminalInstallRequestId,
-    emit: (event: TerminalInstallStreamEvent) => void | Promise<void>,
-  ): Promise<TerminalInstallResponse>;
   endSession(payload: TerminalEndPayload): Promise<TerminalEndResponse>;
   endSessions(sessionIds: string[]): Promise<TerminalEndBatchResponse>;
   attachGatewayClient(
@@ -3227,13 +3223,6 @@ export function createTerminalService(
       target: TerminalInstallRequestId,
     ): Promise<TerminalInstallResponse> {
       return runInstallWorkflow(target);
-    },
-
-    async streamInstallCli(
-      target: TerminalInstallRequestId,
-      emit: (event: TerminalInstallStreamEvent) => void | Promise<void>,
-    ): Promise<TerminalInstallResponse> {
-      return runInstallWorkflow(target, emit);
     },
 
     async endSession(

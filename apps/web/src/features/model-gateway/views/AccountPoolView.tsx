@@ -10,6 +10,7 @@ import {
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { PageHeader } from "@/design/ui/page-header";
 import {
   Table,
   TableBody,
@@ -438,28 +439,30 @@ export function AccountPoolView({ selectedProvider, goToView }: ModelGatewayView
 
   return (
     <div className="grid gap-4">
-      <section className="overflow-hidden rounded-md border border-primary-line/40 bg-panel shadow-sm">
-        <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--violet)_4%,var(--panel))] p-4 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start">
+      <div className="flex items-start gap-3">
+        <span className="mt-1 hidden shrink-0 sm:block">
           <GatewayMark identity={providerIdentityFromText(provider.name)} size="lg" />
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
+        </span>
+        <PageHeader
+          className="min-w-0 flex-1 px-0 py-0 sm:px-0"
+          title={`账号池 · ${provider.name}`}
+          description="账号制 Provider 的多账号轮换、登录、冷却和 token 刷新。这里展示的是实时账号池状态，不替代客户端 active-route smoke。"
+          meta={
+            <>
               <Badge variant={readyAccounts > 0 ? "ok" : "warn"}>{readyAccounts > 0 ? "可路由" : "无 ready 账号"}</Badge>
               <Badge variant="outline">{routing.strategy}</Badge>
               {routing.sessionAffinity && <Badge variant="outline">会话粘性</Badge>}
-            </div>
-            <h2 className="mt-2 truncate text-2xl font-semibold text-ink-strong" title={provider.name}>
-              账号池 · {provider.name}
-            </h2>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-              账号制 Provider 的多账号轮换、登录、冷却和 token 刷新。这里展示的是实时账号池状态，不替代客户端 active-route smoke。
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 lg:justify-end">
+            </>
+          }
+          actions={
             <Button variant="ghost" size="sm" onClick={() => goToView("providers")}>
               返回 Provider 列表
             </Button>
-          </div>
-        </div>
+          }
+        />
+      </div>
+
+      <section className="rounded-md border border-line bg-panel shadow-sm">
         <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
           <GatewayMetricCard
             icon={<Users />}

@@ -1,8 +1,8 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { Activity, Bot, LayoutDashboard, MessageSquare, RadioTower } from "lucide-react";
 
-import { cn } from "@/design/lib/utils";
+import { PageHeader } from "@/design/ui/page-header";
+import { SectionNav } from "@/design/ui/section-nav";
 import { LoadingState } from "@/shared/states/LoadingState";
 
 import {
@@ -11,17 +11,16 @@ import {
   type ChannelConnectorsViewProps,
 } from "./views/types";
 
-/** Primary local viewbar tabs per docs/channel-connectors/channel-connectors-overhaul-plan.md. */
+/** Primary in-page sections; shared channel-connector contracts live in types/channel-connectors.ts. */
 const PRIMARY_TABS: ReadonlyArray<{
   view: ChannelConnectorsView;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
 }> = [
-  { view: "overview", label: "概览", icon: LayoutDashboard },
-  { view: "workspaces", label: "Agent 工作区", icon: Bot },
-  { view: "accounts", label: "渠道账号", icon: RadioTower },
-  { view: "sessions", label: "会话", icon: MessageSquare },
-  { view: "runtime", label: "运行中心", icon: Activity },
+  { view: "overview", label: "概览" },
+  { view: "workspaces", label: "Agent 工作区" },
+  { view: "accounts", label: "渠道账号" },
+  { view: "sessions", label: "会话" },
+  { view: "runtime", label: "运行中心" },
 ];
 
 const VIEW_COMPONENTS: Record<
@@ -75,7 +74,7 @@ function canonicalView(value: string | null): ChannelConnectorsView {
 }
 
 /**
- * Channel Connectors page. Owns the Aurora local viewbar over the IM domain.
+ * Channel Connectors page: one PageHeader + SectionNav over the IM domain.
  * Content views are layered by primary object, not by backend module names.
  */
 export function ChannelConnectorsPage() {
@@ -111,7 +110,12 @@ export function ChannelConnectorsPage() {
 
   return (
     <div className="grid gap-4">
-      <div className="border-b border-line pb-2 sm:hidden">
+      <PageHeader
+        className="px-0"
+        title="消息接入"
+        description="连接飞书、Lark 与 Octo 消息平台，把会话投递到 Agent 工作区；统一管理账号、分发策略、会话与运行状态。"
+      />
+      <div className="sm:hidden">
         <label className="sr-only" htmlFor="channel-connectors-mobile-view">
           IM 渠道视图
         </label>
@@ -128,28 +132,13 @@ export function ChannelConnectorsPage() {
           ))}
         </select>
       </div>
-      <nav className="hidden flex-wrap gap-1 border-b border-line pb-2 sm:flex" aria-label="IM 渠道视图">
-        {PRIMARY_TABS.map(({ view, label, icon: Icon }) => {
-          const active = resolvedView === view;
-          return (
-            <button
-              key={view}
-              type="button"
-              aria-current={active ? "page" : undefined}
-              onClick={() => goToView(view)}
-              className={cn(
-                "inline-flex h-9 items-center gap-[7px] rounded-sm px-3 text-base outline-none transition-colors",
-                "[&_svg]:size-[15px] focus-visible:shadow-[var(--ring)]",
-                active
-                  ? "bg-primary-soft text-ink-strong [&_svg]:text-primary"
-                  : "text-muted hover:bg-panel-2 hover:text-ink",
-              )}
-            >
-              <Icon />
-              {label}
-            </button>
-          );
-        })}
+      <nav className="hidden flex-wrap gap-1 border-b border-line pb-2 sm:flex">
+        <SectionNav
+          ariaLabel="IM 渠道视图"
+          items={PRIMARY_TABS.map(({ view, label }) => ({ id: view, label }))}
+          value={resolvedView}
+          onChange={(id) => goToView(id as ChannelConnectorsView)}
+        />
       </nav>
 
       <React.Suspense fallback={<ChannelConnectorsViewFallback />}>

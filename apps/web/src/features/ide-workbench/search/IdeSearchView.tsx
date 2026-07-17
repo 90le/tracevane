@@ -23,6 +23,7 @@ import { readFile, writeFileContent } from "@/lib/api/files";
 import { useFilesSearchQuery } from "@/lib/query/files";
 import { normalizeExplorerPath } from "@/shared/explorer-core";
 import { requestLspWorkspaceSymbols } from "../lsp/lspInteractionClient";
+import { SidebarViewHeader } from "../panelHeader";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
@@ -227,23 +228,19 @@ export function IdeSearchView({
       data-ide-sidebar
       data-ide-search-view
     >
-      <div className="max-h-[54dvh] overflow-auto border-b border-line bg-panel px-2.5 py-2 [scrollbar-width:thin]" data-ide-search-toolbar>
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="grid size-7 shrink-0 place-items-center rounded-sm border border-primary-line bg-primary-soft text-primary">
-            <Search className="size-4" aria-hidden />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <div className="truncate text-sm font-semibold text-ink-strong">搜索</div>
-              <span className="shrink-0 rounded-full border border-line bg-panel-2 px-1.5 py-0.5 text-2xs text-subtle">
-                {mode === "symbols" ? "符号" : "文件系统"}
-              </span>
-            </div>
-            <div className="truncate text-2xs text-subtle">{rootLabel || "工作区搜索"}</div>
-          </div>
-        </div>
+      <div className="max-h-[54dvh] overflow-auto border-b border-line bg-panel pb-2 [scrollbar-width:thin]" data-ide-search-toolbar>
+        <SidebarViewHeader
+          icon={<Search />}
+          title="搜索"
+          badge={(
+            <span className="shrink-0 rounded-full border border-line bg-panel-2 px-1.5 py-0.5 text-2xs text-subtle">
+              {mode === "symbols" ? "符号" : "文件系统"}
+            </span>
+          )}
+          subtitle={rootLabel || "工作区搜索"}
+        />
         <form
-          className="mt-2 grid gap-2"
+          className="grid gap-2 px-2.5"
           onSubmit={(event) => {
             event.preventDefault();
             runSearch();

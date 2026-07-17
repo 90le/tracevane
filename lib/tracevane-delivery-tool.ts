@@ -10,7 +10,7 @@ type TracevaneDeliveryToolResult = {
   details: TracevaneDeliveryResult;
 };
 
-export function createTracevaneDeliveryTool() {
+function createTracevaneDeliveryTool() {
   return {
     name: 'tracevane_delivery',
     description: [
