@@ -41,6 +41,7 @@ import type { ModelGatewayViewProps } from "./types";
 import {
   GatewayMark,
   GatewayMetricCard,
+  GatewayStatusDot,
   providerIdentityFromText,
   type GatewayComparison,
 } from "./GatewayUi";
@@ -160,7 +161,7 @@ function CodexLoginPanel({ providerId }: { providerId: string }) {
   };
 
   return (
-    <section className="grid gap-3 rounded-md border border-line bg-panel-2 p-4">
+    <section className="grid gap-3 rounded-md border border-line bg-panel p-4 shadow-sm">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <strong className="text-base text-ink-strong">登录新账号（Codex 设备授权）</strong>
@@ -184,7 +185,7 @@ function CodexLoginPanel({ providerId }: { providerId: string }) {
       </div>
 
       {session && (
-        <div className="grid gap-2 rounded-md border border-line bg-panel p-3">
+        <div className="grid gap-2 rounded-md border border-line bg-panel-2 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-subtle">设备代码</span>
             <code className="select-all rounded-sm bg-panel-3 px-2 py-1 font-mono text-base text-ink-strong">
@@ -284,7 +285,10 @@ function AccountRow({
       <TableCell>
         <span className="mr-1.5 text-xs text-subtle sm:hidden">状态</span>
         <div className="flex flex-col gap-0.5">
-          <Badge variant={badge.variant}>{badge.label}</Badge>
+          <span className="inline-flex items-center gap-1.5">
+            <GatewayStatusDot tone={badge.variant === "info" ? "primary" : badge.variant} />
+            <Badge variant={badge.variant}>{badge.label}</Badge>
+          </span>
           {account.state === "cooldown" && (cooldownAt || cooldown) && (
             <span className="text-xs text-subtle" title={fmtTime(account.cooldownUntil)}>
               {cooldownAt ? `冷却至 ${cooldownAt}` : "冷却中"}

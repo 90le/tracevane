@@ -1,8 +1,5 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
-import { Badge } from "@/design/ui/badge";
-import { Button } from "@/design/ui/button";
-import { PageHeader } from "@/design/ui/page-header";
 import { SectionNav } from "@/design/ui/section-nav";
 import { RecoveryPage } from "@/features/recovery/RecoveryPage";
 
@@ -27,6 +24,11 @@ function renderSection(section: PlatformSectionId) {
   }
 }
 
+/**
+ * OpenClaw platform workspace shell: breadcrumb + section navigation. Each
+ * section page renders its own PageHeader (title / description / actions), so
+ * the shell stays a thin, consistent frame.
+ */
 export function OpenClawWorkspace({ section: rawSection }: { section?: string }) {
   const navigate = useNavigate();
   const section = normalizeOpenClawSection(rawSection);
@@ -39,13 +41,6 @@ export function OpenClawWorkspace({ section: rawSection }: { section?: string })
   return (
     <div className="grid min-w-0 gap-[18px]">
       <PlatformBreadcrumb items={[{ label: "平台", to: "/platforms" }, { label: "OpenClaw", to: "/platforms/openclaw" }, { label: active.label }]} />
-      <PageHeader
-        className="px-0"
-        title="OpenClaw 平台工作台"
-        description={`${active.description} Platform 只承接 OpenClaw 原生平台能力；模型网关、IM、CLI、Workspace 的写入口仍留在各自 owner 域。`}
-        meta={<><Badge variant="info">第三方平台</Badge><Badge variant="mute">{active.label}</Badge></>}
-        actions={<Button variant="outline" asChild><Link to="/platforms">返回平台目录</Link></Button>}
-      />
       <div className="grid gap-2">
         <div className="flex min-w-0 items-center gap-2 md:hidden">
           <label className="sr-only" htmlFor="openclaw-section-select">OpenClaw 子页面</label>

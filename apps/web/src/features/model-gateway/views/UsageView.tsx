@@ -313,7 +313,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
                 type="button"
                 aria-pressed={usageRange === option.key}
                 className={[
-                  "h-8 rounded-sm px-2.5 text-xs font-medium transition-colors",
+                  "h-8 rounded-sm px-2.5 text-xs font-medium outline-none transition-colors focus-visible:shadow-[var(--ring)]",
                   usageRange === option.key
                     ? "bg-primary text-primary-ink shadow-sm"
                     : "text-muted hover:bg-panel-3 hover:text-ink",
@@ -340,7 +340,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
             <input
               type="date"
               value={dateFrom}
-              className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none focus:border-primary"
+              className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none transition-[border-color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]"
               onChange={(event) => setDateFrom(event.target.value)}
             />
           </label>
@@ -349,7 +349,7 @@ export function UsageView(_props: ModelGatewayViewProps) {
             <input
               type="date"
               value={dateTo}
-              className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none focus:border-primary"
+              className="h-9 rounded-md border border-line bg-panel-2 px-2.5 text-sm text-ink outline-none transition-[border-color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]"
               onChange={(event) => setDateTo(event.target.value)}
             />
           </label>
@@ -475,7 +475,7 @@ function ModelRankingPanel({
               type="button"
               aria-pressed={sortKey === option.key}
               className={[
-                "h-8 rounded-sm px-2.5 text-xs font-medium transition-colors",
+                "h-8 rounded-sm px-2.5 text-xs font-medium outline-none transition-colors focus-visible:shadow-[var(--ring)]",
                 sortKey === option.key
                   ? "bg-primary text-primary-ink shadow-sm"
                   : "text-muted hover:bg-panel-3 hover:text-ink",
@@ -618,7 +618,7 @@ function DailyBar({ row, maxTokens }: { row: UsageDailyRow; maxTokens: number })
           <span className="grid w-full place-items-center bg-primary text-[10px] font-semibold tabular-nums text-primary-ink" style={{ height: `${inputShare}%` }}>
             {showInputLabel ? compact(row.inputTokens) : null}
           </span>
-          <span className="grid w-full place-items-center bg-teal text-[10px] font-semibold tabular-nums text-white" style={{ height: `${outputShare}%` }}>
+          <span className="grid w-full place-items-center bg-teal text-[10px] font-semibold tabular-nums text-primary-ink" style={{ height: `${outputShare}%` }}>
             {showOutputLabel ? compact(row.outputTokens) : null}
           </span>
         </div>

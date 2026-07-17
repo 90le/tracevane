@@ -5,13 +5,14 @@ import { ConfirmDialog } from "@/design/ui/action-dialog";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/design/ui/sheet";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 import { useChannelsSummaryQuery, useCreateChannelAccountMutation, useCreateChannelMutation, useDeleteChannelAccountMutation, useDeleteChannelMutation, useUpdateChannelAccountMutation, useUpdateChannelMutation } from "@/lib/query/channels";
 import type { ChannelAccountInput, ChannelAccountSummary, ChannelCatalogEntry, ChannelFieldDescriptor, ChannelSettingsInput, ChannelSummary } from "../../../../../../../types/channels";
-import { EvidenceRow, Panel, PanelHead, RefreshButton, ResponsiveTable, SearchBox, SelectableRow, StatusPill, WorkbenchToolbar, useSelectedKey } from "../components";
+import { EvidenceRow, Panel, PanelHead, RefreshButton, ResponsiveTable, SearchBox, SelectableRow, StatusPill, useSelectedKey } from "../components";
 
 type ChannelDraft = { type: string; enabled: boolean; groupPolicy: string; streaming: string; dmPolicy: string; responsePrefix: string; threadEnabled: boolean; threadIdleHours: string; threadMaxAgeHours: string; threadSpawnSessions: boolean; };
 type BotDraft = { id: string; enabled: boolean; dmPolicy: string; groupPolicy: string; streaming: string; responsePrefix: string; fieldValues: Record<string, string>; };
@@ -91,6 +92,17 @@ export function ChannelsPage() {
   </>;
   if (active) return (
     <div className="grid gap-[18px]">
+      <PageHeader
+        className="px-0"
+        title={`${selectedCatalog?.icon ?? "◈"} ${selectedCatalog?.label ?? active.type}`}
+        description="频道子页面：管理此 Channel 下的 Bot/Account；不同频道的表单字段来自 OpenClaw catalog、manifest 和后端映射。"
+        actions={<>
+          <Button variant="outline" size="sm" onClick={() => setActiveType(null)}><ArrowLeft className="size-4" />返回频道列表</Button>
+          <Button variant="primary" size="sm" onClick={() => openBotEditor("new")}><Bot className="size-4" />新增 Bot</Button>
+          <Button variant="outline" size="sm" onClick={() => openChannelEditor("edit", active)}><Pencil className="size-4" />编辑 Channel</Button>
+          <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
+        </>}
+      />
       <MetricRail>
         <MetricTile label="Bot" value={active.accountCount} hint="账号实例" icon={<Bot />} />
         <MetricTile label="绑定" value={active.bindingCount} hint="Bot → Agent" />
@@ -98,12 +110,7 @@ export function ChannelsPage() {
         <MetricTile label="字段" value={botFields.length} hint="动态表单字段" />
       </MetricRail>
       <Panel>
-        <WorkbenchToolbar title={`${selectedCatalog?.icon ?? "◈"} ${selectedCatalog?.label ?? active.type}`} description="频道子页面：管理此 Channel 下的 Bot/Account；不同频道的表单字段来自 OpenClaw catalog、manifest 和后端映射。">
-          <Button variant="outline" size="sm" onClick={() => setActiveType(null)}><ArrowLeft className="size-4" />返回频道列表</Button>
-          <Button size="sm" onClick={() => openBotEditor("new")}><Bot className="size-4" />新增 Bot</Button>
-          <Button variant="outline" size="sm" onClick={() => openChannelEditor("edit", active)}><Pencil className="size-4" />编辑 Channel</Button>
-          <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
-        </WorkbenchToolbar>
+        <PanelHead title="Bot / Account" sub="账号实例、凭据与策略；完整编辑在抽屉中完成，避免长列表页面被表单拉长。" />
         <ResponsiveTable
           columns={["Bot / Account", "凭据", "策略", "状态", "操作"]}
           rows={selectedBots.map((bot) => (
@@ -142,6 +149,17 @@ export function ChannelsPage() {
   );
   return (
     <div className="grid gap-[18px]">
+      <PageHeader
+        className="px-0"
+        title="原生渠道"
+        description="先选择频道进入子页面，再管理该频道下的多个 Bot。这里不再使用左右分栏。"
+        meta={<Badge variant="info">可编辑</Badge>}
+        actions={<>
+          <SearchBox value={query} onChange={setQuery} placeholder="搜索 Channel" />
+          <Button variant="primary" size="sm" onClick={() => openChannelEditor("new")}><Plus className="size-4" />新增 Channel</Button>
+          <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
+        </>}
+      />
       <MetricRail>
         <MetricTile label="Channel" value={channels.data?.counts.channels ?? 0} hint="平台类型" />
         <MetricTile label="Bot" value={channels.data?.counts.accounts ?? 0} hint="账号实例" />
@@ -149,12 +167,7 @@ export function ChannelsPage() {
         <MetricTile label="Catalog" value={channels.data?.catalog.length ?? 0} hint="可新增平台" />
       </MetricRail>
       <Panel>
-        <WorkbenchToolbar title="OpenClaw 原生接入：Channel / Bot" description="先选择频道进入子页面，再管理该频道下的多个 Bot。这里不再使用左右分栏。">
-          <SearchBox value={query} onChange={setQuery} placeholder="搜索 Channel" />
-          <Button size="sm" onClick={() => openChannelEditor("new")}><Plus className="size-4" />新增 Channel</Button>
-          <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
-          <Badge variant="info">可编辑</Badge>
-        </WorkbenchToolbar>
+        <PanelHead title="OpenClaw 原生接入：Channel / Bot" sub="频道清单；进入子页面管理该频道下的 Bot/Account。" />
         <ResponsiveTable
           columns={["Channel", "Bot 数", "绑定数", "状态", "操作"]}
           rows={filtered.map((channel) => (

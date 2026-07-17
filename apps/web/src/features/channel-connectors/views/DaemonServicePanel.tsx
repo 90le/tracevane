@@ -27,6 +27,7 @@ import type {
   ChannelConnectorsDaemonAction,
   ChannelConnectorsDaemonResponse,
 } from "../types";
+import { StatusDot } from "./_shared";
 
 type PanelAction = Extract<
   ChannelConnectorsDaemonAction,
@@ -179,9 +180,9 @@ export function DaemonServicePanel() {
         onClick={() => setOpenPanel((value) => !value)}
         aria-expanded={openPanel}
         aria-controls={panelRegionId}
-        className="flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
+        className="flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left outline-none transition-colors duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
       >
-        <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
+        <span className="grid size-8 shrink-0 place-items-center rounded-sm bg-panel-3 text-muted [&_svg]:size-4">
           <Server />
         </span>
         <div className="min-w-0">
@@ -190,12 +191,15 @@ export function DaemonServicePanel() {
             {serviceName}
           </span>
         </div>
-        <Badge variant={stateBadge} className="ml-auto">
-          {manager ? serviceStateLabel(manager.state) : "未检测"}
-        </Badge>
+        <span className="ml-auto flex items-center gap-2">
+          <StatusDot tone={stateBadge} pulse={manager?.state === "running"} />
+          <Badge variant={stateBadge}>
+            {manager ? serviceStateLabel(manager.state) : "未检测"}
+          </Badge>
+        </span>
         <ChevronDown
           className={cn(
-            "size-4 shrink-0 text-subtle transition-transform",
+            "size-4 shrink-0 text-subtle transition-transform duration-[var(--dur-2)] ease-[var(--ease-standard)]",
             openPanel && "rotate-180",
           )}
         />

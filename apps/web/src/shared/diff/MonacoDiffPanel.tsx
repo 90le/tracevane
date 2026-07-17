@@ -3,6 +3,7 @@ import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 
 import { useTheme } from "@/app/providers";
 import { cn } from "@/design/lib/utils";
+import { tracevaneMonacoThemeForMode } from "@/shared/editor-core/monacoTheme";
 
 export interface MonacoDiffPanelProps {
   original: string;
@@ -49,7 +50,7 @@ export function MonacoDiffPanel({
       renderSideBySide: true,
       scrollBeyondLastLine: false,
       smoothScrolling: true,
-      theme: theme === "dark" ? "vs-dark" : "vs",
+      theme: tracevaneMonacoThemeForMode(theme),
       wordWrap: "on",
     });
     diffEditor.setModel({ original: originalModel, modified: modifiedModel });
@@ -70,8 +71,7 @@ export function MonacoDiffPanel({
   }, [language, modified, original, theme]);
 
   React.useEffect(() => {
-    const monacoTheme = theme === "dark" ? "vs-dark" : "vs";
-    monaco.editor.setTheme(monacoTheme);
+    monaco.editor.setTheme(tracevaneMonacoThemeForMode(theme));
     requestAnimationFrame(() => diffEditorRef.current?.layout());
   }, [theme]);
 

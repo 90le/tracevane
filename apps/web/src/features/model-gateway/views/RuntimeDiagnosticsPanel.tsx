@@ -85,7 +85,7 @@ export function RuntimeDiagnosticsPanel({
           <h3 className="text-md font-semibold text-ink-strong">
             最近请求 / 路由诊断
           </h3>
-          <span className="text-sm text-subtle">
+          <span className="text-sm text-muted">
             {entries.length > 0
               ? `共 ${entries.length} 条 · 显示最近 ${recent.length}`
               : "近期网关请求与账号路由"}

@@ -168,7 +168,7 @@ export function DaemonServicePanel({
         </span>
         <div className="min-w-0">
           <h3 className="text-md font-semibold text-ink-strong">守护服务</h3>
-          <span className="block truncate text-sm text-subtle" title={serviceName}>
+          <span className="block truncate text-sm text-muted" title={serviceName}>
             {serviceName}
           </span>
         </div>

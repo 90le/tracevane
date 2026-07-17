@@ -3,7 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 
-import { createXtermAuroraTheme } from "./xtermTheme";
+import { createXtermConsoleTheme } from "./xtermTheme";
 
 export interface XtermDimensions {
   cols: number;
@@ -97,7 +97,7 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
       letterSpacing: 0,
       lineHeight: 1.2,
       scrollback: 2000,
-      theme: createXtermAuroraTheme(container),
+      theme: createXtermConsoleTheme(container),
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
@@ -212,10 +212,24 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     }
   }, [acceptInput]);
 
+  React.useEffect(() => {
+    const terminal = terminalRef.current;
+    const container = containerRef.current;
+    if (!terminal || !container) return;
+    // Follow runtime theme flips (`[data-theme="light"]` on <html>); the token
+    // values themselves live in CSS, so the palette is re-read from computed
+    // style instead of being duplicated here.
+    const observer = new MutationObserver(() => {
+      terminal.options.theme = createXtermConsoleTheme(container);
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div
       ref={containerRef}
-      className="h-full min-h-0 w-full min-w-0 overflow-hidden bg-panel text-ink"
+      className="h-full min-h-0 w-full min-w-0 overflow-hidden bg-canvas text-ink"
       onPointerDown={() => {
         inputArmedRef.current = true;
         onFocusChangeRef.current?.(true);

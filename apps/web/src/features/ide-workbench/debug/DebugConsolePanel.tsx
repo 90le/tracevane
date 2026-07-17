@@ -4,7 +4,7 @@ import { SquareTerminal } from "lucide-react";
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
-import { PanelHeader } from "../panelHeader";
+import { PanelHeader, PanelHeaderChip } from "../panelHeader";
 import { evaluateIdeDebugSession } from "./debugClient";
 import { useIdeDebugSnapshot } from "./debugStore";
 import type { DebugEvaluateMode } from "../../../../../../types/debug";
@@ -51,9 +51,9 @@ export function DebugConsolePanel() {
         title="调试控制台"
         icon={<SquareTerminal />}
         actions={(
-          <span className="truncate text-2xs text-muted">
+          <PanelHeaderChip className="max-w-64 truncate">
             {snapshot.sessions.length} 个会话 · {snapshot.events.length} 条事件 · {snapshot.watches.length} 个监视
-          </span>
+          </PanelHeaderChip>
         )}
       />
       <div ref={scrollerRef} className="min-h-0 overflow-auto bg-canvas p-3 font-mono text-xs leading-5">
@@ -84,7 +84,7 @@ export function DebugConsolePanel() {
           </section>
         ) : null}
         {snapshot.events.length ? snapshot.events.map((event) => (
-          <div key={event.id} className="flex gap-2 py-px" data-ide-debug-console-event data-ide-debug-console-level={event.level}>
+          <div key={event.id} className="-mx-1 flex gap-2 rounded-sm px-1 py-px hover:bg-panel-2" data-ide-debug-console-event data-ide-debug-console-level={event.level}>
             <span className="shrink-0 tabular-nums text-subtle">{new Date(event.timestamp).toLocaleTimeString()}</span>
             <span className={cn(
               "shrink-0 font-sans font-semibold uppercase tracking-wide",

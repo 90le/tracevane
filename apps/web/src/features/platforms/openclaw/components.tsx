@@ -44,7 +44,7 @@ export function WorkbenchToolbar({
 
 export function SearchBox({ value, onChange, placeholder = "搜索" }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
   return (
-    <label className="flex min-w-[180px] flex-1 items-center gap-2 rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm md:max-w-[320px]">
+    <label className="flex min-w-[180px] flex-1 items-center gap-2 rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm transition-[border-color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] focus-within:border-primary-line focus-within:shadow-[var(--ring)] md:max-w-[320px]">
       <Search className="size-4 shrink-0 text-muted" />
       <span className="sr-only">{placeholder}</span>
       <input
@@ -101,8 +101,8 @@ export function SelectableRow({
       onClick={() => onSelect(id)}
       onKeyDown={handleKeyDown}
       className={cn(
-        "cursor-pointer outline-none transition hover:bg-panel-2 focus:bg-panel-2",
-        selected && "bg-primary-soft/60"
+        "cursor-pointer outline-none transition-[background-color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:bg-panel-2 focus:bg-panel-2 focus-visible:shadow-[var(--ring)]",
+        selected && "bg-primary-soft/60 shadow-[inset_2px_0_0_var(--primary)]"
       )}
     >
       {children}
@@ -131,8 +131,8 @@ export function ResponsiveTable({
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-        <thead className="border-b border-line bg-panel-2 text-xs uppercase tracking-[0.08em] text-subtle">
-          <tr>{columns.map((column) => <th key={column} className="px-4 py-2 font-semibold">{column}</th>)}</tr>
+        <thead className="border-b border-line bg-panel-2 text-2xs font-semibold uppercase tracking-wider text-subtle">
+          <tr>{columns.map((column) => <th key={column} className="px-4 py-2.5 text-left">{column}</th>)}</tr>
         </thead>
         <tbody className="divide-y divide-line">{rows.length ? rows : <tr><td colSpan={columns.length}>{typeof empty === "string" ? <EmptyState title={empty} /> : empty}</td></tr>}</tbody>
       </table>

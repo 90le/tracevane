@@ -16,6 +16,7 @@ import {
 import { cn } from "@/design/lib/utils";
 import { TextInputDialog } from "@/design/ui/action-dialog";
 import { Button } from "@/design/ui/button";
+import "@/design/ui/motion.css";
 import { DragFloatingPreview } from "@/shared/explorer-ui";
 import type { TerminalProfileDescriptor } from "@/features/cli-agents/types";
 import type { TerminalProfileSelection, TerminalSplitOrientation, TerminalTabRecord } from "./terminalLayoutTypes";
@@ -325,7 +326,7 @@ export function TerminalTabs({
       {menu ? (
         <div
           role="menu"
-          className="fixed z-50 min-w-56 overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+          className="fixed z-50 min-w-56 overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-md animate-[tvu-pop-in_var(--dur-1)_var(--ease-standard)]"
           style={{ left: menu.x, top: menu.y, maxHeight: `calc(100vh - ${menu.y + 8}px)` }}
           onPointerDown={(event) => event.stopPropagation()}
           data-ide-terminal-tab-context-menu
@@ -468,7 +469,7 @@ function TerminalNewProfileMenu({
   return (
     <div
       role="menu"
-      className="fixed z-50 w-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+      className="fixed z-50 w-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-md animate-[tvu-pop-in_var(--dur-1)_var(--ease-standard)]"
       style={{ left: x, top: y, maxHeight: `calc(100vh - ${y + 8}px)` }}
       onPointerDown={(event) => event.stopPropagation()}
       data-ide-terminal-new-profile-menu

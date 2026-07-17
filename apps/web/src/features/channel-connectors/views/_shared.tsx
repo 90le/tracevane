@@ -2,6 +2,75 @@ import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
 
+/** Shared severity tone used by dots, chips and tinted rows. */
+export type StatusTone = "ok" | "warn" | "bad" | "info" | "mute";
+
+const statusDotToneClass: Record<StatusTone, string> = {
+  ok: "bg-success",
+  warn: "bg-warning",
+  bad: "bg-danger",
+  info: "bg-primary",
+  mute: "bg-subtle",
+};
+
+/**
+ * Compact online-status indicator (Linear-style dot). `pulse` animates the
+ * dot for live/healthy signals; reduced-motion users get a static dot via
+ * the global prefers-reduced-motion reset.
+ */
+export function StatusDot({
+  tone,
+  pulse = false,
+  className,
+}: {
+  tone: StatusTone;
+  pulse?: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "inline-block size-2 shrink-0 rounded-full",
+        statusDotToneClass[tone],
+        pulse && "animate-pulse",
+        className,
+      )}
+    />
+  );
+}
+
+const countChipToneClass: Record<StatusTone, string> = {
+  ok: "bg-success-soft text-success",
+  warn: "bg-warning-soft text-warning",
+  bad: "bg-danger-soft text-danger",
+  info: "bg-primary-soft text-primary",
+  mute: "bg-panel-3 text-muted",
+};
+
+/** Small numeric chip for panel headers (queue depth, outbox size, …). */
+export function CountChip({
+  tone = "mute",
+  className,
+  children,
+}: {
+  tone?: StatusTone;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-px text-2xs font-semibold tabular-nums",
+        countChipToneClass[tone],
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 /** Bordered panel shell shared by the channel-connectors views. */
 export function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
@@ -14,19 +83,24 @@ export function Panel({ className, children }: { className?: string; children: R
 export function PanelHead({
   title,
   sub,
+  chip,
   action,
 }: {
   title: string;
   sub?: string;
+  chip?: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 border-b border-line px-4 py-3">
       <div className="min-w-0">
-        <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
+        <h3 className="flex items-center gap-2 text-md font-semibold text-ink-strong">
+          <span className="truncate">{title}</span>
+          {chip}
+        </h3>
         {sub && <span className="text-sm text-subtle">{sub}</span>}
       </div>
-      {action && <div className="ml-auto">{action}</div>}
+      {action && <div className="ml-auto shrink-0">{action}</div>}
     </div>
   );
 }
@@ -53,7 +127,7 @@ export function Row({
     <>
       <span
         className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4",
+          "grid size-8 shrink-0 place-items-center rounded-sm bg-panel-3 text-muted [&_svg]:size-4",
           iconClass,
         )}
       >
@@ -75,7 +149,7 @@ export function Row({
       <button
         type="button"
         onClick={onClick}
-        className="flex w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
+        className="flex w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
       >
         {body}
       </button>

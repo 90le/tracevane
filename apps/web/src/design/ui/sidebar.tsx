@@ -4,10 +4,10 @@ import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/design/lib/utils";
 
 /**
- * Lightweight grouped sidebar themed to Aurora (.sidebar / .nav / .nav-item).
- * Supports labelled groups, collapsed (icon-only) mode, active state, and a
- * trailing count badge. Collapsed mode is controlled via the `collapsed` prop
- * on <Sidebar>; descendants read it from context.
+ * Lightweight grouped sidebar for the app shell. Supports labelled groups,
+ * collapsed (icon-only) mode, active state, and a trailing count badge.
+ * Collapsed mode is controlled via the `collapsed` prop on <Sidebar>;
+ * descendants read it from context.
  */
 
 type SidebarContextValue = { collapsed: boolean };
@@ -28,7 +28,7 @@ const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
         data-collapsed={collapsed ? "" : undefined}
         className={cn(
           "grid h-dvh min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-[14px] border-r border-line p-[16px_14px]",
-          "bg-[color-mix(in_srgb,var(--panel)_70%,var(--canvas))] backdrop-blur-[20px]",
+          "bg-panel/80 backdrop-blur-xl",
           collapsed && "p-[16px_10px]",
           className,
         )}
@@ -149,7 +149,7 @@ const SidebarItem = React.forwardRef<HTMLButtonElement, SidebarItemProps>(
           <span
             className={cn(
               "ml-auto inline-grid h-[19px] min-w-[19px] place-items-center rounded-full px-[5px] font-mono text-2xs",
-              alert ? "bg-red-soft text-red" : "bg-panel-3 text-muted",
+              alert ? "bg-danger-soft text-danger" : "bg-panel-3 text-muted",
             )}
           >
             {count}
@@ -162,7 +162,7 @@ const SidebarItem = React.forwardRef<HTMLButtonElement, SidebarItemProps>(
         ref={ref}
         data-active={active ? "" : undefined}
         className={cn(
-          "relative flex h-[37px] items-center gap-[11px] rounded-sm px-[10px] text-[13.5px] text-muted outline-none transition-colors",
+          "relative flex h-[37px] items-center gap-[11px] rounded-sm px-[10px] text-sm text-muted outline-none transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)]",
           "hover:bg-panel-2 hover:text-ink focus-visible:shadow-[var(--ring)]",
           "[&_svg]:size-4",
           active &&

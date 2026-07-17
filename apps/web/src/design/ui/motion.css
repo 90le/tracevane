@@ -1,0 +1,56 @@
+/* ------------------------------------------------------------
+   UI primitive enter/exit keyframes (dark-console motion).
+   Consumed via arbitrary animate-[...] utilities in the sibling
+   primitives (dialog, sheet, tooltip, skeleton). Durations and
+   easing come from the global motion tokens (--dur-1/2/3,
+   --ease-standard); the global prefers-reduced-motion rule in
+   theme.css disables these animations, which also makes Radix
+   Presence skip its exit wait — reduced motion stays instant.
+   ------------------------------------------------------------ */
+
+@keyframes tvu-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes tvu-fade-out {
+  to { opacity: 0; }
+}
+
+/* Dialog content: centered by the overlay grid, so animating
+   `transform` here is safe (no popper inline transform). */
+@keyframes tvu-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(.97); }
+}
+
+@keyframes tvu-dialog-out {
+  to { opacity: 0; transform: translateY(4px) scale(.98); }
+}
+
+/* Sheet: fixed-positioned, no inline transform — safe. */
+@keyframes tvu-sheet-in-r {
+  from { transform: translateX(100%); }
+}
+
+@keyframes tvu-sheet-out-r {
+  to { transform: translateX(100%); }
+}
+
+@keyframes tvu-sheet-in-l {
+  from { transform: translateX(-100%); }
+}
+
+@keyframes tvu-sheet-out-l {
+  to { transform: translateX(-100%); }
+}
+
+/* Tooltip / popover pop: Radix popper positions content with an
+   inline `transform`, so the entry animation must use the
+   composable `translate` property instead of `transform`. */
+@keyframes tvu-pop-in {
+  from { opacity: 0; translate: 0 2px; }
+}
+
+/* Skeleton shimmer sweep (element starts at -translate-x-full). */
+@keyframes tvu-shimmer {
+  to { transform: translateX(100%); }
+}

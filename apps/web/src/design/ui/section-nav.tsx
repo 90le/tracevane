@@ -86,7 +86,7 @@ function SectionNav({
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(item.id)}
             className={cn(
-              "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium outline-none transition-colors",
+              "inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium outline-none transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)]",
               "focus-visible:shadow-[var(--ring)]",
               active
                 ? "bg-panel text-ink-strong shadow-sm"

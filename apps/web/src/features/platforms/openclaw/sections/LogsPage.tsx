@@ -1,11 +1,12 @@
 import * as React from "react";
 import { FileText } from "lucide-react";
 import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { SectionNav } from "@/design/ui/section-nav";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 import { useRecoveryEventsQuery } from "@/lib/query/recovery";
-import { BoundaryBadge, DetailRail, EvidenceRow, Panel, RefreshButton, ResponsiveTable, SelectableRow, StatusPill, WorkbenchToolbar, fmtDate, statusTone, useSelectedKey } from "../components";
+import { BoundaryBadge, DetailRail, EvidenceRow, Panel, PanelHead, RefreshButton, ResponsiveTable, SelectableRow, StatusPill, fmtDate, statusTone, useSelectedKey } from "../components";
 
 function severityLabel(value: string): string {
   if (value === "error") return "错误";
@@ -31,6 +32,13 @@ export function LogsPage() {
   if (events.error) return <ErrorState title="无法加载平台日志" description={events.error.message} />;
   return (
     <div className="grid gap-[18px]">
+      <PageHeader
+        className="px-0"
+        title="日志"
+        description="平台守护事件与近期运行证据。按人能理解的事件摘要展示；原始日志、终端输出和 Agent 运行证据留在各自 owner 页面。"
+        meta={<BoundaryBadge />}
+        actions={<RefreshButton loading={events.isFetching} onClick={() => { void events.refetch(); }} />}
+      />
       <MetricRail>
         <MetricTile label="事件总数" value={events.data?.pagination.totalEntries ?? 0} hint="平台守护事件" icon={<FileText />} />
         <MetricTile label="当前加载" value={list.length} hint="最近 40 条" />
@@ -38,10 +46,7 @@ export function LogsPage() {
         <MetricTile label="警告" value={warnCount} tone={warnCount > 0 ? "warn" : "default"} hint="可能需关注" />
       </MetricRail>
       <Panel>
-        <WorkbenchToolbar title="平台事件日志" description="按人能理解的事件摘要展示；原始日志、终端输出和 Agent 运行证据留在各自 owner 页面。">
-          <RefreshButton loading={events.isFetching} onClick={() => { void events.refetch(); }} />
-          <BoundaryBadge />
-        </WorkbenchToolbar>
+        <PanelHead title="平台事件日志" sub="守护事件摘要；选中事件在右侧查看证据。" />
         <div className="border-b border-line px-3 py-2">
           <SectionNav
             ariaLabel="日志级别筛选"

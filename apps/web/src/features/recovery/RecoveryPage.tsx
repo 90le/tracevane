@@ -64,7 +64,7 @@ export function RecoveryPage() {
   };
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-[18px]">
       <div className="sm:hidden">
         <label className="sr-only" htmlFor="recovery-mobile-view">
           平台守护视图

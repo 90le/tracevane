@@ -223,7 +223,7 @@ export function EditorDock({
         <EditorDockCallbacksContext.Provider value={{ onDirtyChange, onSaveStateChange, onFileMetadataChange, preferences }}>
         <EditorDockHeaderActionsContext.Provider value={headerActions}>
         <DockviewReact
-          className="dockview-theme-light tracevane-dockview-instance h-full w-full"
+          className="dockview-theme-dark tracevane-dockview-instance h-full w-full"
           components={{ [EDITOR_COMPONENT]: EditorPlaceholderPanel }}
           watermarkComponent={EditorDockWatermark}
           defaultTabComponent={(props) => (
@@ -325,7 +325,7 @@ function EditorDockHeaderActions({
       <button
         ref={triggerRef}
         type="button"
-        className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-panel-2 px-2 text-xs font-medium text-ink outline-none hover:border-primary-line hover:bg-primary-soft focus-visible:shadow-[var(--ring)]"
+        className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-panel-2 px-2 text-xs font-medium text-ink outline-none transition-colors hover:border-line-2 hover:bg-panel-3 hover:text-ink-strong focus-visible:shadow-[var(--ring)]"
         aria-label="打开编辑器操作菜单"
         aria-expanded={open ? "true" : "false"}
         onPointerDown={(event) => event.stopPropagation()}
@@ -344,7 +344,7 @@ function EditorDockHeaderActions({
         <div
           ref={menuRef}
           role="menu"
-          className="fixed z-[1000] w-64 rounded-lg border border-line bg-panel p-2 text-sm text-ink shadow-lg"
+          className="fixed z-[1000] w-64 rounded-lg border border-line bg-panel p-2 text-sm text-ink shadow-md"
           style={{ left: menuPosition.left, top: menuPosition.top }}
           onPointerDown={(event) => event.stopPropagation()}
           data-ide-editor-action-menu
@@ -425,7 +425,7 @@ function EditorDockHeaderActions({
             }}
             data-ide-editor-action-minimap
           >
-            <span className={cn("grid size-3.5 place-items-center rounded border border-line", preferences.minimapEnabled ? "bg-primary text-primary-contrast" : "bg-panel-2 text-transparent")}>✓</span>
+            <span className={cn("grid size-3.5 place-items-center rounded border border-line", preferences.minimapEnabled ? "bg-primary text-primary-ink" : "bg-panel-2 text-transparent")}>✓</span>
             <span className="min-w-0 flex-1 truncate">小地图</span>
           </button>
           <div className="my-1 border-t border-line" />
@@ -545,11 +545,11 @@ function EditorDockTab({
             {gitDecoration.label}
           </span>
         ) : null}
-        {tab?.dirty ? <span className="shrink-0 text-warning" aria-label="未保存修改">●</span> : null}
+        {tab?.dirty ? <span className="shrink-0 text-primary" aria-label="未保存修改">●</span> : null}
         {tab ? (
           <button
             type="button"
-            className="grid size-5 shrink-0 place-items-center rounded-sm text-subtle opacity-70 outline-none hover:bg-panel hover:text-ink focus-visible:opacity-100 focus-visible:shadow-[var(--ring)] group-hover/ide-editor-tab:opacity-100"
+            className="grid size-5 shrink-0 place-items-center rounded-sm text-subtle opacity-70 outline-none hover:bg-panel-2 hover:text-ink-strong focus-visible:opacity-100 focus-visible:shadow-[var(--ring)] group-hover/ide-editor-tab:opacity-100"
             aria-label={`关闭 ${tab.title}`}
             title="关闭标签"
             onClick={(event) => {
@@ -568,7 +568,7 @@ function EditorDockTab({
       {menu ? createPortal(
         <div
           role="menu"
-          className="fixed z-[1000] min-w-56 rounded-lg border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+          className="fixed z-[1000] min-w-56 rounded-lg border border-line bg-panel p-1 text-sm text-ink shadow-md"
           style={{ left: menu.x, top: menu.y }}
           onPointerDown={(event) => event.stopPropagation()}
           data-ide-editor-tab-context-menu
@@ -681,7 +681,7 @@ function EditorTabMenuButton({
       type="button"
       role="menuitem"
       disabled={disabled}
-      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:text-disabled [&_svg]:size-3.5"
+      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:text-subtle [&_svg]:size-3.5"
       onPointerDown={(event) => {
         event.preventDefault();
         event.stopPropagation();

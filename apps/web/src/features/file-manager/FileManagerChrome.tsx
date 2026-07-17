@@ -86,6 +86,8 @@ export interface FileManagerHeaderProps {
   onRefresh: () => void;
   showHidden: boolean;
   onToggleShowHidden: () => void;
+  /** Dominant middle slot of the single toolbar row (the unified path bar). */
+  children?: React.ReactNode;
 }
 
 export function FileManagerHeader({
@@ -100,26 +102,33 @@ export function FileManagerHeader({
   onRefresh,
   showHidden,
   onToggleShowHidden,
+  children,
 }: FileManagerHeaderProps) {
   const currentRoot = roots.find((item) => item.id === rootId);
 
   return (
     <div
-      className="flex min-w-0 items-center gap-2 border-b border-line px-3 py-1.5 sm:px-4"
+      className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 sm:px-4"
       data-file-manager-command-bar
     >
       <div
-        className="flex min-w-0 items-center gap-2 text-xs text-muted"
+        className="flex min-w-0 shrink-0 items-center gap-2 text-xs text-muted"
         data-file-manager-header-title
       >
-        <span className="inline-grid size-7 shrink-0 place-items-center rounded-lg border border-primary-line bg-primary-soft text-primary">
+        <span className="inline-grid size-7 shrink-0 place-items-center rounded-md bg-primary-soft text-primary">
           <HardDrive className="size-4" />
         </span>
-        <span className="font-semibold text-ink-strong">文件管理器</span>
-        <span className="hidden max-w-[180px] truncate rounded-full border border-line bg-panel px-2 py-1 text-2xs text-subtle md:inline-flex">
+        <span className="text-sm font-semibold text-ink-strong">文件管理器</span>
+        <span className="hidden max-w-[180px] truncate rounded-full bg-panel-3 px-2 py-0.5 text-2xs text-subtle md:inline-flex">
           {currentRoot?.labelZh ?? rootId ?? "未选择根目录"}
         </span>
       </div>
+
+      {children ? (
+        <div className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1 sm:px-1">
+          {children}
+        </div>
+      ) : null}
 
       <div className="ml-auto flex min-w-0 items-center gap-1.5">
         <div className="hidden sm:block" data-file-manager-view-switcher>
@@ -143,13 +152,13 @@ export function FileManagerHeader({
         </Button>
 
         <details className="group relative" data-file-manager-actions-menu>
-          <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1 rounded-md border border-line bg-panel px-2 text-xs font-medium text-ink-strong marker:hidden hover:bg-panel-2 focus-visible:shadow-[var(--ring)]">
+          <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1 rounded-md bg-panel-2 px-2 text-xs font-medium text-ink-strong shadow-sm marker:hidden transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:bg-panel-3 focus-visible:shadow-[var(--ring)]">
             <MoreHorizontal className="size-4 text-subtle" />
             <span className="hidden sm:inline">操作</span>
             <ChevronRight className="size-3 rotate-90 text-subtle transition-transform group-open:-rotate-90" />
           </summary>
           <div
-            className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 grid max-h-[min(72dvh,520px)] gap-1 overflow-y-auto rounded-2xl border border-line bg-panel/98 p-3 text-xs shadow-2xl backdrop-blur sm:absolute sm:inset-auto sm:right-0 sm:top-[calc(100%+6px)] sm:w-60 sm:rounded-xl sm:bg-panel sm:p-2 sm:backdrop-blur-0"
+            className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 grid max-h-[min(72dvh,520px)] gap-1 overflow-y-auto rounded-2xl border border-line bg-panel/98 p-3 text-xs shadow-md backdrop-blur sm:absolute sm:inset-auto sm:right-0 sm:top-[calc(100%+6px)] sm:w-60 sm:rounded-xl sm:bg-panel sm:p-2 sm:backdrop-blur-0"
             data-file-manager-actions-popover
           >
             <button
@@ -260,7 +269,7 @@ function compactBreadcrumbs(
   ];
 }
 
-export interface FileManagerNavigationBarProps {
+export interface FileManagerPathBarProps {
   directoryPath: string;
   parentPath: string | null;
   breadcrumbs: FileBreadcrumb[];
@@ -269,19 +278,8 @@ export interface FileManagerNavigationBarProps {
   pathSuggestions: FileManagerLocation[];
   pathSuggestionsOpen: boolean;
   activePathSuggestionIndex: number;
-  favoriteTree: FileManagerBookmarkItem[];
-  favoriteCount: number;
-  recentLocations: FileManagerQuickLocation[];
-  directoryTabs: FileManagerDirectoryTab[];
-  activeDirectoryTabId?: string;
-  filterText: string;
-  showHidden: boolean;
   currentLocationFavorited: boolean;
   onNavigateToDirectory: (path: string) => void;
-  onNavigateToLocation: (location: FileManagerLocation) => void;
-  onSelectDirectoryTab: (tabId: string) => void;
-  onAddDirectoryTab: () => void;
-  onCloseDirectoryTab: (tabId: string) => void;
   onPathInputFocus: () => void;
   onPathInputBlur: () => void;
   onPathInputChange: (value: string) => void;
@@ -291,6 +289,20 @@ export interface FileManagerNavigationBarProps {
   onPathSuggestionActiveChange: (index: number) => void;
   onAcceptPathSuggestion: (location: FileManagerLocation) => void;
   onToggleFavoriteCurrent: () => void;
+}
+
+export interface FileManagerNavigationBarProps {
+  favoriteTree: FileManagerBookmarkItem[];
+  favoriteCount: number;
+  recentLocations: FileManagerQuickLocation[];
+  directoryTabs: FileManagerDirectoryTab[];
+  activeDirectoryTabId?: string;
+  filterText: string;
+  showHidden: boolean;
+  onNavigateToLocation: (location: FileManagerLocation) => void;
+  onSelectDirectoryTab: (tabId: string) => void;
+  onAddDirectoryTab: () => void;
+  onCloseDirectoryTab: (tabId: string) => void;
   onOpenFavoriteItem: (itemId: string) => void;
   onAddFavoriteFolder: (parentId: string | undefined, title: string) => void;
   onAddCurrentFavoriteToFolder: (
@@ -1409,13 +1421,13 @@ function FavoriteBookmarkManager({
       >
         <summary
           ref={summaryRef}
-          className="cursor-pointer list-none rounded-full border border-line bg-panel px-2 py-1 font-medium text-muted marker:hidden hover:border-primary-line hover:text-primary"
+          className="cursor-pointer list-none rounded-full bg-panel-2 px-2.5 py-1 font-medium text-muted shadow-sm marker:hidden transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:bg-panel-3 hover:text-primary"
           onClick={() => requestAnimationFrame(updateFavoritePanelPosition)}
         >
           收藏夹{favoriteCount ? ` · ${favoriteCount}` : ""}
         </summary>
         <div
-          className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] top-auto z-50 grid max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-xl border border-line bg-panel shadow-2xl md:fixed md:inset-auto md:h-[min(78dvh,640px)] md:max-h-[min(78dvh,640px)] md:w-[min(620px,calc(100vw-2rem))] md:rounded-2xl"
+          className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom))] top-auto z-50 grid max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-xl border border-line bg-panel shadow-lg md:fixed md:inset-auto md:h-[min(78dvh,640px)] md:max-h-[min(78dvh,640px)] md:w-[min(620px,calc(100vw-2rem))] md:rounded-2xl"
           style={favoritePanelStyle ?? undefined}
         >
           <div className="grid gap-2 border-b border-line bg-panel-2/80 p-2 sm:gap-3 sm:p-3">
@@ -1502,7 +1514,7 @@ function FavoriteBookmarkManager({
             )}
             {pointerDrag?.active ? (
               <div
-                className="pointer-events-none fixed z-[100] rounded-full border border-primary-line bg-panel px-3 py-1.5 text-xs font-medium text-primary shadow-xl"
+                className="pointer-events-none fixed z-[100] rounded-full border border-primary-line bg-panel px-3 py-1.5 text-xs font-medium text-primary shadow-md"
                 style={{
                   left: pointerDrag.x + 12,
                   top: pointerDrag.y + 12,
@@ -1553,7 +1565,7 @@ function FavoriteBookmarkManager({
   );
 }
 
-export function FileManagerNavigationBar({
+export function FileManagerPathBar({
   directoryPath,
   parentPath,
   breadcrumbs,
@@ -1562,19 +1574,8 @@ export function FileManagerNavigationBar({
   pathSuggestions,
   pathSuggestionsOpen,
   activePathSuggestionIndex,
-  favoriteTree,
-  favoriteCount,
-  recentLocations,
-  directoryTabs,
-  activeDirectoryTabId,
-  filterText,
-  showHidden,
   currentLocationFavorited,
   onNavigateToDirectory,
-  onNavigateToLocation,
-  onSelectDirectoryTab,
-  onAddDirectoryTab,
-  onCloseDirectoryTab,
   onPathInputFocus,
   onPathInputBlur,
   onPathInputChange,
@@ -1584,17 +1585,7 @@ export function FileManagerNavigationBar({
   onPathSuggestionActiveChange,
   onAcceptPathSuggestion,
   onToggleFavoriteCurrent,
-  onOpenFavoriteItem,
-  onAddFavoriteFolder,
-  onAddCurrentFavoriteToFolder,
-  onRenameFavoriteItem,
-  onRemoveFavoriteItem,
-  onMoveFavoriteItem,
-  onClearRecentLocations,
-  filterInputRef,
-  onFilterTextChange,
-  currentLocation,
-}: FileManagerNavigationBarProps) {
+}: FileManagerPathBarProps) {
   const suggestionListId = React.useId();
   const activeSuggestion = pathSuggestions[activePathSuggestionIndex];
   const activeSuggestionId = activeSuggestion
@@ -1625,8 +1616,270 @@ export function FileManagerNavigationBar({
   const visibleBreadcrumbs = compactBreadcrumbs(breadcrumbs);
 
   return (
+    <div className="relative min-w-0">
+      <div
+        role="group"
+        aria-label="文件路径地址栏，可点击面包屑或输入路径跳转"
+        className="flex min-w-0 items-center gap-1 rounded-md border border-line bg-panel-2 px-2 py-1 text-xs text-muted transition-[border-color,color,box-shadow,background-color] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:border-line-2 focus-within:border-primary-line focus-within:shadow-[var(--ring)]"
+        data-file-manager-unified-path-bar
+        data-file-manager-display-path={displayPath}
+        onDoubleClick={enterPathEditMode}
+        onKeyDown={(event) => {
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            event.key.toLowerCase() === "l"
+          ) {
+            event.preventDefault();
+            enterPathEditMode();
+          }
+        }}
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 shrink-0"
+          disabled={!parentPath && directoryPath === ""}
+          onClick={(event) => {
+            event.preventDefault();
+            onNavigateToDirectory(parentPath ?? "");
+          }}
+          aria-label="上级目录"
+        >
+          <ArrowUp className="size-4" />
+        </Button>
+        {editingPath ? (
+          <div
+            className="flex min-w-0 flex-1 items-center"
+            data-file-manager-path-edit-mode
+          >
+            <input
+              ref={pathInputRef}
+              value={pathInput}
+              onFocus={onPathInputFocus}
+              onBlur={onPathInputBlur}
+              onChange={(event) => onPathInputChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown" && pathSuggestions.length) {
+                  event.preventDefault();
+                  onPathSuggestionActiveChange(
+                    Math.min(
+                      pathSuggestions.length - 1,
+                      activePathSuggestionIndex + 1,
+                    ),
+                  );
+                  return;
+                }
+                if (event.key === "ArrowUp" && pathSuggestions.length) {
+                  event.preventDefault();
+                  onPathSuggestionActiveChange(
+                    Math.max(0, activePathSuggestionIndex - 1),
+                  );
+                  return;
+                }
+                if (event.key === "Tab" && activeSuggestion) {
+                  event.preventDefault();
+                  onPathInputChange(activeSuggestion.label);
+                  return;
+                }
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  const typedPath = pathInput.trim();
+                  if (
+                    pathSuggestionsOpen &&
+                    activeSuggestion &&
+                    (activeSuggestion.label === typedPath ||
+                      activeSuggestion.directoryPath === typedPath)
+                  ) {
+                    onAcceptPathSuggestion(activeSuggestion);
+                  } else {
+                    onPathInputJump();
+                  }
+                  exitPathEditMode();
+                  return;
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  onPathInputRestore();
+                  exitPathEditMode();
+                }
+              }}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={
+                pathSuggestionsOpen && pathSuggestions.length > 0
+              }
+              aria-controls={suggestionListId}
+              aria-activedescendant={activeSuggestionId}
+              className="min-w-[120px] flex-1 bg-transparent font-mono text-xs text-ink-strong outline-none sm:min-w-[220px]"
+              placeholder="输入路径，Enter 跳转"
+              title="输入任意绝对路径；Enter 跳转；↑↓ 选择建议；Tab 补全；Esc 返回面包屑"
+              aria-label="编辑文件夹路径，按 Enter 跳转"
+              data-file-manager-path-input
+            />
+          </div>
+        ) : (
+          <div
+            className="flex min-w-0 flex-1 items-center overflow-x-auto overscroll-x-contain whitespace-nowrap"
+            data-file-manager-path-breadcrumb-mode
+          >
+            <button
+              type="button"
+              onClick={() => onNavigateToDirectory("")}
+              className="inline-flex shrink-0 rounded-md px-1.5 py-1 font-medium text-muted transition-colors hover:bg-panel-3 hover:text-primary"
+              title="跳转到 root"
+            >
+              root
+            </button>
+            {visibleBreadcrumbs.map((crumb) => (
+              <React.Fragment key={crumb.path || crumb.label}>
+                <ChevronRight className="size-3.5 shrink-0 text-subtle" />
+                {crumb.collapsed ? (
+                  <span
+                    className="inline-flex shrink-0 rounded-md px-1.5 py-1 font-semibold text-subtle"
+                    title="中间路径已省略，可点击输入路径查看完整路径"
+                    aria-label="中间路径已省略"
+                    data-file-manager-path-ellipsis
+                  >
+                    …
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToDirectory(crumb.path)}
+                    className={cn(
+                      "inline-flex max-w-[96px] shrink truncate rounded-md px-1.5 py-1 transition-colors hover:bg-panel-3 hover:text-primary md:max-w-[150px]",
+                      crumb.path === directoryPath &&
+                        "font-semibold text-primary",
+                    )}
+                    title={crumb.path || "root"}
+                  >
+                    {crumb.label}
+                  </button>
+                )}
+              </React.Fragment>
+            ))}
+            <input
+              readOnly
+              value={displayPath}
+              onFocus={enterPathEditMode}
+              onClick={enterPathEditMode}
+              className="ml-1 min-w-[220px] flex-1 rounded-md bg-transparent px-1.5 py-1 font-mono text-2xs text-subtle outline-none transition-colors hover:bg-panel-3 hover:text-primary sm:hidden"
+              title="点击输入路径，或按 Ctrl/⌘+L"
+              aria-label="编辑文件夹路径，按 Enter 跳转"
+              data-file-manager-path-input
+              data-file-manager-mobile-path-input-proxy
+            />
+            <button
+              type="button"
+              onClick={enterPathEditMode}
+              className="ml-1 hidden min-w-[32px] flex-1 rounded-md px-1.5 py-1 text-left font-mono text-2xs text-subtle transition-colors hover:bg-panel-3 hover:text-primary sm:inline-flex"
+              title="点击输入路径，或按 Ctrl/⌘+L"
+              aria-label="输入路径跳转"
+              data-file-manager-path-enter-edit
+            >
+              输入路径
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onCopyCurrentPath}
+          className="hidden rounded p-1 text-subtle transition-colors hover:bg-panel-3 hover:text-primary sm:inline-flex"
+          title="复制当前路径"
+          aria-label="复制当前路径"
+          data-file-manager-copy-current-path
+        >
+          <Copy className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onToggleFavoriteCurrent}
+          className={cn(
+            "hidden rounded p-1 text-subtle transition-colors hover:bg-panel-3 hover:text-primary sm:inline-flex",
+            currentLocationFavorited && "text-primary",
+          )}
+          title={
+            currentLocationFavorited ? "取消收藏当前位置" : "收藏当前位置"
+          }
+          aria-label={
+            currentLocationFavorited ? "取消收藏当前位置" : "收藏当前位置"
+          }
+        >
+          <Star
+            className={cn(
+              "size-3.5",
+              currentLocationFavorited && "fill-current",
+            )}
+          />
+        </button>
+      </div>
+      {editingPath && pathSuggestionsOpen && pathSuggestions.length ? (
+        <div
+          id={suggestionListId}
+          role="listbox"
+          aria-label="路径建议"
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-md border border-line bg-panel-3 shadow-md"
+          data-file-manager-path-suggestion-listbox
+        >
+          {pathSuggestions.map((suggestion, index) => (
+            <button
+              id={`${suggestionListId}-option-${index}`}
+              key={`suggestion:${suggestion.rootId}:${suggestion.directoryPath}:${suggestion.label}`}
+              type="button"
+              role="option"
+              aria-selected={index === activePathSuggestionIndex}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => onPathSuggestionActiveChange(index)}
+              onClick={() => {
+                onAcceptPathSuggestion(suggestion);
+                exitPathEditMode();
+              }}
+              className={cn(
+                "grid w-full grid-cols-[90px_minmax(0,1fr)] gap-2 px-3 py-2 text-left text-xs hover:bg-primary-soft",
+                index === activePathSuggestionIndex &&
+                  "bg-primary-soft text-primary",
+              )}
+            >
+              <span className="text-subtle">路径建议</span>
+              <span className="truncate font-mono text-ink-strong">
+                {suggestion.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function FileManagerNavigationBar({
+  favoriteTree,
+  favoriteCount,
+  recentLocations,
+  directoryTabs,
+  activeDirectoryTabId,
+  filterText,
+  showHidden,
+  onNavigateToLocation,
+  onSelectDirectoryTab,
+  onAddDirectoryTab,
+  onCloseDirectoryTab,
+  onOpenFavoriteItem,
+  onAddFavoriteFolder,
+  onAddCurrentFavoriteToFolder,
+  onRenameFavoriteItem,
+  onRemoveFavoriteItem,
+  onMoveFavoriteItem,
+  onClearRecentLocations,
+  filterInputRef,
+  onFilterTextChange,
+  currentLocation,
+}: FileManagerNavigationBarProps) {
+  return (
     <div
-      className="grid gap-1.5 border-b border-line bg-panel-2/70 px-3 py-1.5 sm:px-4"
+      className="grid gap-1.5 px-3 pb-1.5 sm:px-4"
       data-file-manager-mobile-navigation
     >
       <div
@@ -1689,254 +1942,19 @@ export function FileManagerNavigationBar({
         </button>
       </div>
 
-      <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
-        <div className="relative min-w-0">
-          <div
-            role="group"
-            aria-label="文件路径地址栏，可点击面包屑或输入路径跳转"
-            className="flex min-w-0 items-center gap-1 rounded-md border border-line bg-panel px-2 py-1 text-xs text-muted focus-within:shadow-[var(--ring)]"
-            data-file-manager-unified-path-bar
-            data-file-manager-display-path={displayPath}
-            onDoubleClick={enterPathEditMode}
-            onKeyDown={(event) => {
-              if (
-                (event.metaKey || event.ctrlKey) &&
-                event.key.toLowerCase() === "l"
-              ) {
-                event.preventDefault();
-                enterPathEditMode();
-              }
-            }}
-          >
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 shrink-0"
-              disabled={!parentPath && directoryPath === ""}
-              onClick={(event) => {
-                event.preventDefault();
-                onNavigateToDirectory(parentPath ?? "");
-              }}
-              aria-label="上级目录"
-            >
-              <ArrowUp className="size-4" />
-            </Button>
-            {editingPath ? (
-              <div
-                className="flex min-w-0 flex-1 items-center"
-                data-file-manager-path-edit-mode
-              >
-                <input
-                  ref={pathInputRef}
-                  value={pathInput}
-                  onFocus={onPathInputFocus}
-                  onBlur={onPathInputBlur}
-                  onChange={(event) => onPathInputChange(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowDown" && pathSuggestions.length) {
-                      event.preventDefault();
-                      onPathSuggestionActiveChange(
-                        Math.min(
-                          pathSuggestions.length - 1,
-                          activePathSuggestionIndex + 1,
-                        ),
-                      );
-                      return;
-                    }
-                    if (event.key === "ArrowUp" && pathSuggestions.length) {
-                      event.preventDefault();
-                      onPathSuggestionActiveChange(
-                        Math.max(0, activePathSuggestionIndex - 1),
-                      );
-                      return;
-                    }
-                    if (event.key === "Tab" && activeSuggestion) {
-                      event.preventDefault();
-                      onPathInputChange(activeSuggestion.label);
-                      return;
-                    }
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      const typedPath = pathInput.trim();
-                      if (
-                        pathSuggestionsOpen &&
-                        activeSuggestion &&
-                        (activeSuggestion.label === typedPath ||
-                          activeSuggestion.directoryPath === typedPath)
-                      ) {
-                        onAcceptPathSuggestion(activeSuggestion);
-                      } else {
-                        onPathInputJump();
-                      }
-                      exitPathEditMode();
-                      return;
-                    }
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      onPathInputRestore();
-                      exitPathEditMode();
-                    }
-                  }}
-                  role="combobox"
-                  aria-autocomplete="list"
-                  aria-expanded={
-                    pathSuggestionsOpen && pathSuggestions.length > 0
-                  }
-                  aria-controls={suggestionListId}
-                  aria-activedescendant={activeSuggestionId}
-                  className="min-w-[120px] flex-1 bg-transparent font-mono text-xs text-ink-strong outline-none sm:min-w-[220px]"
-                  placeholder="输入路径，Enter 跳转"
-                  title="输入任意绝对路径；Enter 跳转；↑↓ 选择建议；Tab 补全；Esc 返回面包屑"
-                  aria-label="编辑文件夹路径，按 Enter 跳转"
-                  data-file-manager-path-input
-                />
-              </div>
-            ) : (
-              <div
-                className="flex min-w-0 flex-1 items-center overflow-x-auto overscroll-x-contain whitespace-nowrap"
-                data-file-manager-path-breadcrumb-mode
-              >
-                <button
-                  type="button"
-                  onClick={() => onNavigateToDirectory("")}
-                  className="inline-flex shrink-0 rounded-md px-1.5 py-1 font-medium text-muted hover:bg-panel-2 hover:text-primary"
-                  title="跳转到 root"
-                >
-                  root
-                </button>
-                {visibleBreadcrumbs.map((crumb) => (
-                  <React.Fragment key={crumb.path || crumb.label}>
-                    <ChevronRight className="size-3.5 shrink-0 text-subtle" />
-                    {crumb.collapsed ? (
-                      <span
-                        className="inline-flex shrink-0 rounded-md px-1.5 py-1 font-semibold text-subtle"
-                        title="中间路径已省略，可点击输入路径查看完整路径"
-                        aria-label="中间路径已省略"
-                        data-file-manager-path-ellipsis
-                      >
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onNavigateToDirectory(crumb.path)}
-                        className={cn(
-                          "inline-flex max-w-[96px] shrink truncate rounded-md px-1.5 py-1 hover:bg-panel-2 hover:text-primary md:max-w-[150px]",
-                          crumb.path === directoryPath &&
-                            "font-semibold text-primary",
-                        )}
-                        title={crumb.path || "root"}
-                      >
-                        {crumb.label}
-                      </button>
-                    )}
-                  </React.Fragment>
-                ))}
-                <input
-                  readOnly
-                  value={displayPath}
-                  onFocus={enterPathEditMode}
-                  onClick={enterPathEditMode}
-                  className="ml-1 min-w-[220px] flex-1 rounded-md bg-transparent px-1.5 py-1 font-mono text-2xs text-subtle outline-none hover:bg-panel-2 hover:text-primary sm:hidden"
-                  title="点击输入路径，或按 Ctrl/⌘+L"
-                  aria-label="编辑文件夹路径，按 Enter 跳转"
-                  data-file-manager-path-input
-                  data-file-manager-mobile-path-input-proxy
-                />
-                <button
-                  type="button"
-                  onClick={enterPathEditMode}
-                  className="ml-1 hidden min-w-[32px] flex-1 rounded-md px-1.5 py-1 text-left font-mono text-2xs text-subtle hover:bg-panel-2 hover:text-primary sm:inline-flex"
-                  title="点击输入路径，或按 Ctrl/⌘+L"
-                  aria-label="输入路径跳转"
-                  data-file-manager-path-enter-edit
-                >
-                  输入路径
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={onCopyCurrentPath}
-              className="hidden rounded p-1 text-subtle hover:bg-panel-2 hover:text-primary sm:inline-flex"
-              title="复制当前路径"
-              aria-label="复制当前路径"
-              data-file-manager-copy-current-path
-            >
-              <Copy className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={onToggleFavoriteCurrent}
-              className={cn(
-                "hidden rounded p-1 text-subtle hover:bg-panel-2 hover:text-primary sm:inline-flex",
-                currentLocationFavorited && "text-primary",
-              )}
-              title={
-                currentLocationFavorited ? "取消收藏当前位置" : "收藏当前位置"
-              }
-              aria-label={
-                currentLocationFavorited ? "取消收藏当前位置" : "收藏当前位置"
-              }
-            >
-              <Star
-                className={cn(
-                  "size-3.5",
-                  currentLocationFavorited && "fill-current",
-                )}
-              />
-            </button>
-          </div>
-          {editingPath && pathSuggestionsOpen && pathSuggestions.length ? (
-            <div
-              id={suggestionListId}
-              role="listbox"
-              aria-label="路径建议"
-              className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 overflow-hidden rounded-md border border-line bg-panel shadow-lg"
-              data-file-manager-path-suggestion-listbox
-            >
-              {pathSuggestions.map((suggestion, index) => (
-                <button
-                  id={`${suggestionListId}-option-${index}`}
-                  key={`suggestion:${suggestion.rootId}:${suggestion.directoryPath}:${suggestion.label}`}
-                  type="button"
-                  role="option"
-                  aria-selected={index === activePathSuggestionIndex}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseEnter={() => onPathSuggestionActiveChange(index)}
-                  onClick={() => {
-                    onAcceptPathSuggestion(suggestion);
-                    exitPathEditMode();
-                  }}
-                  className={cn(
-                    "grid w-full grid-cols-[90px_minmax(0,1fr)] gap-2 px-3 py-2 text-left text-xs hover:bg-primary-soft",
-                    index === activePathSuggestionIndex &&
-                      "bg-primary-soft text-primary",
-                  )}
-                >
-                  <span className="text-subtle">路径建议</span>
-                  <span className="truncate font-mono text-ink-strong">
-                    {suggestion.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
         {filterText ? (
           <div
             className="flex min-w-0 items-center sm:hidden"
             data-file-manager-visible-filter-actions
           >
-            <span className="min-w-0 truncate rounded-full border border-line bg-panel-2 px-2 py-1 text-2xs text-subtle">
+            <span className="min-w-0 truncate rounded-full bg-panel-3 px-2 py-0.5 text-2xs text-subtle">
               当前筛选：{filterText}
             </span>
           </div>
         ) : null}
         <div
-          className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs xl:justify-end"
+          className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs"
           data-file-manager-quick-locations
         >
           <FavoriteBookmarkManager
@@ -1953,17 +1971,17 @@ export function FileManagerNavigationBar({
 
           {recentLocations.length ? (
             <details className="relative" data-file-manager-recent-locations>
-              <summary className="cursor-pointer list-none rounded-full border border-line bg-panel px-2 py-1 font-medium text-muted marker:hidden hover:border-primary-line hover:text-primary">
+              <summary className="cursor-pointer list-none rounded-full bg-panel-2 px-2.5 py-1 font-medium text-muted shadow-sm marker:hidden transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:bg-panel-3 hover:text-primary">
                 最近 · {recentLocations.length}
               </summary>
-              <div className="absolute right-0 top-[calc(100%+6px)] z-30 grid max-h-[min(62dvh,520px)] w-[min(520px,calc(100vw-2rem))] gap-1 overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-lg">
+              <div className="absolute right-0 top-[calc(100%+6px)] z-30 grid max-h-[min(62dvh,520px)] w-[min(520px,calc(100vw-2rem))] gap-1 overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-md">
                 {recentLocations.slice(0, 8).map((location) => (
                   <button
                     key={`recent:${location.rootId}:${location.directoryPath}`}
                     type="button"
                     onClick={() => onNavigateToLocation(location)}
                     title={location.label}
-                    className="min-w-0 truncate rounded-md px-2 py-1 text-left text-muted hover:bg-panel-2 hover:text-primary"
+                    className="min-w-0 truncate rounded-md px-2 py-1 text-left text-muted transition-colors hover:bg-panel-2 hover:text-primary"
                   >
                     {location.label}
                   </button>
@@ -1971,7 +1989,7 @@ export function FileManagerNavigationBar({
                 <button
                   type="button"
                   onClick={onClearRecentLocations}
-                  className="rounded-md px-2 py-1 text-left text-danger hover:bg-danger-soft"
+                  className="rounded-md px-2 py-1 text-left text-danger transition-colors hover:bg-danger-soft"
                   data-file-manager-clear-recent-locations
                 >
                   清空最近
@@ -1980,43 +1998,43 @@ export function FileManagerNavigationBar({
             </details>
           ) : null}
         </div>
-      </div>
 
-      <details
-        className="group rounded-md border border-line bg-panel sm:contents"
-        data-file-manager-filter-row
-        data-file-manager-mobile-filter-dock
-      >
-        <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-ink-strong marker:hidden sm:hidden">
-          <span className="inline-flex min-w-0 items-center gap-2">
-            <Search className="size-4 shrink-0 text-subtle" />
-            <span>筛选当前目录</span>
-          </span>
-          <span className="min-w-0 truncate text-right text-2xs text-subtle">
-            {filterText
-              ? `关键词：${filterText}`
-              : showHidden
-                ? "包含隐藏文件"
-                : "搜索 / 隐藏文件"}
-          </span>
-          <ChevronRight className="size-3.5 shrink-0 text-subtle transition-transform group-open:rotate-90" />
-        </summary>
-        <div
-          className="hidden min-w-0 grid-cols-[minmax(0,1fr)] gap-2 border-t border-line p-2 group-open:grid sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:border-0 sm:p-0 xl:contents"
-          data-file-manager-filter-controls
+        <details
+          className="group w-full min-w-0 rounded-md border border-line bg-panel sm:ml-auto sm:w-72 sm:border-0 sm:bg-transparent"
+          data-file-manager-filter-row
+          data-file-manager-mobile-filter-dock
         >
-          <label className="relative block min-w-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
-            <Input
-              ref={filterInputRef}
-              value={filterText}
-              onChange={(event) => onFilterTextChange(event.target.value)}
-              placeholder="搜索当前目录"
-              className="h-9 pl-9 text-sm sm:h-10"
-            />
-          </label>
-        </div>
-      </details>
+          <summary className="flex min-h-9 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-ink-strong marker:hidden sm:hidden">
+            <span className="inline-flex min-w-0 items-center gap-2">
+              <Search className="size-4 shrink-0 text-subtle" />
+              <span>筛选当前目录</span>
+            </span>
+            <span className="min-w-0 truncate text-right text-2xs text-subtle">
+              {filterText
+                ? `关键词：${filterText}`
+                : showHidden
+                  ? "包含隐藏文件"
+                  : "搜索 / 隐藏文件"}
+            </span>
+            <ChevronRight className="size-3.5 shrink-0 text-subtle transition-transform group-open:rotate-90" />
+          </summary>
+          <div
+            className="hidden min-w-0 grid-cols-[minmax(0,1fr)] gap-2 border-t border-line p-2 group-open:grid sm:grid sm:border-0 sm:p-0"
+            data-file-manager-filter-controls
+          >
+            <label className="relative block min-w-0">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" />
+              <Input
+                ref={filterInputRef}
+                value={filterText}
+                onChange={(event) => onFilterTextChange(event.target.value)}
+                placeholder="搜索当前目录"
+                className="h-8 pl-9 text-xs"
+              />
+            </label>
+          </div>
+        </details>
+      </div>
     </div>
   );
 }

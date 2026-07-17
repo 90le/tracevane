@@ -4,11 +4,12 @@ import { Puzzle } from "lucide-react";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { SectionNav } from "@/design/ui/section-nav";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 import { useSkillsSummaryQuery } from "@/lib/query/platform-read";
-import { BoundaryBadge, boolText, DetailRail, EvidenceRow, Panel, ReadOnlyStrip, RefreshButton, ResponsiveTable, SearchBox, SelectableRow, StatusPill, WorkbenchToolbar, statusTone, useSelectedKey } from "../components";
+import { BoundaryBadge, boolText, DetailRail, EvidenceRow, Panel, PanelHead, ReadOnlyStrip, RefreshButton, ResponsiveTable, SearchBox, SelectableRow, StatusPill, statusTone, useSelectedKey } from "../components";
 
 export function SkillsPage() {
   const [fullScan, setFullScan] = React.useState(false);
@@ -28,6 +29,17 @@ export function SkillsPage() {
   const blocked = skills.data?.counts.blocked ?? 0;
   return (
     <div className="grid gap-[18px]">
+      <PageHeader
+        className="px-0"
+        title="Skills"
+        description="技能安装、启用、缺失依赖与 Agent 映射证据。首屏使用快速本地摘要；需要 openclaw CLI 完整扫描时点击“完整扫描”。"
+        meta={<BoundaryBadge />}
+        actions={<>
+          <SearchBox value={query} onChange={setQuery} placeholder="搜索 Skill / slug / 来源" />
+          <Button variant="outline" size="sm" onClick={() => { setFullScan(true); setTimeout(() => { void skills.refetch(); }, 0); }} disabled={skills.isFetching}>完整扫描</Button>
+          <RefreshButton loading={skills.isFetching} onClick={() => { void skills.refetch(); }} />
+        </>}
+      />
       <ReadOnlyStrip>Skills 展示安装、启用与依赖证据；安装/删除/密钥写入需要 OpenClaw 技能管理确认流。</ReadOnlyStrip>
       <MetricRail>
         <MetricTile label="全部技能" value={skills.data?.counts.total ?? 0} hint={skills.data?.stale ? "快速摘要" : "完整扫描"} icon={<Puzzle />} />
@@ -36,12 +48,7 @@ export function SkillsPage() {
         <MetricTile label="阻止" value={blocked} tone={blocked > 0 ? "bad" : "default"} hint="白名单 / 策略限制" />
       </MetricRail>
       <Panel>
-        <WorkbenchToolbar title="OpenClaw Skills" description="首屏使用快速本地摘要；需要 openclaw CLI 完整扫描时点击“完整扫描”。">
-          <SearchBox value={query} onChange={setQuery} placeholder="搜索 Skill / slug / 来源" />
-          <Button variant="outline" size="sm" onClick={() => { setFullScan(true); setTimeout(() => { void skills.refetch(); }, 0); }} disabled={skills.isFetching}>完整扫描</Button>
-          <RefreshButton loading={skills.isFetching} onClick={() => { void skills.refetch(); }} />
-          <BoundaryBadge />
-        </WorkbenchToolbar>
+        <PanelHead title="OpenClaw Skills" sub="安装、启用与依赖证据；选中技能在右侧查看详情。" />
         <div className="border-b border-line px-3 py-2">
           <SectionNav
             ariaLabel="Skills 状态筛选"

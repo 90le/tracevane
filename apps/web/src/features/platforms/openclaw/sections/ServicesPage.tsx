@@ -2,11 +2,12 @@ import { Link } from "react-router-dom";
 import { Activity, ServerCog } from "lucide-react";
 import { Button } from "@/design/ui/button";
 import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 import { useSystemHealthQuery } from "@/lib/query/dashboard";
 import { useRecoveryDaemonServiceQuery, useRecoveryStatusQuery } from "@/lib/query/recovery";
-import { BoundaryBadge, DetailRail, EvidenceRow, Panel, RefreshButton, ResponsiveTable, SelectableRow, StatusPill, WorkbenchToolbar, boolText, fmtDate, useSelectedKey } from "../components";
+import { BoundaryBadge, DetailRail, EvidenceRow, Panel, PanelHead, RefreshButton, ResponsiveTable, SelectableRow, StatusPill, boolText, fmtDate, useSelectedKey } from "../components";
 import { metricTone } from "../../_shared";
 import type { PlatformTone } from "../../types";
 
@@ -39,6 +40,16 @@ export function ServicesPage() {
   if (health.error) return <ErrorState title="无法加载服务状态" description={health.error.message} />;
   return (
     <div className="grid gap-[18px]">
+      <PageHeader
+        className="px-0"
+        title="服务"
+        description="runtime、daemon、systemd/launchd 服务状态。只展示服务证据和运行状态；启停、安装、修复统一进入守护页确认流。"
+        meta={<BoundaryBadge />}
+        actions={<>
+          <Button variant="outline" size="sm" asChild><Link to="/platforms/openclaw/guard"><Activity />进入守护</Link></Button>
+          <RefreshButton loading={health.isFetching || recovery.isFetching || daemonService.isFetching} onClick={() => { void health.refetch(); void recovery.refetch(); void daemonService.refetch(); }} />
+        </>}
+      />
       <MetricRail>
         <MetricTile label="网关" value={health.data?.gateway ?? "unknown"} tone={metricTone(stateTone(health.data?.gateway ?? "unknown"))} hint={`端口 ${health.data?.gatewayPort ?? "—"}`} icon={<ServerCog />} />
         <MetricTile label="Tracevane 服务" value={health.data?.serviceState ?? "—"} tone={metricTone(stateTone(health.data?.serviceState ?? "unknown"))} hint={health.data?.serviceSubState ?? "—"} />
@@ -46,11 +57,7 @@ export function ServicesPage() {
         <MetricTile label="Supervisor" value={service?.supervisor ?? "—"} tone={metricTone(stateTone(service?.activeState ?? "unknown"))} hint={service?.serviceName ?? "—"} />
       </MetricRail>
       <Panel>
-        <WorkbenchToolbar title="服务状态" description="只展示服务证据和运行状态；启停、安装、修复统一进入守护页确认流。">
-          <Button variant="outline" size="sm" asChild><Link to="/platforms/openclaw/guard"><Activity />进入守护</Link></Button>
-          <RefreshButton loading={health.isFetching || recovery.isFetching || daemonService.isFetching} onClick={() => { void health.refetch(); void recovery.refetch(); void daemonService.refetch(); }} />
-          <BoundaryBadge />
-        </WorkbenchToolbar>
+        <PanelHead title="服务状态" sub="证据来自系统健康检查与平台守护快照；选中行在右侧查看详情。" />
         <div className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="min-w-0 rounded-md border border-line bg-panel">
             <ResponsiveTable

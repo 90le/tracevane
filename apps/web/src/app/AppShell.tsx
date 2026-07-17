@@ -4,7 +4,6 @@ import {
   Menu,
   Search,
   Moon,
-  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Sun,
@@ -36,23 +35,18 @@ import {
   CommandList,
 } from "@/design/ui/command";
 import {
-  PALETTES,
-  useTheme,
-  type Palette as PaletteName,
-} from "@/app/providers";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/design/ui/tooltip";
+import { useTheme } from "@/app/providers";
 import {
   isNavItemActive,
   navItemsByGroup,
   resolvePageMeta,
   type NavItem,
 } from "@/app/navigation";
-
-const PALETTE_LABELS: Record<PaletteName, string> = {
-  default: "靛蓝",
-  teal: "青绿",
-  violet: "紫罗兰",
-  graphite: "石墨",
-};
 
 function NavList({
   pathname,
@@ -63,6 +57,7 @@ function NavList({
   search: string;
   onNavigate?: () => void;
 }) {
+  const { collapsed } = useSidebar();
   return (
     <SidebarNav>
       {navItemsByGroup().map(({ group, items }) => (
@@ -70,23 +65,35 @@ function NavList({
           {items.map((item) => {
             const Icon = item.icon;
             const active = isNavItemActive(item, pathname, search);
-            return (
+            const navItem = (
               <SidebarItem
-                key={item.path}
                 asChild
                 active={active}
                 icon={Icon ? <Icon /> : undefined}
                 count={item.status === "coming-soon" ? "…" : undefined}
+                className="before:w-[2px]"
               >
                 <Link
                   to={item.path}
                   onClick={onNavigate}
-                  title={item.title}
+                  title={collapsed ? undefined : item.title}
                   aria-label={item.label}
                 >
                   {item.label}
                 </Link>
               </SidebarItem>
+            );
+            if (!collapsed) {
+              return <React.Fragment key={item.path}>{navItem}</React.Fragment>;
+            }
+            return (
+              <Tooltip key={item.path}>
+                <TooltipTrigger asChild>{navItem}</TooltipTrigger>
+                <TooltipContent side="right">
+                  {item.label}
+                  {item.status === "coming-soon" ? " · 建设中" : ""}
+                </TooltipContent>
+              </Tooltip>
             );
           })}
         </SidebarGroup>
@@ -124,6 +131,30 @@ function WorkspaceBrand() {
   );
 }
 
+function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
+  const { theme, toggleTheme } = useTheme();
+  const label = theme === "dark" ? "切换到浅色" : "切换到深色";
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={toggleTheme}
+      className="text-subtle hover:text-ink"
+      title={collapsed ? undefined : label}
+      aria-label="切换主题"
+    >
+      {theme === "dark" ? <Sun /> : <Moon />}
+    </Button>
+  );
+  if (!collapsed) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function SidebarUtilities({
   collapsed,
   onToggleCollapse,
@@ -133,120 +164,48 @@ function SidebarUtilities({
   onToggleCollapse: () => void;
   showCollapse?: boolean;
 }) {
-  if (!showCollapse) return null;
-
+  const collapseLabel = collapsed ? "展开导航" : "收起导航";
   return (
-    <SidebarFooter
-      className={cn(
-        "border-t border-line pt-3",
-        collapsed && "justify-items-center",
-      )}
-      data-app-shell-sidebar-utilities
-    >
-      <Button
-        variant="ghost"
-        size={collapsed ? "icon" : "sm"}
-        onClick={onToggleCollapse}
-        className={cn(
-          "text-subtle",
-          collapsed ? "mx-auto" : "w-full justify-start gap-2",
-        )}
-        title={collapsed ? "展开导航" : "收起导航"}
-        aria-label={collapsed ? "展开导航" : "收起导航"}
-      >
-        {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-        {!collapsed && <span>收起导航</span>}
-      </Button>
-    </SidebarFooter>
-  );
-}
-
-function AppearanceControls({
-  collapsed = false,
-  compact = false,
-}: {
-  collapsed?: boolean;
-  compact?: boolean;
-}) {
-  if (collapsed) {
-    return (
-      <div className="grid justify-items-center gap-1" aria-label="外观设置">
-        <PaletteToggle />
-        <ThemeToggle />
-      </div>
-    );
-  }
-
-  if (compact) {
-    return (
+    <SidebarFooter data-app-shell-sidebar-utilities>
       <div
-        className="hidden items-center gap-1 rounded-full border border-line bg-[color-mix(in_srgb,var(--panel)_82%,var(--canvas))] p-1 shadow-sm sm:flex"
-        aria-label="外观设置"
+        className={
+          collapsed
+            ? "grid justify-items-center gap-1"
+            : "flex items-center gap-1"
+        }
       >
-        <PaletteToggle className="rounded-full" />
-        <ThemeToggle className="rounded-full" />
+        {showCollapse &&
+          (collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onToggleCollapse}
+                  className="text-subtle hover:text-ink"
+                  aria-label={collapseLabel}
+                >
+                  <PanelLeftOpen />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{collapseLabel}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onToggleCollapse}
+              className="flex-1 justify-start gap-2 text-subtle hover:text-ink"
+              title={collapseLabel}
+              aria-label={collapseLabel}
+            >
+              <PanelLeftClose />
+              <span>收起导航</span>
+            </Button>
+          ))}
+        <ThemeToggle collapsed={collapsed} />
       </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex min-w-0 items-center gap-1 px-1 text-subtle"
-      aria-label="外观设置"
-    >
-      <PaletteToggle className="size-7 rounded-md" />
-      <ThemeToggle className="size-7 rounded-md" />
-    </div>
-  );
-}
-
-function PaletteToggle({
-  label,
-  className,
-}: {
-  label?: string;
-  className?: string;
-}) {
-  const { palette, setPalette } = useTheme();
-  const cycle = () => {
-    const idx = PALETTES.indexOf(palette);
-    setPalette(PALETTES[(idx + 1) % PALETTES.length]);
-  };
-  return (
-    <Button
-      variant="ghost"
-      size={label ? "sm" : "icon"}
-      onClick={cycle}
-      className={cn("text-subtle hover:text-ink", className)}
-      title={`配色：${PALETTE_LABELS[palette]}`}
-      aria-label="切换配色"
-    >
-      <Palette />
-      {label ? <span>{label}</span> : null}
-    </Button>
-  );
-}
-
-function ThemeToggle({
-  label,
-  className,
-}: {
-  label?: string;
-  className?: string;
-}) {
-  const { theme, toggleTheme } = useTheme();
-  return (
-    <Button
-      variant="ghost"
-      size={label ? "sm" : "icon"}
-      onClick={toggleTheme}
-      className={cn("text-subtle hover:text-ink", className)}
-      title={theme === "dark" ? "切换到浅色" : "切换到深色"}
-      aria-label="切换主题"
-    >
-      {theme === "dark" ? <Sun /> : <Moon />}
-      {label ? <span>{label}</span> : null}
-    </Button>
+    </SidebarFooter>
   );
 }
 
@@ -273,16 +232,16 @@ function TopbarActions({ onOpenCommand }: { onOpenCommand: () => void }) {
   return (
     <div className="ml-auto flex shrink-0 items-center gap-1.5">
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={onOpenCommand}
-        className="hidden max-w-[220px] justify-start gap-2 rounded-full border border-line bg-[color-mix(in_srgb,var(--panel)_82%,var(--canvas))] px-3 text-subtle shadow-sm hover:text-ink sm:inline-flex"
+        className="hidden min-w-[200px] justify-start gap-2 px-3 text-subtle hover:text-ink sm:inline-flex"
         aria-label="快速打开"
         title="快速打开（⌘K / Ctrl K）"
       >
         <Search />
         <span className="min-w-0 truncate">快速打开</span>
-        <kbd className="ml-1 rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs text-subtle">
+        <kbd className="ml-auto rounded border border-line bg-panel px-1.5 py-px font-mono text-2xs text-subtle">
           ⌘K
         </kbd>
       </Button>
@@ -296,7 +255,6 @@ function TopbarActions({ onOpenCommand }: { onOpenCommand: () => void }) {
       >
         <Search />
       </Button>
-      <AppearanceControls compact />
     </div>
   );
 }
@@ -393,124 +351,125 @@ export function AppShell() {
   }, []);
 
   return (
-    <div
-      className="grid h-dvh grid-cols-1 overflow-hidden transition-[grid-template-columns] duration-200 ease-out md:grid-cols-[64px_minmax(0,1fr)] xl:grid-cols-[var(--sidebar)_minmax(0,1fr)]"
-      style={{ ["--sidebar" as string]: collapsed ? "64px" : "248px" }}
-    >
-      {/* Tablet rail — keeps primary destinations available without crushing the body. */}
-      <Sidebar collapsed className="hidden md:grid xl:hidden">
-        <WorkspaceBrand />
-        <NavList pathname={pathname} search={search} />
-        <SidebarUtilities
-          collapsed
-          onToggleCollapse={toggleCollapsed}
-          showCollapse={false}
-        />
-      </Sidebar>
-
-      {/* Desktop sidebar — persistent, full-height, own scroll, collapsible. */}
-      <Sidebar collapsed={collapsed} className="hidden xl:grid">
-        <WorkspaceBrand />
-        <NavList pathname={pathname} search={search} />
-        <SidebarUtilities
-          collapsed={collapsed}
-          onToggleCollapse={toggleCollapsed}
-        />
-      </Sidebar>
-
-      {/* Compact / tablet drawer with labels and secondary utilities. */}
-      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-[min(360px,92vw)] p-0 xl:hidden">
-          <SheetHeader className="pr-12">
-            <MobileDrawerBrand />
-          </SheetHeader>
-          <div className="min-h-0 overflow-auto p-[14px]">
-            <NavList
-              pathname={pathname}
-              search={search}
-              onNavigate={() => setMobileNavOpen(false)}
-            />
-          </div>
-        </SheetContent>
-      </Sheet>
-
+    <TooltipProvider delayDuration={200}>
       <div
-        className={cn(
-          "grid min-w-0 overflow-hidden",
-          isChromeLessRoute
-            ? "grid-rows-[minmax(0,1fr)]"
-            : "grid-rows-[auto_minmax(0,1fr)]",
-        )}
+        className="grid h-dvh grid-cols-1 overflow-hidden transition-[grid-template-columns] duration-200 ease-out md:grid-cols-[64px_minmax(0,1fr)] xl:grid-cols-[var(--sidebar)_minmax(0,1fr)]"
+        style={{ ["--sidebar" as string]: collapsed ? "64px" : "220px" }}
       >
-        {/* Topbar */}
-        {!isChromeLessRoute && (
-          <header className="flex min-h-12 items-center gap-2 border-b border-line bg-panel/95 px-3 backdrop-blur sm:min-h-14 sm:px-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="xl:hidden"
-              onClick={() => setMobileNavOpen(true)}
-              aria-label="打开导航"
-            >
-              <Menu />
-            </Button>
-            <div className="min-w-0 flex-1 py-2">
-              <div
-                className="hidden min-w-0 items-center gap-1.5 text-xs text-muted sm:flex"
-                data-app-shell-mobile-hidden-breadcrumbs
-              >
-                {pageMeta.breadcrumbs.map((crumb, index) => (
-                  <React.Fragment key={`${crumb.label}-${index}`}>
-                    {index > 0 ? <span className="text-subtle">/</span> : null}
-                    {crumb.path && index < pageMeta.breadcrumbs.length - 1 ? (
-                      <Link
-                        className="truncate hover:text-ink-strong"
-                        to={crumb.path}
-                      >
-                        {crumb.label}
-                      </Link>
-                    ) : (
-                      <span
-                        className="truncate"
-                        aria-current={
-                          index === pageMeta.breadcrumbs.length - 1
-                            ? "page"
-                            : undefined
-                        }
-                      >
-                        {crumb.label}
-                      </span>
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-ink-strong sm:text-md">
-                    {pageMeta.title}
-                  </div>
-                  <div className="hidden max-w-[58vw] truncate text-xs text-subtle lg:block">
-                    {pageMeta.subtitle}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <TopbarActions onOpenCommand={() => setCommandOpen(true)} />
-          </header>
-        )}
+        {/* Tablet rail — keeps primary destinations available without crushing the body. */}
+        <Sidebar collapsed className="hidden md:grid xl:hidden">
+          <WorkspaceBrand />
+          <NavList pathname={pathname} search={search} />
+          <SidebarUtilities
+            collapsed
+            onToggleCollapse={toggleCollapsed}
+            showCollapse={false}
+          />
+        </Sidebar>
 
-        {/* Routed content — the only scroll region besides the sidebar nav */}
-        <main
+        {/* Desktop sidebar — persistent, full-height, own scroll, collapsible. */}
+        <Sidebar collapsed={collapsed} className="hidden xl:grid">
+          <WorkspaceBrand />
+          <NavList pathname={pathname} search={search} />
+          <SidebarUtilities
+            collapsed={collapsed}
+            onToggleCollapse={toggleCollapsed}
+          />
+        </Sidebar>
+
+        {/* Compact / tablet drawer with labels and secondary utilities. */}
+        <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+          <SheetContent side="left" className="w-[min(360px,92vw)] p-0 xl:hidden">
+            <SheetHeader className="pr-12">
+              <MobileDrawerBrand />
+            </SheetHeader>
+            <div className="min-h-0 overflow-auto p-[14px]">
+              <NavList
+                pathname={pathname}
+                search={search}
+                onNavigate={() => setMobileNavOpen(false)}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <div
           className={cn(
-            "h-full min-h-0 min-w-0 overflow-auto",
-            isChromeLessRoute ? "p-0" : "p-3 sm:p-5",
+            "grid min-w-0 overflow-hidden",
+            isChromeLessRoute
+              ? "grid-rows-[minmax(0,1fr)]"
+              : "grid-rows-[auto_minmax(0,1fr)]",
           )}
         >
-          <Outlet />
-        </main>
-      </div>
+          {/* Topbar — context only: breadcrumb trail + command palette entry */}
+          {!isChromeLessRoute && (
+            <header className="flex min-h-12 items-center gap-2 border-b border-line bg-panel/95 px-3 backdrop-blur sm:min-h-14 sm:px-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="xl:hidden"
+                onClick={() => setMobileNavOpen(true)}
+                aria-label="打开导航"
+              >
+                <Menu />
+              </Button>
+              <div className="min-w-0 flex-1 py-2">
+                <div
+                  className="hidden min-w-0 items-center gap-1.5 text-xs text-muted sm:flex"
+                  data-app-shell-mobile-hidden-breadcrumbs
+                >
+                  {pageMeta.breadcrumbs.map((crumb, index) => (
+                    <React.Fragment key={`${crumb.label}-${index}`}>
+                      {index > 0 ? <span className="text-subtle">/</span> : null}
+                      {crumb.path &&
+                      index < pageMeta.breadcrumbs.length - 1 ? (
+                        <Link
+                          className="truncate hover:text-ink-strong"
+                          to={crumb.path}
+                        >
+                          {crumb.label}
+                        </Link>
+                      ) : (
+                        <span
+                          className={cn(
+                            "truncate",
+                            index === pageMeta.breadcrumbs.length - 1 &&
+                              "text-sm font-semibold text-ink-strong sm:text-md",
+                          )}
+                          aria-current={
+                            index === pageMeta.breadcrumbs.length - 1
+                              ? "page"
+                              : undefined
+                          }
+                        >
+                          {crumb.label}
+                        </span>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+                {/* Mobile context — breadcrumbs are hidden below sm */}
+                <div className="truncate text-sm font-semibold text-ink-strong sm:hidden">
+                  {pageMeta.label}
+                </div>
+              </div>
+              <TopbarActions onOpenCommand={() => setCommandOpen(true)} />
+            </header>
+          )}
 
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
-    </div>
+          {/* Routed content — the only scroll region besides the sidebar nav */}
+          <main
+            className={cn(
+              "h-full min-h-0 min-w-0 overflow-auto",
+              isChromeLessRoute ? "p-0" : "p-3 sm:p-5",
+            )}
+          >
+            <Outlet />
+          </main>
+        </div>
+
+        <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
+      </div>
+    </TooltipProvider>
   );
 }

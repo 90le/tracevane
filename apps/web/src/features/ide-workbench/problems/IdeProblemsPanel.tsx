@@ -70,8 +70,11 @@ export function IdeProblemsPanel({
 }
 
 function ProblemCount({ severity, count }: { severity: WorkbenchProblemSeverity; count: number }) {
+  const tone = count > 0
+    ? severity === "error" ? "danger" : severity === "warning" ? "warning" : "info"
+    : "default";
   return (
-    <PanelHeaderChip data-ide-problems-count={severity}>
+    <PanelHeaderChip tone={tone} data-ide-problems-count={severity}>
       <ProblemIcon severity={severity} />
       {count}
     </PanelHeaderChip>
@@ -83,7 +86,7 @@ function ProblemIcon({ severity }: { severity: WorkbenchProblemSeverity }) {
     "size-3.5 shrink-0",
     severity === "error" && "text-danger",
     severity === "warning" && "text-warning",
-    severity === "info" && "text-primary",
+    severity === "info" && "text-info",
     severity === "hint" && "text-subtle",
   );
   if (severity === "error") return <AlertCircle className={className} aria-hidden />;

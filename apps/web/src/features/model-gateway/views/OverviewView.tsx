@@ -48,8 +48,10 @@ import { GatewayKeyDialog } from "./GatewayKeyDialog";
 import {
   GatewayMark,
   GatewayMetricCard,
+  GatewayStatusDot,
   providerIdentityFromText,
   type GatewayComparison,
+  type GatewayStatusTone,
 } from "./GatewayUi";
 import { RuntimeDiagnosticsPanel } from "./RuntimeDiagnosticsPanel";
 import { DaemonServicePanel } from "./DaemonServicePanel";
@@ -87,7 +89,7 @@ function PanelHead({
     <div className="flex items-center gap-3 border-b border-line px-4 py-3">
       <div className="min-w-0">
         <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
-        {sub && <span className="text-sm text-subtle">{sub}</span>}
+        {sub && <span className="text-sm text-muted">{sub}</span>}
       </div>
       {action && <div className="ml-auto">{action}</div>}
     </div>
@@ -373,6 +375,49 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const clientConfigured = configuredConnectionCount;
   const clientTotal = appConnections.length;
 
+  // Status banner tone: which path does traffic take, and is it healthy?
+  const gatewayTone: GatewayStatusTone = !providers
+    ? "mute"
+    : smokeFailed > 0 || routeMissing > 0
+      ? "bad"
+      : routeFallback > 0 ||
+          routeAlerts.length > 0 ||
+          providerDegraded > 0 ||
+          openCircuitCount > 0 ||
+          routeTotal === 0
+        ? "warn"
+        : "ok";
+  const bannerHeadline =
+    gatewayTone === "mute"
+      ? "正在检测网关路由与健康状态"
+      : gatewayTone === "bad"
+        ? smokeFailed > 0
+          ? `${smokeFailed} 条路由验证失败，流量未按预期转发`
+          : `${routeMissing} 条客户端路由未解析，流量未按预期转发`
+        : gatewayTone === "warn"
+          ? routeTotal === 0
+            ? "尚未检测到客户端路由，先配置 Provider 并应用客户端接入"
+            : "部分路由降级或存在配置告警，流量仍可转发"
+          : "全部客户端路由健康，流量按预期转发";
+  // Dominant egress: the provider that carries the most client scopes.
+  const routeProviderCounts = new Map<string, number>();
+  for (const route of activeRoutes) {
+    if (route.resolvedProviderName) {
+      routeProviderCounts.set(
+        route.resolvedProviderName,
+        (routeProviderCounts.get(route.resolvedProviderName) ?? 0) + 1,
+      );
+    }
+  }
+  let dominantProviderName: string | null = null;
+  let dominantProviderCount = 0;
+  for (const [name, count] of routeProviderCounts) {
+    if (count > dominantProviderCount) {
+      dominantProviderName = name;
+      dominantProviderCount = count;
+    }
+  }
+
   const smokeActiveRoute = async (route: ModelGatewayActiveRouteStatus) => {
     setSmokingScope(route.scope);
     try {
@@ -438,10 +483,6 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
               <KeyRound className="size-3.5" />
               {clientAuthConfigured ? "网关密钥已启用" : "网关密钥未启用"}
             </Badge>
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <Network className="size-3.5 text-primary" />
-              {listener ? `${listener.host}:${listener.port}` : "监听信息不可用"}
-            </span>
           </>
         }
         actions={
@@ -451,6 +492,83 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           </Button>
         }
       />
+
+      {/* Status banner — 流量走哪条路、健康吗？ */}
+      <section
+        className={cn(
+          "rounded-md border bg-panel px-4 py-3.5 shadow-sm",
+          gatewayTone === "bad"
+            ? "border-danger-line"
+            : gatewayTone === "warn"
+              ? "border-warning-line"
+              : "border-line",
+        )}
+      >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <GatewayStatusDot tone={gatewayTone} halo className="size-2.5" />
+          <h2 className="text-md font-semibold text-ink-strong">
+            {bannerHeadline}
+          </h2>
+          {dominantProviderName && (
+            <span className="text-sm text-muted">
+              主要出口{" "}
+              <strong className="font-medium text-ink">
+                {dominantProviderName}
+              </strong>
+            </span>
+          )}
+          <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-subtle tabular-nums">
+            <Network className="size-3.5 text-primary" />
+            {listener ? `${listener.host}:${listener.port}` : "监听信息不可用"}
+          </span>
+        </div>
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {MODEL_GATEWAY_APP_SCOPES.map((scope) => {
+            const route = routeForScope(scope, activeRoutes);
+            const chipTone: GatewayStatusTone = !route
+              ? providersQuery.isLoading
+                ? "mute"
+                : "bad"
+              : route.state === "missing"
+                ? "bad"
+                : route.state === "fallback"
+                  ? "warn"
+                  : "ok";
+            const chipTarget = route?.resolvedProviderName
+              ? `${route.resolvedProviderName}${route.resolvedModel ? ` · ${route.resolvedModel}` : ""}`
+              : providersQuery.isLoading
+                ? "解析中"
+                : "未解析";
+            return (
+              <span
+                key={scope}
+                className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-1 text-xs text-muted"
+                title={chipTarget}
+              >
+                <GatewayStatusDot tone={chipTone} />
+                <span className="truncate">
+                  {APP_SCOPE_LABEL[scope]} → {chipTarget}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+        {routeAlerts.length > 0 && (
+          <div className="mt-3 border-t border-line pt-2.5">
+            <div className="flex flex-wrap items-start gap-2 text-sm text-warning">
+              <CircleAlert className="mt-0.5 size-4 shrink-0" />
+              <div className="grid gap-1">
+                {routeAlerts.slice(0, 3).map((alert) => (
+                  <span key={alert}>{alert}</span>
+                ))}
+                {routeAlerts.length > 3 && (
+                  <span className="text-muted">另有 {routeAlerts.length - 3} 条路由告警</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
 
       <section className="rounded-md border border-line bg-panel shadow-sm">
         <div className="grid grid-cols-1 gap-3 p-4 min-[620px]:grid-cols-2 xl:grid-cols-4">
@@ -495,63 +613,47 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
             comparison={LIVE_COMPARISON}
           />
         </div>
-
-        {routeAlerts.length > 0 && (
-          <div className="border-t border-line px-4 py-3">
-            <div className="flex flex-wrap items-start gap-2 text-sm text-warning">
-              <CircleAlert className="mt-0.5 size-4 shrink-0" />
-              <div className="grid gap-1">
-                {routeAlerts.slice(0, 3).map((alert) => (
-                  <span key={alert}>{alert}</span>
-                ))}
-                {routeAlerts.length > 3 && (
-                  <span className="text-muted">另有 {routeAlerts.length - 3} 条路由告警</span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
       </section>
 
-      {/* Route cockpit — Gateway owns routing; CLI Agents owns runtime. */}
-      <Panel className="overflow-hidden">
-        <PanelHead
-          title="模型路由总览"
-          sub="每个客户端入口的真实 Provider、模型预算、配置状态与最近检查"
-          action={
-            <span className="flex flex-wrap justify-end gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => void smokeAllActiveRoutes()}
-                disabled={
-                  checkableRoutes.length === 0 ||
-                  smokeMutation.isPending ||
-                  batchSmoking
-                }
-                aria-label="检查全部客户端入口当前模型路由"
-                title="按 Codex / Claude Code / OpenCode / OpenClaw 逐条检查真实模型路由"
-              >
-                {batchSmoking ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Activity className="size-3.5" />
-                )}
-                检查全部
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => goToView("apps")}
-              >
-                <Terminal className="size-3.5" />
-                客户端接入
-              </Button>
-            </span>
-          }
-        />
-        <div className="p-3">
-          <Table className="table-fixed">
+      {/* Route cockpit — Gateway owns routing; CLI Agents owns runtime. The
+          table itself is the surface: no nested panel chrome. */}
+      <section className="grid gap-3">
+        <div className="flex flex-wrap items-center gap-3 px-1">
+          <div className="min-w-0">
+            <h3 className="text-md font-semibold text-ink-strong">模型路由总览</h3>
+            <span className="text-sm text-muted">每个客户端入口的真实 Provider、模型预算、配置状态与最近检查</span>
+          </div>
+          <div className="ml-auto flex flex-wrap justify-end gap-2">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void smokeAllActiveRoutes()}
+              disabled={
+                checkableRoutes.length === 0 ||
+                smokeMutation.isPending ||
+                batchSmoking
+              }
+              aria-label="检查全部客户端入口当前模型路由"
+              title="按 Codex / Claude Code / OpenCode / OpenClaw 逐条检查真实模型路由"
+            >
+              {batchSmoking ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Activity className="size-3.5" />
+              )}
+              检查全部
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => goToView("apps")}
+            >
+              <Terminal className="size-3.5" />
+              客户端接入
+            </Button>
+          </div>
+        </div>
+        <Table className="table-fixed">
             <colgroup>
               <col className="w-[14%]" />
               <col className="w-[45%]" />
@@ -760,8 +862,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
               })}
             </TableBody>
           </Table>
-        </div>
-      </Panel>
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
         {/* Health overview — only live provider health */}

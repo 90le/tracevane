@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 
+import "./motion.css";
+
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 const DialogPortal = DialogPrimitive.Portal;
@@ -16,7 +18,8 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-[60] grid place-items-center bg-[rgba(8,12,22,.5)] backdrop-blur-[3px]",
+      "fixed inset-0 z-[60] grid place-items-center bg-[rgba(4,8,14,.6)] backdrop-blur-sm",
+      "data-[state=open]:animate-[tvu-fade-in_var(--dur-2)_var(--ease-standard)] data-[state=closed]:animate-[tvu-fade-out_var(--dur-2)_var(--ease-standard)]",
       className
     )}
     {...props}
@@ -35,14 +38,15 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "relative z-[61] w-[min(460px,94vw)] overflow-hidden rounded-lg border border-line-2 bg-panel shadow-lg",
+          "relative z-[61] w-[min(460px,94vw)] overflow-hidden rounded-lg border border-line bg-panel shadow-lg",
+          "data-[state=open]:animate-[tvu-dialog-in_var(--dur-3)_var(--ease-standard)] data-[state=closed]:animate-[tvu-dialog-out_var(--dur-2)_var(--ease-standard)]",
           className
         )}
         {...props}
       >
         {children}
         {showClose && (
-          <DialogPrimitive.Close className="absolute right-4 top-4 grid size-7 place-items-center rounded-sm text-subtle outline-none transition-colors hover:bg-panel-2 hover:text-ink focus-visible:shadow-[var(--ring)]">
+          <DialogPrimitive.Close className="absolute right-4 top-4 grid size-7 place-items-center rounded-sm text-subtle outline-none transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:bg-panel-2 hover:text-ink focus-visible:shadow-[var(--ring)]">
             <X className="size-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>

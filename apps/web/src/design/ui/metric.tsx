@@ -38,7 +38,7 @@ function MetricTile({
 }: MetricTileProps) {
   return (
     <div
-      className={cn("rounded-md border border-line bg-panel p-4", className)}
+      className={cn("rounded-md border border-line bg-panel p-4 shadow-sm", className)}
       {...props}
     >
       <div className="flex items-center justify-between gap-2">

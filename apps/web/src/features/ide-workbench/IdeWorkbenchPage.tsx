@@ -668,7 +668,7 @@ export function IdeWorkbenchPage() {
             <button
               type="button"
               aria-label="关闭侧边栏覆盖层"
-              className="absolute inset-0 z-20 bg-canvas/55 backdrop-blur-[1px]"
+              className="absolute inset-0 z-20 bg-canvas/60 backdrop-blur-sm"
               onClick={layoutApi.toggleSidebar}
               data-ide-sidebar-overlay-scrim
             />
@@ -676,7 +676,7 @@ export function IdeWorkbenchPage() {
           <div
             className={cn(
               "col-start-1 row-start-1 h-full max-h-full min-h-0 min-w-0 overflow-hidden",
-              sidebarOverlay && "absolute inset-y-0 left-0 z-30 w-[min(320px,calc(100vw-44px))] max-w-[calc(100vw-44px)] overflow-hidden shadow-2xl",
+              sidebarOverlay && "absolute inset-y-0 left-0 z-30 w-[min(320px,calc(100vw-44px))] max-w-[calc(100vw-44px)] overflow-hidden shadow-lg",
             )}
             data-ide-sidebar-shell
             data-ide-sidebar-overlay={sidebarOverlay ? "true" : "false"}
@@ -954,7 +954,7 @@ function ExternalProviderStatusRow({
             <span className="font-semibold text-ink">{profile.label}</span>
             <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-2xs text-subtle">{profile.id}</span>
             <span className={cn("rounded px-1.5 py-0.5 text-2xs font-medium", tone.className)}>{runtimeStatus?.status ?? "unknown"}</span>
-            {!profile.enabled ? <span className="rounded bg-disabled/10 px-1.5 py-0.5 text-2xs text-disabled">disabled</span> : null}
+            {!profile.enabled ? <span className="rounded bg-panel-3 px-1.5 py-0.5 text-2xs text-subtle">disabled</span> : null}
           </div>
           <div className="mt-1 text-xs text-muted">
             语言：{profile.languages.join(", ") || "--"} · 能力：{formatLspCapabilities(profile.capabilities)}
@@ -1122,7 +1122,7 @@ function toolchainStatusTone(status: string): { className: string } {
 function lspInstallStatusTone(status: string): { className: string } {
   if (status === "installed") return { className: "border-success/30 bg-success/10 text-success" };
   if (status === "missing" || status === "degraded") return { className: "border-warning/30 bg-warning/10 text-warning" };
-  if (status === "disabled") return { className: "border-line bg-disabled/10 text-disabled" };
+  if (status === "disabled") return { className: "border-line bg-panel-3 text-subtle" };
   return { className: "border-line bg-panel-2 text-muted" };
 }
 
@@ -1198,8 +1198,8 @@ function WorkbenchHeader({
                 className={cn(
                   "inline-flex h-7 max-w-[118px] items-center gap-1.5 rounded-sm px-2 text-xs font-medium outline-none transition-colors focus-visible:shadow-[var(--ring)]",
                   active
-                    ? "bg-panel text-primary shadow-sm"
-                    : "text-muted hover:bg-panel hover:text-ink-strong",
+                    ? "bg-panel-3 text-ink-strong shadow-sm"
+                    : "text-muted hover:text-ink-strong",
                 )}
                 aria-current={active ? "page" : undefined}
                 title={item.title}
@@ -1215,7 +1215,7 @@ function WorkbenchHeader({
           <select
             value="/ide"
             onChange={(event) => navigate(event.target.value)}
-            className="h-8 w-full appearance-none rounded-sm border border-line bg-panel-2 py-1 pl-2.5 pr-7 text-xs font-medium text-ink-strong outline-none hover:border-primary-line focus-visible:shadow-[var(--ring)]"
+            className="h-8 w-full appearance-none rounded-sm border border-line bg-panel-2 py-1 pl-2.5 pr-7 text-xs font-medium text-ink-strong outline-none hover:border-line-2 focus-visible:shadow-[var(--ring)]"
             aria-label="切换 Tracevane 功能域"
             title="切换 Tracevane 功能域"
             data-ide-domain-nav-select
@@ -1332,9 +1332,9 @@ function ActivityBar({
                     aria-pressed={active}
                     onClick={() => onSelect(item.id)}
                     className={cn(
-                      "relative grid size-9 place-items-center rounded-md text-muted outline-none transition-colors focus-visible:shadow-[var(--ring)] [&_svg]:size-4",
-                      active && "bg-primary-soft text-primary",
-                      !item.disabled && !active && "hover:bg-panel hover:text-ink",
+                      "relative grid size-9 place-items-center rounded-md text-subtle outline-none transition-colors focus-visible:shadow-[var(--ring)] [&_svg]:size-4",
+                      active && "text-ink-strong",
+                      !item.disabled && !active && "hover:bg-panel-3 hover:text-ink",
                       item.disabled && "cursor-not-allowed opacity-45",
                     )}
                   >
@@ -1492,8 +1492,8 @@ function PanelArea({
                 onClick={() => onActivePanelChange(id)}
                 title={IDE_PANEL_LABELS[id]}
                 className={cn(
-                  "relative inline-flex shrink-0 items-center gap-1.5 px-2.5 text-xs font-medium outline-none transition-colors focus-visible:shadow-[var(--ring)] [&_svg]:size-3.5",
-                  active ? "text-ink-strong" : "text-muted hover:text-ink",
+                  "relative inline-flex shrink-0 items-center gap-1.5 px-2.5 text-2xs font-semibold uppercase tracking-wider outline-none transition-colors focus-visible:shadow-[var(--ring)] [&_svg]:size-3.5",
+                  active ? "text-ink-strong" : "text-subtle hover:text-muted",
                 )}
               >
                 {PANEL_ICONS[id]}
@@ -1811,7 +1811,7 @@ function WorkbenchStatusBar({
   const gitSummary = git?.available ? formatGitStatusBar(git) : null;
   const lspSummary = summarizeExternalLspProviders(lspStatus);
   return (
-    <footer className="flex min-h-6 items-center gap-0.5 overflow-hidden border-t border-line bg-panel-2 px-1.5 text-2xs text-muted" data-ide-status-bar>
+    <footer className="flex min-h-6 select-none items-center gap-0.5 overflow-hidden border-t border-line bg-panel-2 px-1.5 text-2xs text-muted" data-ide-status-bar>
       {/* 左侧：工作区上下文 */}
       <div className="flex min-w-0 shrink items-center gap-0.5">
         <span
@@ -1860,10 +1860,10 @@ function WorkbenchStatusBar({
       </div>
       {/* 右侧：布局状态与当前文件 */}
       <div className="ml-auto flex min-w-0 shrink-0 items-center gap-0.5">
-        <span className="hidden h-6 items-center rounded-sm px-1.5 lg:inline-flex" title="侧边栏状态">
+        <span className="hidden h-6 items-center rounded-sm px-1.5 text-subtle lg:inline-flex" title="侧边栏状态">
           sidebar: {sideBarCollapsed ? "collapsed" : "visible"}
         </span>
-        <span className="hidden h-6 items-center rounded-sm px-1.5 lg:inline-flex" title="面板状态">
+        <span className="hidden h-6 items-center rounded-sm px-1.5 text-subtle lg:inline-flex" title="面板状态">
           panel: {panelCollapsed ? "collapsed" : activePanelId}
         </span>
         <StatusBarDivider className="hidden lg:block" />
@@ -1879,7 +1879,7 @@ function WorkbenchStatusBar({
             {activeTab.preview && !activeTab.pinned ? <span className="shrink-0">preview</span> : null}
           </span>
         ) : (
-          <span className="inline-flex h-6 items-center rounded-sm px-1.5">IDE Workbench</span>
+          <span className="inline-flex h-6 items-center rounded-sm px-1.5 text-subtle">IDE Workbench</span>
         )}
       </div>
     </footer>

@@ -706,8 +706,8 @@ export function IdeExplorerView({
         />
         <div className="flex min-w-0 items-center gap-2 px-2.5 py-2">
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold text-ink-strong">资源管理器</div>
-            <div className="truncate text-2xs text-subtle">{rootLabel || "Workspace Explorer"}</div>
+            <div className="truncate text-2xs font-semibold uppercase tracking-wider text-subtle">资源管理器</div>
+            <div className="mt-0.5 truncate text-2xs text-muted">{rootLabel || "Workspace Explorer"}</div>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             <ExplorerToolbarIconButton
@@ -930,7 +930,7 @@ function IdeExplorerPathBar({
     <div
       role="group"
       aria-label="IDE 资源管理器路径地址栏"
-      className="flex min-w-0 items-center gap-1 rounded-sm border border-line bg-panel px-1 py-0.5 shadow-sm focus-within:shadow-[var(--ring)]"
+      className="flex min-w-0 items-center gap-1 rounded-sm border border-line bg-panel-2 px-1 py-0.5 shadow-sm focus-within:shadow-[var(--ring)]"
       title={displayPath}
       data-ide-explorer-path-bar
       onDoubleClick={onEnterEditMode}
@@ -974,7 +974,7 @@ function IdeExplorerPathBar({
               onPathInputRestore();
             }
           }}
-          className="min-w-[120px] flex-1 rounded-sm bg-panel-2 px-2 py-1 font-mono text-xs text-ink-strong outline-none"
+          className="min-w-[120px] flex-1 rounded-sm bg-canvas px-2 py-1 font-mono text-xs text-ink-strong outline-none"
           placeholder="输入路径，Enter 跳转"
           title="输入当前工作区内的绝对路径或相对路径"
           aria-label="编辑资源管理器路径，按 Enter 跳转"
@@ -1097,7 +1097,7 @@ function ExplorerToolbarIconButton({
   return (
     <button
       type="button"
-      className="grid size-7 place-items-center rounded-sm border border-transparent text-muted outline-none transition-colors hover:border-line hover:bg-panel-2 hover:text-ink focus-visible:shadow-[var(--ring)] [&_svg]:size-4"
+      className="grid size-7 place-items-center rounded-sm text-muted outline-none transition-colors hover:bg-panel-2 hover:text-ink-strong focus-visible:shadow-[var(--ring)] [&_svg]:size-4"
       aria-label={label}
       title={label}
       disabled={disabled}
@@ -1251,7 +1251,7 @@ function IdeExplorerBranch({
         renderActions={() => (
           <button
             type="button"
-            className="grid size-7 place-items-center rounded-sm text-subtle hover:bg-panel hover:text-ink focus-visible:shadow-[var(--ring)]"
+            className="grid size-7 place-items-center rounded-sm text-subtle hover:bg-panel-2 hover:text-ink-strong focus-visible:shadow-[var(--ring)]"
             aria-label={`打开 ${entry.name} 操作菜单`}
             onClick={(event) => {
               event.preventDefault();
@@ -1450,7 +1450,7 @@ function DeleteDialog({
     <Dialog open onOpenChange={(open) => { if (!open && !busy) onCancel(); }}>
       <DialogContent
         showClose={false}
-        className="w-[min(560px,94vw)] max-w-none overflow-hidden rounded-xl p-0 shadow-2xl sm:rounded-2xl"
+        className="w-[min(560px,94vw)] max-w-none overflow-hidden rounded-lg p-0 shadow-lg"
         data-action-dialog="explorer-delete"
         data-ide-explorer-delete-dialog
       >

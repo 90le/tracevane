@@ -5,13 +5,14 @@ import { ConfirmDialog } from "@/design/ui/action-dialog";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/design/ui/sheet";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 import { useAgentsSummaryQuery, useCreateAgentMutation, useDeleteAgentMutation, useUpdateAgentMutation } from "@/lib/query/agents";
 import type { AgentUpdatePayload } from "../../../../../../../types/agents";
-import { Panel, PanelHead, RefreshButton, ResponsiveTable, SearchBox, SelectableRow, StatusPill, WorkbenchToolbar, useSelectedKey } from "../components";
+import { Panel, PanelHead, RefreshButton, ResponsiveTable, SearchBox, SelectableRow, StatusPill, useSelectedKey } from "../components";
 
 interface AgentFormDraft { id: string; name: string; model: string; workspace: string; enabled: boolean; sandboxMode: string; workspaceAccess: string; toolsProfile: string; thinkingDefault: string; verboseDefault: string; }
 interface BatchAgentDraft { model: string; workspace: string; enabled: boolean; sandboxMode: string; workspaceAccess: string; toolsProfile: string; thinkingDefault: string; verboseDefault: string; }
@@ -101,6 +102,18 @@ export function AgentsPage() {
   const remove = (agent: AgentRow) => setDeleteTarget(agent);
   return (
     <div className="grid gap-[18px]">
+      <PageHeader
+        className="px-0"
+        title="原生 Agent"
+        description="OpenClaw agents.list 的原生定义。列表只负责浏览和选择；编辑在右侧抽屉中完成，长列表不会把表单挤到页面底部。"
+        meta={<Badge variant="info">可编辑</Badge>}
+        actions={<>
+          <SearchBox value={query} onChange={setQuery} placeholder="搜索 OpenClaw agent / model" />
+          <Button variant="primary" size="sm" onClick={() => openEditor("new")}><Plus className="size-4" />新增 Agent</Button>
+          <Button variant="outline" size="sm" onClick={openBatchEditor} disabled={selectedIds.size === 0}>批量编辑 {selectedIds.size || ""}</Button>
+          <RefreshButton loading={agents.isFetching} onClick={() => { void agents.refetch(); }} />
+        </>}
+      />
       <MetricRail>
         <MetricTile label="原生 Agent" value={agents.data?.count ?? 0} hint={`默认 ${agents.data?.defaultAgentId ?? "—"}`} />
         <MetricTile label="已启用" value={list.filter((agent) => agent.enabled).length} tone="ok" hint="OpenClaw agents.list" />
@@ -108,13 +121,7 @@ export function AgentsPage() {
         <MetricTile label="批量已选" value={selectedIds.size} tone={selectedIds.size > 0 ? "warn" : "default"} hint="只修改勾选字段" />
       </MetricRail>
       <Panel>
-        <WorkbenchToolbar title="OpenClaw 原生 Agent" description="OpenClaw agents.list 的原生定义。列表只负责浏览和选择；编辑在右侧抽屉中完成，长列表不会把表单挤到页面底部。">
-          <SearchBox value={query} onChange={setQuery} placeholder="搜索 OpenClaw agent / model" />
-          <Button size="sm" onClick={() => openEditor("new")}><Plus className="size-4" />新增 Agent</Button>
-          <Button variant="outline" size="sm" onClick={openBatchEditor} disabled={selectedIds.size === 0}>批量编辑 {selectedIds.size || ""}</Button>
-          <RefreshButton loading={agents.isFetching} onClick={() => { void agents.refetch(); }} />
-          <Badge variant="info">可编辑</Badge>
-        </WorkbenchToolbar>
+        <PanelHead title="OpenClaw 原生 Agent" sub="定义、默认模型与启用状态；勾选多行可批量编辑。" />
         <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel-2 px-3 py-2 text-sm text-muted">
           <Button variant="ghost" size="sm" onClick={toggleFilteredSelection}>{allFilteredSelected ? "取消选择当前列表" : "选择当前列表"}</Button>
           <span>已选择 {selectedIds.size} 个 Agent；批量编辑只会提交你在抽屉里勾选的字段。</span>

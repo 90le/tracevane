@@ -1,6 +1,7 @@
 import * as React from "react";
-import { Activity, AlertCircle, CheckCircle2, Info, RefreshCw } from "lucide-react";
+import { Activity, RefreshCw } from "lucide-react";
 
+import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
@@ -9,25 +10,19 @@ import { SkeletonRow } from "@/shared/states/Skeleton";
 
 import { useRecoveryEventsQuery } from "@/lib/query/recovery";
 import type { OpenClawRecoveryEventSeverity } from "../types";
-import { EVENT_SEVERITY_BADGE, Pager, Panel, PanelHead, Row, formatTime } from "./shared";
+import { EVENT_SEVERITY_BADGE, Pager, Panel, PanelHead, formatTime } from "./shared";
 
 const PAGE_SIZE = 20;
 
-function severityIcon(severity: OpenClawRecoveryEventSeverity): React.ReactNode {
-  if (severity === "error") return <AlertCircle />;
-  if (severity === "warning") return <AlertCircle />;
-  if (severity === "success") return <CheckCircle2 />;
-  return <Info />;
-}
+/** Timeline dot per event severity — dot + soft halo (semantic tokens only). */
+const EVENT_DOT: Record<OpenClawRecoveryEventSeverity, string> = {
+  error: "bg-danger shadow-[0_0_0_4px_var(--color-danger-soft)]",
+  warning: "bg-warning shadow-[0_0_0_4px_var(--color-warning-soft)]",
+  success: "bg-success shadow-[0_0_0_4px_var(--color-success-soft)]",
+  info: "bg-primary shadow-[0_0_0_4px_var(--color-info-soft)]",
+};
 
-function severityIconClass(severity: OpenClawRecoveryEventSeverity): string | undefined {
-  if (severity === "error") return "bg-danger-soft text-danger";
-  if (severity === "warning") return "bg-warning-soft text-warning";
-  if (severity === "success") return "bg-success-soft text-success";
-  return undefined;
-}
-
-/** Read-only paged recovery event log. */
+/** Read-only paged recovery event log, rendered as a vertical timeline. */
 export function EventsView() {
   const [page, setPage] = React.useState(1);
   const eventsQuery = useRecoveryEventsQuery(page, PAGE_SIZE);
@@ -72,21 +67,43 @@ export function EventsView() {
         />
       ) : (
         <>
-          <div className="py-1.5">
-            {events.map((event) => {
+          <ol className="grid px-4 py-3">
+            {events.map((event, index) => {
               const badge = EVENT_SEVERITY_BADGE[event.severity] ?? EVENT_SEVERITY_BADGE.info;
               return (
-                <Row
-                  key={event.id}
-                  icon={severityIcon(event.severity)}
-                  iconClass={severityIconClass(event.severity)}
-                  title={event.title || event.kind}
-                  subtitle={`${event.summary || event.kind} · ${formatTime(event.occurredAt)}`}
-                  trailing={<Badge variant={badge.variant}>{badge.label}</Badge>}
-                />
+                <li key={event.id} className="flex gap-3">
+                  <span
+                    aria-hidden
+                    className="flex w-2 shrink-0 flex-col items-center"
+                  >
+                    <span
+                      className={cn(
+                        "mt-[7px] size-2 shrink-0 rounded-full",
+                        EVENT_DOT[event.severity] ?? EVENT_DOT.info,
+                      )}
+                    />
+                    {index < events.length - 1 && (
+                      <span className="mt-1 w-px flex-1 bg-line" />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1 pb-5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong className="truncate text-base text-ink-strong">
+                        {event.title || event.kind}
+                      </strong>
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                      <span className="ml-auto shrink-0 text-2xs text-subtle">
+                        {formatTime(event.occurredAt)}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-sm text-muted">
+                      {event.summary || event.kind}
+                    </p>
+                  </div>
+                </li>
               );
             })}
-          </div>
+          </ol>
           {pagination && (
             <Pager
               page={pagination.page}

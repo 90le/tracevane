@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Boxes, Server, ShieldCheck } from "lucide-react";
+import { ArrowRight, Boxes, HeartPulse, Server, ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
@@ -10,7 +10,7 @@ import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 
 import type { PlatformCard } from "../types";
-import { Panel, PanelHead, ToneBadge } from "../_shared";
+import { HostTrustBanner, Panel, PanelHead, ToneBadge } from "../_shared";
 import { usePlatformsAggregate } from "../usePlatformsAggregate";
 
 function fmtTime(value: string | null | undefined): string {
@@ -23,7 +23,7 @@ function PlatformDirectoryRow({ card }: { card: PlatformCard }) {
   return (
     <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)_auto] lg:items-center">
       <div className="flex min-w-0 items-start gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-[12px] bg-panel-3 text-muted [&_svg]:size-5">
+        <span className="grid size-10 shrink-0 place-items-center rounded-md bg-panel-3 text-muted [&_svg]:size-5">
           <Server />
         </span>
         <div className="min-w-0">
@@ -36,11 +36,11 @@ function PlatformDirectoryRow({ card }: { card: PlatformCard }) {
           <p className="mt-2 text-base text-ink-strong">{card.summary}</p>
         </div>
       </div>
-      <div className="rounded-sm border border-line bg-panel-2 p-3 text-sm text-muted">
+      <div className="rounded-sm bg-panel-2 p-3 text-sm text-muted">
         {card.boundary}
       </div>
       <div className="flex flex-wrap gap-2 lg:justify-end">
-        <Button size="sm" asChild>
+        <Button variant="primary" size="sm" asChild>
           <Link to={card.primary.to}>
             {card.primary.label}
             <ArrowRight />
@@ -102,6 +102,13 @@ export function OverviewView() {
         <MetricTile label="需关注" value={attention} tone={failed > 0 ? "bad" : attention > 0 ? "warn" : "default"} hint={`${failed} 异常`} />
         <MetricTile label="最近检查" value={<span className="text-base">{fmtTime(lastChecked)}</span>} hint="系统 / 守护证据" />
       </MetricRail>
+
+      <HostTrustBanner
+        health={sources.health.data}
+        recovery={sources.recovery.data}
+        note="宿主信任信号来自轻量 health / recovery 证据；设备配对与 doctor 明细在 OpenClaw 诊断页查看。"
+        actions={<Button variant="outline" size="sm" asChild><Link to="/platforms/openclaw/diagnostics"><HeartPulse />查看诊断</Link></Button>}
+      />
 
       <Panel>
         <PanelHead title="平台清单" sub="只有真实第三方平台进入主列表；其它工作流请使用主导航。" />

@@ -14,6 +14,10 @@ import { cn } from "@/design/lib/utils";
 import { MONACO_LANGUAGE_LOADERS } from "@/features/file-manager/code-editor/monacoLanguageLoaders";
 import { editorModelUriPath } from "@/shared/editor-core/identity";
 import { detectLanguageForFile, languageForPath } from "@/shared/editor-core/language";
+import {
+  tracevaneMonacoThemeForMode,
+  type TracevaneMonacoThemeName,
+} from "@/shared/editor-core/monacoTheme";
 import { registerTracevaneLspMonacoProviders } from "@/features/ide-workbench/lsp";
 
 configureMonacoWorkers();
@@ -321,7 +325,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
       readOnly,
       profile: editorProfile,
       stickyScrollEnabled,
-      theme: effectiveTheme === "dark" ? "vs-dark" : "vs",
+      theme: tracevaneMonacoThemeForMode(effectiveTheme),
       wordWrap,
     }));
     setDetectedLanguage(languageForPath(path));
@@ -466,8 +470,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   React.useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    monaco.editor.setTheme(effectiveTheme === "dark" ? "vs-dark" : "vs");
-    editor.updateOptions({ theme: effectiveTheme === "dark" ? "vs-dark" : "vs" });
+    const monacoTheme = tracevaneMonacoThemeForMode(effectiveTheme);
+    monaco.editor.setTheme(monacoTheme);
+    editor.updateOptions({ theme: monacoTheme });
     requestAnimationFrame(() => editor.layout());
   }, [effectiveTheme]);
 
@@ -533,13 +538,12 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>(fu
   return (
     <div
       className={cn(
-        "group/editor relative min-h-0 min-w-0 overflow-visible",
-        theme === "dark" ? "bg-[#1e1e1e]" : "bg-white",
+        "group/editor relative min-h-0 min-w-0 overflow-visible bg-panel",
         className,
       )}
       data-path={path}
       data-editor-language={detectedLanguage}
-      data-editor-theme={theme === "dark" ? "vs-dark" : "vs"}
+      data-editor-theme={tracevaneMonacoThemeForMode(theme)}
       data-code-editor="monaco-direct"
       data-editor-shortcuts="ignore"
       data-code-editor-keyboard-inset={
@@ -581,7 +585,7 @@ const MONACO_DIAGNOSTIC_ACTION_IDS = [
 
 interface BuildMonacoEditorOptionsInput {
   model: monaco.editor.ITextModel;
-  theme: "vs" | "vs-dark";
+  theme: TracevaneMonacoThemeName;
   fontSize: number;
   minimapEnabled: boolean;
   readOnly: boolean;

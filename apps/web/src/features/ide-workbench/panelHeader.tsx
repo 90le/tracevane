@@ -7,7 +7,7 @@ import { cn } from "@/design/lib/utils";
  * Output / Debug Console) and the activity sidebars (Search / Source Control /
  * Run and Debug). One header rhythm everywhere: compact title row, optional
  * meta in the middle, toolbar actions right-aligned — the VS Code panel
- * convention, expressed with Aurora tokens.
+ * convention, expressed with the dark-console design tokens.
  */
 
 export interface PanelHeaderProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
@@ -42,7 +42,7 @@ export function PanelHeader({
           {icon}
         </span>
       ) : null}
-      <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-ink-strong">
+      <span className="shrink-0 text-2xs font-semibold uppercase tracking-wider text-subtle">
         {title}
       </span>
       {children ? (
@@ -57,16 +57,28 @@ export function PanelHeader({
   );
 }
 
+export type PanelHeaderChipTone = "default" | "danger" | "warning" | "info" | "success";
+
+const panelHeaderChipToneClass: Record<PanelHeaderChipTone, string> = {
+  default: "border-line bg-canvas text-muted",
+  danger: "border-danger-line bg-danger-soft text-danger",
+  warning: "border-warning-line bg-warning-soft text-warning",
+  info: "border-info-line bg-info-soft text-info",
+  success: "border-success-line bg-success-soft text-success",
+};
+
 /** Small numeric/status chip used inside panel headers and section toolbars. */
 export function PanelHeaderChip({
   children,
   className,
+  tone = "default",
   ...props
-}: React.HTMLAttributes<HTMLSpanElement>) {
+}: React.HTMLAttributes<HTMLSpanElement> & { tone?: PanelHeaderChipTone }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-sm border border-line bg-canvas px-1.5 py-0.5 text-2xs tabular-nums text-muted",
+        "inline-flex shrink-0 items-center gap-1 rounded-sm border px-1.5 py-0.5 text-2xs tabular-nums",
+        panelHeaderChipToneClass[tone],
         className,
       )}
       {...props}
@@ -129,7 +141,7 @@ export function PanelSectionLabel({
   return (
     <div
       className={cn(
-        "mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-subtle",
+        "mb-2 flex items-center gap-2 text-2xs font-semibold uppercase tracking-wider text-subtle",
         className,
       )}
       {...props}

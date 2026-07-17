@@ -12,7 +12,7 @@ import type {
 } from "./types";
 
 /** Map a recovery state kind to a display tone. */
-function recoveryTone(status: OpenClawRecoveryStatusPayload["status"] | undefined): PlatformTone {
+export function recoveryTone(status: OpenClawRecoveryStatusPayload["status"] | undefined): PlatformTone {
   switch (status) {
     case "healthy":
       return "ok";

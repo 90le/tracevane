@@ -4,9 +4,9 @@ import { AlertTriangle, Inbox, Loader2 } from "lucide-react";
 import { cn } from "@/design/lib/utils";
 
 /**
- * Centered state views (Aurora .statebox): the canonical loading / empty /
- * error placeholders for panels and pages. `src/shared/states/*` delegates
- * to these primitives; feature code should prefer them over ad-hoc markup.
+ * Centered state views: the canonical loading / empty / error placeholders
+ * for panels and pages. `src/shared/states/*` delegates to these primitives;
+ * feature code should prefer them over ad-hoc markup.
  */
 
 export interface StateViewProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -38,7 +38,7 @@ function StateViewShell({
     >
       <div
         className={cn(
-          "grid size-[46px] place-items-center rounded-[12px] [&_svg]:size-5",
+          "grid size-[46px] place-items-center rounded-md [&_svg]:size-5",
           tone === "error" && "bg-danger-soft text-danger",
           tone === "empty" && "bg-panel-3 text-subtle",
           tone === "loading" && "bg-panel-2 text-subtle",
@@ -46,7 +46,7 @@ function StateViewShell({
       >
         {icon}
       </div>
-      <strong className="text-[14.5px] text-ink-strong">{title}</strong>
+      <strong className="text-base text-ink-strong">{title}</strong>
       {description && <span className="max-w-[42ch] text-sm">{description}</span>}
       {action && <div className="mt-1.5 flex flex-wrap gap-2">{action}</div>}
       {children}
@@ -54,7 +54,7 @@ function StateViewShell({
   );
 }
 
-/** Centered empty view (Aurora .statebox.empty). */
+/** Centered empty view. */
 function EmptyState({
   title = "Nothing here yet",
   icon,
@@ -63,7 +63,7 @@ function EmptyState({
   return <StateViewShell tone="empty" title={title} icon={icon ?? <Inbox />} {...props} />;
 }
 
-/** Centered error view (Aurora .statebox.error). */
+/** Centered error view. */
 function ErrorState({
   title = "Something went wrong",
   icon,
@@ -74,13 +74,13 @@ function ErrorState({
   );
 }
 
-/** Centered loading view (Aurora .statebox + spinner). */
+/** Centered loading view (spinner icon). */
 function LoadingState({ title = "Loading…", ...props }: StateViewProps) {
   return (
     <StateViewShell
       tone="loading"
       title={title}
-      icon={<Loader2 className="animate-[aurora-spin_.8s_linear_infinite]" />}
+      icon={<Loader2 className="animate-spin" />}
       {...props}
     />
   );

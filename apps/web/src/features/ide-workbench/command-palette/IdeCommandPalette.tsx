@@ -15,6 +15,7 @@ import {
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { Input } from "@/design/ui/input";
+import "@/design/ui/motion.css";
 import { editorTitleForPath } from "@/shared/editor-core";
 import { normalizeExplorerPath } from "@/shared/explorer-core";
 import { EmptyState } from "@/shared/states/EmptyState";
@@ -249,7 +250,7 @@ export function IdeCommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-[1200] grid place-items-start justify-center bg-canvas/70 backdrop-blur-sm px-3 py-[10vh]"
+      className="fixed inset-0 z-[1200] grid place-items-start justify-center bg-[rgba(4,8,14,.6)] backdrop-blur-sm px-3 py-[10vh] animate-[tvu-fade-in_var(--dur-2)_var(--ease-standard)]"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -257,7 +258,7 @@ export function IdeCommandPalette({
       data-ide-command-palette-overlay
     >
       <div
-        className="grid w-full max-w-2xl overflow-hidden rounded-xl border border-line bg-panel text-ink shadow-lg"
+        className="grid w-full max-w-2xl overflow-hidden rounded-xl border border-line bg-panel text-ink shadow-lg animate-[tvu-dialog-in_var(--dur-3)_var(--ease-standard)]"
         role="dialog"
         aria-modal="true"
         aria-label="IDE 命令面板"
@@ -347,7 +348,7 @@ export function IdeCommandPalette({
 }
 
 function PaletteSectionLabel({ label }: { label: string }) {
-  return <div className="px-2 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wide text-subtle first:pt-0">{label}</div>;
+  return <div className="px-2 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wider text-subtle first:pt-0">{label}</div>;
 }
 
 function CommandRow({
@@ -370,8 +371,8 @@ function CommandRow({
       onMouseEnter={onHover}
       onClick={onRun}
       className={cn(
-        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left outline-none transition-colors disabled:cursor-not-allowed disabled:text-disabled [&_svg]:size-4",
-        active ? "bg-primary-soft text-ink-strong" : "hover:bg-panel-3",
+        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4",
+        active ? "bg-primary-soft text-ink-strong" : "hover:bg-panel-2",
       )}
       data-ide-command-palette-item
       data-ide-command-palette-command-id={command.id}
@@ -407,7 +408,7 @@ function SymbolRow({
       onClick={onRun}
       className={cn(
         "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left outline-none transition-colors [&_svg]:size-4",
-        active ? "bg-primary-soft text-ink-strong" : "hover:bg-panel-3",
+        active ? "bg-primary-soft text-ink-strong" : "hover:bg-panel-2",
       )}
       data-ide-command-palette-symbol
       data-ide-command-palette-symbol-path={symbol.path}

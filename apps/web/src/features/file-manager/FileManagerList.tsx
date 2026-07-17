@@ -428,7 +428,7 @@ export function BulkActionBar({
         </div>
       </div>
       <div
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-primary-line bg-panel/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2 shadow-[0_-12px_30px_rgba(15,23,42,0.16)] backdrop-blur sm:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-primary-line bg-panel/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2 shadow-lg backdrop-blur sm:hidden"
         data-file-manager-bulk-mobile-sheet
         role="region"
         aria-label="已选文件操作"
@@ -497,7 +497,7 @@ export function BulkActionBar({
                 <MoreHorizontal className="size-3.5" />
                 <span>更多</span>
               </summary>
-              <div className="absolute inset-x-3 bottom-[calc(100%+0.5rem)] z-10 grid grid-cols-2 gap-2 rounded-lg border border-line bg-panel p-2 shadow-xl">
+              <div className="absolute inset-x-3 bottom-[calc(100%+0.5rem)] z-10 grid grid-cols-2 gap-2 rounded-lg border border-line bg-panel p-2 shadow-md">
                 {canRename ? (
                   <MobileBulkAction
                     icon={<File className="size-4" />}
@@ -562,7 +562,7 @@ function BulkOverflowMenu({
         更多
       </summary>
       <div
-        className="absolute right-0 top-[calc(100%+6px)] z-30 grid min-w-40 gap-1 rounded-lg border border-line bg-panel p-1.5 text-xs shadow-xl"
+        className="absolute right-0 top-[calc(100%+6px)] z-30 grid min-w-40 gap-1 rounded-lg border border-line bg-panel p-1.5 text-xs shadow-md"
         data-file-manager-bulk-overflow-menu
       >
         {canRename ? (
@@ -1281,7 +1281,7 @@ export function FileListPanel({
     >
       {displayMode === "list" ? (
         <div
-          className="group/list-header grid grid-cols-[36px_minmax(0,1fr)_44px] border-b border-line bg-panel-2/80 px-3 py-1.5 text-xs font-medium text-subtle sm:[grid-template-columns:var(--file-row-desktop-columns)]"
+          className="group/list-header grid grid-cols-[36px_minmax(0,1fr)_44px] border-b border-line bg-panel-2/80 px-3 py-1.5 text-2xs font-medium uppercase tracking-wider text-subtle sm:[grid-template-columns:var(--file-row-desktop-columns)]"
           style={responsiveGridStyle}
           data-file-manager-responsive-header
         >
@@ -1342,7 +1342,7 @@ export function FileListPanel({
           <span className="text-right">操作</span>
         </div>
       ) : (
-        <div className="flex items-center justify-between border-b border-line bg-panel-2/80 px-3 py-1.5 text-xs text-subtle">
+        <div className="flex items-center justify-between border-b border-line bg-panel-2/80 px-3 py-1.5 text-2xs uppercase tracking-wider text-subtle">
           <label
             className={cn(
               "inline-flex items-center gap-2 opacity-0 transition-opacity hover:opacity-100 focus-within:opacity-100",
@@ -1530,15 +1530,15 @@ export function FileListPanel({
             data-file-manager-mobile-list-settings-body
           >
             <div
-              className="inline-flex w-full justify-center rounded border border-line bg-panel-2 p-0.5"
+              className="inline-flex w-full justify-center rounded-full border border-line bg-panel-2 p-0.5"
               aria-label="列表密度"
             >
               <button
                 type="button"
                 className={cn(
-                  "rounded px-2 py-1 text-2xs hover:text-ink-strong",
+                  "rounded-full px-2 py-1 text-2xs transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:text-ink",
                   density === "comfortable"
-                    ? "bg-panel text-primary shadow-sm"
+                    ? "bg-panel text-ink-strong shadow-sm"
                     : "text-muted",
                 )}
                 onClick={() => onDensityChange("comfortable")}
@@ -1548,9 +1548,9 @@ export function FileListPanel({
               <button
                 type="button"
                 className={cn(
-                  "rounded px-2 py-1 text-2xs hover:text-ink-strong",
+                  "rounded-full px-2 py-1 text-2xs transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:text-ink",
                   density === "compact"
-                    ? "bg-panel text-primary shadow-sm"
+                    ? "bg-panel text-ink-strong shadow-sm"
                     : "text-muted",
                 )}
                 onClick={() => onDensityChange("compact")}
@@ -1559,15 +1559,15 @@ export function FileListPanel({
               </button>
             </div>
             <div
-              className="inline-flex w-full justify-center rounded border border-line bg-panel-2 p-0.5"
+              className="inline-flex w-full justify-center rounded-full border border-line bg-panel-2 p-0.5"
               aria-label="视图布局"
             >
               <button
                 type="button"
                 className={cn(
-                  "inline-flex items-center gap-1 rounded px-2 py-1 text-2xs hover:text-ink-strong",
+                  "inline-flex items-center gap-1 rounded-full px-2 py-1 text-2xs transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:text-ink",
                   displayMode === "list"
-                    ? "bg-panel text-primary shadow-sm"
+                    ? "bg-panel text-ink-strong shadow-sm"
                     : "text-muted",
                 )}
                 onClick={() => onDisplayModeChange("list")}
@@ -1578,9 +1578,9 @@ export function FileListPanel({
               <button
                 type="button"
                 className={cn(
-                  "inline-flex items-center gap-1 rounded px-2 py-1 text-2xs hover:text-ink-strong",
+                  "inline-flex items-center gap-1 rounded-full px-2 py-1 text-2xs transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:text-ink",
                   displayMode === "grid"
-                    ? "bg-panel text-primary shadow-sm"
+                    ? "bg-panel text-ink-strong shadow-sm"
                     : "text-muted",
                 )}
                 onClick={() => onDisplayModeChange("grid")}
@@ -1767,15 +1767,15 @@ export function FileListPanel({
             ) : null}
           </div>
           <div
-            className="inline-flex rounded border border-line bg-panel-2 p-0.5"
+            className="inline-flex rounded-full border border-line bg-panel-2 p-0.5"
             aria-label="列表密度"
           >
             <button
               type="button"
               className={cn(
-                "rounded px-2 py-1 text-2xs hover:text-ink-strong",
+                "rounded-full px-2 py-1 text-2xs transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:text-ink",
                 density === "comfortable"
-                  ? "bg-panel text-primary shadow-sm"
+                  ? "bg-panel text-ink-strong shadow-sm"
                   : "text-muted",
               )}
               onClick={() => onDensityChange("comfortable")}
@@ -1785,9 +1785,9 @@ export function FileListPanel({
             <button
               type="button"
               className={cn(
-                "rounded px-2 py-1 text-2xs hover:text-ink-strong",
+                "rounded-full px-2 py-1 text-2xs transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:text-ink",
                 density === "compact"
-                  ? "bg-panel text-primary shadow-sm"
+                  ? "bg-panel text-ink-strong shadow-sm"
                   : "text-muted",
               )}
               onClick={() => onDensityChange("compact")}
@@ -1796,15 +1796,15 @@ export function FileListPanel({
             </button>
           </div>
           <div
-            className="inline-flex rounded border border-line bg-panel-2 p-0.5"
+            className="inline-flex rounded-full border border-line bg-panel-2 p-0.5"
             aria-label="视图布局"
           >
             <button
               type="button"
               className={cn(
-                "inline-flex items-center gap-1 rounded px-2 py-1 text-2xs hover:text-ink-strong",
+                "inline-flex items-center gap-1 rounded-full px-2 py-1 text-2xs transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:text-ink",
                 displayMode === "list"
-                  ? "bg-panel text-primary shadow-sm"
+                  ? "bg-panel text-ink-strong shadow-sm"
                   : "text-muted",
               )}
               onClick={() => onDisplayModeChange("list")}
@@ -1815,9 +1815,9 @@ export function FileListPanel({
             <button
               type="button"
               className={cn(
-                "inline-flex items-center gap-1 rounded px-2 py-1 text-2xs hover:text-ink-strong",
+                "inline-flex items-center gap-1 rounded-full px-2 py-1 text-2xs transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:text-ink",
                 displayMode === "grid"
-                  ? "bg-panel text-primary shadow-sm"
+                  ? "bg-panel text-ink-strong shadow-sm"
                   : "text-muted",
               )}
               onClick={() => onDisplayModeChange("grid")}
@@ -1842,7 +1842,7 @@ export function FileListPanel({
       </footer>
       {marquee?.active ? (
         <div
-          className="pointer-events-none fixed z-50 rounded border border-primary bg-primary/10 shadow-[0_0_0_1px_rgba(59,130,246,0.12)]"
+          className="pointer-events-none fixed z-50 rounded border border-primary-line bg-primary-soft"
           style={marqueeStyle(
             normalizeRect(
               marquee.startX,
@@ -2213,10 +2213,10 @@ function FileRow({
         } as React.CSSProperties
       }
       className={cn(
-        "group/file-row grid w-full grid-cols-[36px_minmax(0,1fr)_44px] items-start border-b border-line px-3 text-left text-sm last:border-b-0 hover:bg-panel-2 focus-visible:shadow-[var(--ring)] focus-visible:outline-none sm:items-center sm:[grid-template-columns:var(--file-row-desktop-columns)]",
+        "group/file-row grid w-full grid-cols-[36px_minmax(0,1fr)_44px] items-start border-b border-line px-3 text-left text-sm transition-colors duration-[var(--dur-1)] ease-[var(--ease-standard)] last:border-b-0 hover:bg-panel-2 focus-visible:shadow-[var(--ring)] focus-visible:outline-none sm:items-center sm:[grid-template-columns:var(--file-row-desktop-columns)]",
         density === "compact" ? "py-1.5" : "py-2.5",
-        selected && "bg-primary-soft",
-        dropOperation && "bg-primary-soft ring-2 ring-primary/40",
+        selected && "bg-primary-soft hover:bg-primary-soft",
+        dropOperation && "bg-primary-soft ring-2 ring-primary/40 hover:bg-primary-soft",
       )}
     >
       <label
@@ -2463,7 +2463,7 @@ function FileGridCard({
         }
       }}
       className={cn(
-        "group relative grid justify-items-center rounded-md border border-transparent bg-transparent text-center transition-colors hover:border-primary-line hover:bg-primary-soft/45 focus-visible:shadow-[var(--ring)] focus-visible:outline-none",
+        "group relative grid justify-items-center rounded-md border border-transparent bg-transparent text-center transition-colors duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:border-primary-line hover:bg-primary-soft/45 focus-visible:shadow-[var(--ring)] focus-visible:outline-none",
         density === "compact" ? "min-h-[86px] p-1" : "min-h-[100px] p-1.5",
         selected && "border-primary-line bg-primary-soft/80",
         dropOperation &&

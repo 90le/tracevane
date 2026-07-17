@@ -425,7 +425,7 @@ function CfgCard({
           <Icon />
         </span>
         <strong className="text-md font-semibold text-ink-strong">{title}</strong>
-        {sub && <span className="text-sm text-subtle">{sub}</span>}
+        {sub && <span className="text-sm text-muted">{sub}</span>}
       </div>
       <div className="grid gap-3.5 p-4">{children}</div>
     </section>
@@ -1424,7 +1424,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
       </div>
 
       {/* Save bar */}
-      <div className="sticky bottom-0 flex flex-wrap items-center gap-3 rounded-md border border-line bg-panel/95 px-4 py-3 shadow-sm backdrop-blur">
+      <div className="sticky bottom-0 flex flex-wrap items-center gap-3 rounded-md border border-line bg-panel/95 px-4 py-3 shadow-md backdrop-blur">
         {showErrors && validation.errors.length > 0 ? (
           <span className="flex items-center gap-1.5 text-sm text-danger">
             <AlertTriangle className="size-4" />

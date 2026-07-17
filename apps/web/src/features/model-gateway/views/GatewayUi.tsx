@@ -1,6 +1,8 @@
 import * as React from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
 
+import { cn } from "@/design/lib/utils";
+
 export type GatewayIdentityTone =
   | "openai"
   | "anthropic"
@@ -101,6 +103,41 @@ export function ProviderPill({ model }: { model: string }) {
   return <GatewayPill identity={modelIdentity(model)} />;
 }
 
+export type GatewayStatusTone = "ok" | "warn" | "bad" | "mute" | "primary";
+
+/**
+ * Live-status dot used in list rows and the overview status banner. `halo`
+ * adds a soft tonal ring for hero placements (banner); rows stay plain.
+ */
+export function GatewayStatusDot({
+  tone,
+  halo = false,
+  className,
+}: {
+  tone: GatewayStatusTone;
+  halo?: boolean;
+  className?: string;
+}) {
+  const toneClass = {
+    ok: "bg-success ring-success-soft",
+    warn: "bg-warning ring-warning-soft",
+    bad: "bg-danger ring-danger-soft",
+    mute: "bg-subtle ring-panel-3",
+    primary: "bg-primary ring-primary-soft",
+  }[tone];
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "inline-block size-2 shrink-0 rounded-full",
+        halo && "ring-4",
+        toneClass,
+        className,
+      )}
+    />
+  );
+}
+
 export function ComparisonBadge({ comparison }: { comparison: GatewayComparison }) {
   const toneClass = {
     good: "text-success",
@@ -144,7 +181,7 @@ export function GatewayMetricCard({
   const meterClass = tone === "teal" ? "bg-teal" : tone === "violet" ? "bg-violet" : "bg-primary";
   const meterWidth = `${Math.max(3, Math.min(100, (meter ?? 1) * 100))}%`;
   return (
-    <div className="grid min-h-[116px] grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-md border border-line bg-panel p-3.5 shadow-sm transition-colors hover:border-primary-line">
+    <div className="grid min-h-[116px] grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-md border border-line bg-panel-2 p-3.5 transition-colors hover:border-primary-line">
       <span className={`mt-1 grid size-10 place-items-center rounded-full border [&_svg]:size-5 ${toneClass}`}>{icon}</span>
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-2">

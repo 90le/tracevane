@@ -48,7 +48,7 @@ export function ActionDialog({
       <DialogContent
         showClose={showClose}
         className={cn(
-          "w-[min(560px,94vw)] max-w-none overflow-hidden rounded-xl p-0 shadow-2xl sm:rounded-2xl",
+          "w-[min(560px,94vw)] max-w-none overflow-hidden rounded-lg p-0 shadow-lg",
           className,
         )}
         data-action-dialog={contentDataAttr ?? "true"}
@@ -185,7 +185,7 @@ export function TextInputDialog({
           />
         </label>
         {error ? (
-          <div className="rounded-md border border-danger/25 bg-danger-soft px-3 py-2 text-xs text-danger">
+          <div className="rounded-md border border-danger-line bg-danger-soft px-3 py-2 text-xs text-danger">
             {error}
           </div>
         ) : null}
@@ -258,8 +258,8 @@ export function ConfirmDialog({
 }
 
 function actionToneClass(tone: ActionDialogTone): string {
-  if (tone === "danger") return "border-danger/30 bg-danger-soft text-danger";
-  if (tone === "warning") return "border-amber/30 bg-amber-soft text-amber";
+  if (tone === "danger") return "border-danger-line bg-danger-soft text-danger";
+  if (tone === "warning") return "border-warning-line bg-warning-soft text-warning";
   if (tone === "primary") return "border-primary-line bg-primary-soft text-primary";
   return "border-line bg-panel text-subtle";
 }

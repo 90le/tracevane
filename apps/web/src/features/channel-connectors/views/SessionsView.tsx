@@ -31,7 +31,7 @@ import type {
 } from "../types";
 import type { ChannelConnectorsViewProps } from "./types";
 import { FormField, SelectInput } from "./V3Fields";
-import { Panel, PanelHead, formatTime } from "./_shared";
+import { CountChip, Panel, PanelHead, StatusDot, formatTime, type StatusTone } from "./_shared";
 
 const EVENT_TONE: Record<
   ChannelConnectorAgentSessionDriverRuntimeEvent["type"],
@@ -106,6 +106,15 @@ function sessionBadge(session: ChannelConnectorAgentSessionRuntimeStatus): {
   if (session.running > 0) return { variant: "ok", label: "运行中" };
   return { variant: "mute", label: "空闲" };
 }
+
+/** Row tint for a severity tone (kept subtle so long streams stay readable). */
+const severityRowTintClass: Record<StatusTone, string> = {
+  bad: "border-danger-line bg-danger-soft/40",
+  warn: "border-warning-line bg-warning-soft/40",
+  ok: "border-line bg-panel-2",
+  info: "border-line bg-panel-2",
+  mute: "border-line bg-panel-2",
+};
 
 
 function routeDefaultsForSession(
@@ -519,6 +528,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
         <PanelHead
           title="全局并发 / 队列策略"
           sub="不同 IM 会话共享的 Agent turn 执行上限。"
+          chip={<CountChip tone={(policy?.queuedTurns ?? 0) > 0 ? "warn" : "mute"}>{policy?.activeTurns ?? 0} 执行 · {policy?.queuedTurns ?? 0} 排队</CountChip>}
           action={policyEditing ? (
             <Badge variant={policyBadge.variant}>{policyBadge.label}</Badge>
           ) : (
@@ -619,10 +629,10 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
               return (
                 <div
                   key={`${session.poolKey}-${session.sessionId}-${index}`}
-                  className="grid gap-2 rounded-sm border border-line bg-panel-2 p-3"
+                  className={`grid gap-2 rounded-sm border p-3 ${session.lastError ? severityRowTintClass.bad : "border-line bg-panel-2"}`}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-sm bg-panel-3 text-muted [&_svg]:size-4">
                       <MessageSquare />
                     </span>
                     <span className="grid min-w-0 flex-1">
@@ -630,11 +640,14 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                         {title}
                       </strong>
                       <span className="truncate text-sm text-muted">{subtitle}</span>
-                      <span className="truncate font-mono text-[11px] text-subtle" title={session.poolKey}>
+                      <span className="truncate font-mono text-2xs text-subtle" title={session.poolKey}>
                         技术标识 · {compactText(session.sessionId || session.poolKey, 72)}
                       </span>
                     </span>
-                    <Badge variant={badge.variant}>{badge.label}</Badge>
+                    <span className="flex items-center gap-2">
+                      <StatusDot tone={badge.variant} pulse={badge.variant === "ok"} />
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                    </span>
                     {session.sessionControl && (
                       <Button
                         variant="ghost"
@@ -685,7 +698,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                     {session.sessionControl?.lastCommand && (
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Badge variant="info">最后命令</Badge>
-                        <code className="min-w-0 break-all rounded-sm bg-panel-3 px-1.5 py-0.5 font-mono text-[11px] text-ink-strong">
+                        <code className="min-w-0 break-all rounded-sm bg-panel-3 px-1.5 py-0.5 font-mono text-2xs text-ink-strong">
                           {session.sessionControl.lastCommand}
                         </code>
                         <span className="text-subtle">{formatTime(session.sessionControl.updatedAt)}</span>
@@ -736,9 +749,9 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
               return (
                 <div
                   key={`${event.type}-${event.sessionId ?? "none"}-${index}`}
-                  className="grid gap-2 rounded-sm border border-line bg-panel-2 p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start"
+                  className={`grid gap-2 rounded-sm border p-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start ${severityRowTintClass[view.variant]}`}
                 >
-                  <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-sm bg-panel-3 text-muted [&_svg]:size-4">
                     <Activity />
                   </span>
                   <span className="grid min-w-0 gap-1">
@@ -747,8 +760,12 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                     <span className="truncate text-xs text-subtle">
                       {event.agent} · {event.bindingId} · {formatTime(event.checkedAt)} · {view.action}
                     </span>
+                    <span className="truncate font-mono text-2xs text-subtle" title={`${event.sessionKey || event.sessionId || event.poolKey} · ${event.workDir}`}>
+                      投递证据 · {compactText(event.sessionKey || event.sessionId || event.poolKey, 56)} · 消息 {event.messageId || "—"}
+                    </span>
                   </span>
-                  <span className="flex flex-wrap justify-start gap-1.5 sm:justify-end">
+                  <span className="flex flex-wrap items-center justify-start gap-1.5 sm:justify-end">
+                    <StatusDot tone={view.variant} />
                     <Badge variant={view.variant}>{view.variant === "bad" ? "需处理" : view.variant === "warn" ? "关注" : "正常"}</Badge>
                     <Badge variant="outline">{event.type}</Badge>
                   </span>
@@ -763,7 +780,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Dialog open={confirm?.kind === "reap"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-warning-soft text-warning [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-sm bg-warning-soft text-warning [&_svg]:size-4">
               <Recycle />
             </span>
             <DialogTitle>回收空闲会话</DialogTitle>
@@ -787,7 +804,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Dialog open={confirm?.kind === "reset"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-warning-soft text-warning [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-sm bg-warning-soft text-warning [&_svg]:size-4">
               <Recycle />
             </span>
             <DialogTitle>重置为默认投递</DialogTitle>
@@ -821,7 +838,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Dialog open={confirm?.kind === "kill"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-danger-soft text-danger [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-sm bg-danger-soft text-danger [&_svg]:size-4">
               <AlertTriangle />
             </span>
             <DialogTitle>终止会话</DialogTitle>

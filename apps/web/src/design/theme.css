@@ -1,24 +1,32 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Aurora design system — the single design source of truth.
+   Tracevane design system — dark console, single source of truth.
 
    This file IS the design foundation for Tracevane; there is no
    separate design document. It defines, and every feature must
    consume, the complete token layer:
 
-     · Aurora CSS custom properties — light + dark themes and the
-       4 accent palettes (default indigo / teal / violet / graphite)
+     · CSS custom properties — the dark console theme is the
+       DEFAULT (:root, no attribute required); the light theme is
+       an override via [data-theme="light"] on <html>
+     · one brand palette — electric cyan #22D3EE (light: #0891B2).
+       There are no accent-palette variants; a data-palette
+       attribute on <html> is tolerated but has no effect
      · semantic color aliases — danger / warning / success / info
-       (plus -soft / -line variants) mapped onto the Aurora palette
-     · the dense type scale — --text-2xs (10.5px) … --text-2xl (21px)
-     · radii, shadows, focus ring, fonts, and the shared
-       component-layer utilities below (.tv-table-*, .tv-console-*)
+       (plus -soft / -line variants) mapped onto the base palette
+     · the type scale — --text-2xs (11px) … --text-2xl (36px)
+     · radii (6 / 10 / 14), elevation shadows (heavy ambient for
+       dark, soft for light), motion (--dur-1/2/3 + --ease-standard),
+       focus ring, font stacks, and the shared component-layer
+       utilities below (.tv-table-*, .tv-console-*)
 
    Rules for consumers:
      · reference semantic tokens only (bg-panel, text-ink-strong,
        border-line, text-success, shadow-sm, rounded-md, …) —
        never raw palette hexes or one-off color-mix values
+     · prefer elevation (shadow / panel level) over borders to
+       separate surfaces; borders are hairlines, not structure
      · compose the canonical primitives in src/design/ui/*
        (state, skeleton, page-header, section-nav, metric, …)
        instead of writing ad-hoc markup
@@ -26,98 +34,96 @@
        design/ui/*, it does not exist — add it here first
    ============================================================ */
 
-/* dark mode is driven by [data-theme="dark"] on a wrapping element */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* dark is the default; `dark:` utilities apply unless the light
+   override is active on <html> */
+@custom-variant dark (&:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *));
 
-/* --- Aurora CSS custom properties: light theme (default) --- */
+/* --- dark console theme (default) --- */
 :root {
-  color-scheme: light;
-  --bg: #eef1f6;
-  --canvas: #f7f9fc;
-  --panel: #ffffff;
-  --panel-2: #f4f6fb;
-  --panel-3: #eef1f7;
-  --ink: #1f2733;
-  --ink-strong: #0b1220;
-  --muted: #5a6679;
-  --subtle: #8b95a7;
-  --line: rgba(16, 24, 40, .09);
-  --line-2: rgba(16, 24, 40, .14);
-  --primary: #3358ff;
-  --primary-ink: #ffffff;
-  --primary-soft: rgba(51, 88, 255, .10);
-  --primary-line: rgba(51, 88, 255, .26);
-  --teal: #0f8f86;
-  --teal-soft: rgba(15, 143, 134, .12);
-  --green: #138a4a;
-  --green-soft: rgba(19, 138, 74, .12);
-  --amber: #b06a00;
-  --amber-soft: rgba(176, 106, 0, .13);
-  --red: #d23b46;
-  --red-soft: rgba(210, 59, 70, .12);
-  --violet: #6c4cd6;
-  --violet-soft: rgba(108, 76, 214, .12);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .06);
-  --shadow-md: 0 10px 28px -12px rgba(15, 23, 42, .22);
-  --shadow-lg: 0 30px 70px -28px rgba(15, 23, 42, .38);
-  --ring: 0 0 0 3px rgba(51, 88, 255, .22);
-  --radius: 12px;
-  --radius-sm: 9px;
-  --radius-lg: 18px;
-  --sidebar: 260px;
-  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", Consolas, monospace;
-  --aurora-1: rgba(51, 88, 255, .16);
-  --aurora-2: rgba(15, 143, 134, .14);
-  --aurora-3: rgba(108, 76, 214, .12);
-}
-
-[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #0a0e16;
-  --canvas: #0e131d;
-  --panel: #161c28;
-  --panel-2: #1b2230;
-  --panel-3: #212a3a;
-  --ink: #d7deea;
-  --ink-strong: #f4f7fc;
-  --muted: #9aa6ba;
-  --subtle: #8590a3;
-  --line: rgba(148, 163, 184, .16);
-  --line-2: rgba(148, 163, 184, .24);
-  --primary: #6f8bff;
-  --primary-ink: #050a18;
-  --primary-soft: rgba(111, 139, 255, .16);
-  --primary-line: rgba(111, 139, 255, .34);
-  --teal: #43d6c4;
-  --teal-soft: rgba(67, 214, 196, .14);
-  --green: #4fd07f;
-  --green-soft: rgba(79, 208, 127, .14);
-  --amber: #f0b44e;
-  --amber-soft: rgba(240, 180, 78, .15);
-  --red: #ff7b86;
-  --red-soft: rgba(255, 123, 134, .15);
-  --violet: #b39bff;
-  --violet-soft: rgba(179, 155, 255, .16);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
-  --shadow-md: 0 14px 34px -14px rgba(0, 0, 0, .6);
-  --shadow-lg: 0 36px 80px -30px rgba(0, 0, 0, .7);
-  --ring: 0 0 0 3px rgba(111, 139, 255, .3);
-  --aurora-1: rgba(111, 139, 255, .2);
-  --aurora-2: rgba(67, 214, 196, .16);
-  --aurora-3: rgba(179, 155, 255, .16);
+  --bg: #0B0E13;
+  --canvas: #0B0E13;
+  --panel: #12161D;
+  --panel-2: #171C25;
+  --panel-3: #1E2531;
+  --ink: #DCE3EC;
+  --ink-strong: #F3F6FA;
+  --muted: #97A2B3;
+  --subtle: #68738A;
+  --line: rgba(148, 163, 184, .12);
+  --line-2: rgba(148, 163, 184, .20);
+  --primary: #22D3EE;
+  --primary-ink: #062229;
+  --primary-soft: rgba(34, 211, 238, .14);
+  --primary-line: rgba(34, 211, 238, .34);
+  --teal: #2DD4BF;
+  --teal-soft: rgba(45, 212, 191, .13);
+  --green: #34D399;
+  --green-soft: rgba(52, 211, 153, .13);
+  --amber: #FBBF24;
+  --amber-soft: rgba(251, 191, 36, .13);
+  --red: #F87171;
+  --red-soft: rgba(248, 113, 113, .13);
+  --violet: #A78BFA;
+  --violet-soft: rgba(167, 139, 250, .13);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
+  --shadow-md: 0 12px 32px -12px rgba(0, 0, 0, .65);
+  --shadow-lg: 0 32px 80px -28px rgba(0, 0, 0, .75);
+  --ring: 0 0 0 3px rgba(34, 211, 238, .28);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 14px;
+  --sidebar: 260px;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 240ms;
+  --ease-standard: cubic-bezier(.2, .7, .3, 1);
+  --aurora-1: rgba(34, 211, 238, .18);
+  --aurora-2: rgba(45, 212, 191, .14);
+  --aurora-3: rgba(167, 139, 250, .14);
 }
 
-/* --- 4 palettes --- */
-[data-palette="teal"] { --primary: #0f8f86; --primary-soft: rgba(15,143,134,.12); --primary-line: rgba(15,143,134,.28); --aurora-1: rgba(15,143,134,.18); --aurora-3: rgba(51,88,255,.10); }
-[data-palette="teal"][data-theme="dark"] { --primary: #43d6c4; --primary-ink: #04110f; --primary-soft: rgba(67,214,196,.16); --primary-line: rgba(67,214,196,.34); }
-[data-palette="violet"] { --primary: #6c4cd6; --primary-soft: rgba(108,76,214,.12); --primary-line: rgba(108,76,214,.28); --aurora-1: rgba(108,76,214,.18); --aurora-2: rgba(51,88,255,.12); }
-[data-palette="violet"][data-theme="dark"] { --primary: #b39bff; --primary-ink: #0c0820; --primary-soft: rgba(179,155,255,.16); --primary-line: rgba(179,155,255,.34); }
-[data-palette="graphite"] { --primary: #3b475c; --primary-soft: rgba(59,71,92,.1); --primary-line: rgba(59,71,92,.26); --aurora-1: rgba(59,71,92,.12); --aurora-2: rgba(15,143,134,.1); --aurora-3: rgba(100,116,139,.1); }
-[data-palette="graphite"][data-theme="dark"] { --primary: #cdd6e6; --primary-ink: #0b1120; --primary-soft: rgba(205,214,230,.14); --primary-line: rgba(205,214,230,.3); }
+/* --- light theme (override only) --- */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #F6F7F9;
+  --canvas: #F6F7F9;
+  --panel: #FFFFFF;
+  --panel-2: #F4F5F7;
+  --panel-3: #E9EBEF;
+  --ink: #232A35;
+  --ink-strong: #0F141B;
+  --muted: #5A6472;
+  --subtle: #8992A1;
+  --line: rgba(15, 23, 42, .09);
+  --line-2: rgba(15, 23, 42, .16);
+  --primary: #0891B2;
+  --primary-ink: #FFFFFF;
+  --primary-soft: rgba(8, 145, 178, .10);
+  --primary-line: rgba(8, 145, 178, .30);
+  --teal: #0F8F86;
+  --teal-soft: rgba(15, 143, 134, .11);
+  --green: #059669;
+  --green-soft: rgba(5, 150, 105, .11);
+  --amber: #B45309;
+  --amber-soft: rgba(180, 83, 9, .11);
+  --red: #DC2626;
+  --red-soft: rgba(220, 38, 38, .11);
+  --violet: #6D5BD0;
+  --violet-soft: rgba(109, 91, 208, .12);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .06);
+  --shadow-md: 0 10px 28px -12px rgba(15, 23, 42, .18);
+  --shadow-lg: 0 28px 64px -28px rgba(15, 23, 42, .30);
+  --ring: 0 0 0 3px rgba(8, 145, 178, .22);
+  --aurora-1: rgba(8, 145, 178, .14);
+  --aurora-2: rgba(15, 143, 134, .12);
+  --aurora-3: rgba(109, 91, 208, .12);
+}
 
 /* ============================================================
-   Tailwind v4 theme tokens — map Aurora vars to utilities.
+   Tailwind v4 theme tokens — map Tracevane vars to utilities.
    Use e.g. bg-panel, text-ink-strong, border-line, rounded-md,
    shadow-md, text-base, font-mono, etc.
    ============================================================ */
@@ -150,8 +156,8 @@
   --color-violet-soft: var(--violet-soft);
 
   /* Semantic aliases — features reference danger/warning/success/info names;
-     keep them mapped to the Aurora semantic palette so both naming styles
-     resolve to the same colors in light and dark. */
+     keep them mapped to the semantic palette so both naming styles
+     resolve to the same colors in dark and light. */
   --color-danger: var(--red);
   --color-danger-soft: var(--red-soft);
   --color-danger-line: color-mix(in srgb, var(--red) 30%, transparent);
@@ -163,6 +169,7 @@
   --color-success-line: color-mix(in srgb, var(--green) 30%, transparent);
   --color-info: var(--primary);
   --color-info-soft: var(--primary-soft);
+  --color-info-line: color-mix(in srgb, var(--primary) 30%, transparent);
 
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius);
@@ -175,19 +182,19 @@
   --font-sans: var(--sans);
   --font-mono: var(--mono);
 
-  /* Aurora's dense type scale */
-  --text-2xs: 10.5px;
-  --text-xs: 11.5px;
-  --text-sm: 12.5px;
-  --text-base: 13.5px;
-  --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 18px;
-  --text-2xl: 21px;
+  /* Tracevane type scale */
+  --text-2xs: 11px;
+  --text-xs: 12.5px;
+  --text-sm: 13.5px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+  --text-2xl: 36px;
 }
 
 /* ============================================================
-   base — mirror Aurora's body/typography reset
+   base — body/typography reset
    ============================================================ */
 @layer base {
   * { box-sizing: border-box; }
@@ -202,7 +209,7 @@
     background: var(--bg);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    transition: background .25s ease, color .2s ease;
+    transition: background var(--dur-3) var(--ease-standard), color var(--dur-2) var(--ease-standard);
   }
   ::selection { background: color-mix(in srgb, var(--primary) 26%, transparent); }
   svg { flex: none; }
@@ -273,5 +280,3 @@
   .tv-console-status { display: flex; align-items: center; gap: 14px; height: 30px; padding: 0 12px; border-top: 1px solid var(--line); background: var(--panel-2); font-size: 11.5px; color: var(--muted); overflow: auto; scrollbar-width: none; }
   .tv-console-status::-webkit-scrollbar { display: none; }
 }
-</content>
-</invoke>

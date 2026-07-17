@@ -43,6 +43,7 @@ import {
 import {
   FileManagerHeader,
   FileManagerNavigationBar,
+  FileManagerPathBar,
   type FileManagerBookmarkItem,
   type FileManagerDirectoryTab,
   type FileManagerLocation,
@@ -1695,16 +1696,47 @@ export function FileManagerPage() {
             onRefresh={refresh}
             showHidden={showHidden}
             onToggleShowHidden={() => setShowHidden((value) => !value)}
-          />
+          >
+            <FileManagerPathBar
+              directoryPath={directoryPath}
+              parentPath={parentPath}
+              breadcrumbs={breadcrumbs}
+              pathInput={pathInput}
+              displayPath={displayPath}
+              pathSuggestions={pathSuggestions}
+              pathSuggestionsOpen={pathSuggestionsOpen}
+              activePathSuggestionIndex={activePathSuggestionIndex}
+              currentLocationFavorited={currentLocationFavorited}
+              onNavigateToDirectory={navigateToDirectory}
+              onPathInputFocus={() => {
+                setPathSuggestionsOpen(true);
+                setActivePathSuggestionIndex(0);
+              }}
+              onPathInputBlur={() =>
+                window.setTimeout(() => setPathSuggestionsOpen(false), 120)
+              }
+              onPathInputChange={(value) => {
+                setPathInput(value);
+                setPathSuggestionsOpen(true);
+                setActivePathSuggestionIndex(0);
+              }}
+              onPathInputJump={jumpToPathInput}
+              onCopyCurrentPath={copyCurrentPath}
+              onPathInputRestore={() => {
+                setPathInput(displayPath);
+                setPathSuggestionsOpen(false);
+                setActivePathSuggestionIndex(0);
+              }}
+              onPathSuggestionActiveChange={setActivePathSuggestionIndex}
+              onAcceptPathSuggestion={(location) => {
+                navigateToLocation(location);
+                setPathSuggestionsOpen(false);
+                setActivePathSuggestionIndex(0);
+              }}
+              onToggleFavoriteCurrent={toggleFavoriteCurrentLocation}
+            />
+          </FileManagerHeader>
           <FileManagerNavigationBar
-            directoryPath={directoryPath}
-            parentPath={parentPath}
-            breadcrumbs={breadcrumbs}
-            pathInput={pathInput}
-            displayPath={displayPath}
-            pathSuggestions={pathSuggestions}
-            pathSuggestionsOpen={pathSuggestionsOpen}
-            activePathSuggestionIndex={activePathSuggestionIndex}
             favoriteTree={favoriteTree}
             favoriteCount={favoriteCount}
             recentLocations={recentLocationViews}
@@ -1712,8 +1744,6 @@ export function FileManagerPage() {
             activeDirectoryTabId={activeDirectoryTabId}
             filterText={filterText}
             showHidden={showHidden}
-            currentLocationFavorited={currentLocationFavorited}
-            onNavigateToDirectory={navigateToDirectory}
             onNavigateToLocation={(location) => {
               navigateToLocation(location);
               setPathSuggestionsOpen(false);
@@ -1722,32 +1752,6 @@ export function FileManagerPage() {
             onSelectDirectoryTab={selectDirectoryTab}
             onAddDirectoryTab={addCurrentDirectoryTab}
             onCloseDirectoryTab={closeDirectoryTab}
-            onPathInputFocus={() => {
-              setPathSuggestionsOpen(true);
-              setActivePathSuggestionIndex(0);
-            }}
-            onPathInputBlur={() =>
-              window.setTimeout(() => setPathSuggestionsOpen(false), 120)
-            }
-            onPathInputChange={(value) => {
-              setPathInput(value);
-              setPathSuggestionsOpen(true);
-              setActivePathSuggestionIndex(0);
-            }}
-            onPathInputJump={jumpToPathInput}
-            onCopyCurrentPath={copyCurrentPath}
-            onPathInputRestore={() => {
-              setPathInput(displayPath);
-              setPathSuggestionsOpen(false);
-              setActivePathSuggestionIndex(0);
-            }}
-            onPathSuggestionActiveChange={setActivePathSuggestionIndex}
-            onAcceptPathSuggestion={(location) => {
-              navigateToLocation(location);
-              setPathSuggestionsOpen(false);
-              setActivePathSuggestionIndex(0);
-            }}
-            onToggleFavoriteCurrent={toggleFavoriteCurrentLocation}
             onOpenFavoriteItem={openFavoriteItem}
             onAddFavoriteFolder={addFavoriteFolder}
             onAddCurrentFavoriteToFolder={addCurrentFavoriteToFolder}
@@ -1982,7 +1986,7 @@ export function FileManagerPage() {
 
       {!onlineEditorOpen && onlineEditorTabs.length > 0 ? (
         <div
-          className="fixed bottom-4 right-4 z-40 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-panel px-3 py-2 text-xs shadow-xl"
+          className="fixed bottom-4 right-4 z-40 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-panel px-3 py-2 text-xs shadow-md"
           data-file-online-editor-minimized-dock
         >
           <div className="flex min-w-0 items-center gap-3">
@@ -2224,10 +2228,10 @@ function FileManagerLazyPanelLoading({ label }: { label: string }) {
 function FileManagerModalLoading({ label }: { label: string }) {
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4 text-sm text-muted backdrop-blur-sm"
+      className="fixed inset-0 z-50 grid place-items-center bg-[rgba(4,8,14,.6)] p-4 text-sm text-muted backdrop-blur-sm"
       data-file-manager-modal-loading
     >
-      <div className="grid min-w-[220px] justify-items-center gap-2 rounded-lg border border-line bg-panel px-5 py-4 shadow-xl">
+      <div className="grid min-w-[220px] justify-items-center gap-2 rounded-lg border border-line bg-panel px-5 py-4 shadow-lg">
         <span className="size-6 animate-spin rounded-full border-2 border-line border-t-primary" />
         <span>{label}</span>
       </div>
@@ -2265,11 +2269,11 @@ class FileManagerModalErrorBoundary extends React.Component<
     if (!this.state.error) return this.props.children;
     return (
       <div
-        className="fixed inset-0 z-50 grid place-items-center bg-black/35 p-4 text-sm text-muted backdrop-blur-sm"
+        className="fixed inset-0 z-50 grid place-items-center bg-[rgba(4,8,14,.6)] p-4 text-sm text-muted backdrop-blur-sm"
         data-file-manager-modal-error-boundary
         role="alert"
       >
-        <div className="grid w-full max-w-lg gap-3 rounded-lg border border-danger-line bg-panel px-5 py-4 text-center shadow-xl">
+        <div className="grid w-full max-w-lg gap-3 rounded-lg border border-danger-line bg-panel px-5 py-4 text-center shadow-lg">
           <div className="text-base font-semibold text-danger">
             {this.props.title}
           </div>

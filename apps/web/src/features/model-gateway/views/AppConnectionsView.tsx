@@ -76,6 +76,7 @@ import { formatModelBudgetPair } from "../budget-format";
 import {
   GatewayMark,
   GatewayMetricCard,
+  GatewayStatusDot,
   providerIdentityFromText,
   type GatewayComparison,
 } from "./GatewayUi";
@@ -704,7 +705,10 @@ function ConnectionRow({
       </TableCell>
       <TableCell>
         <span className="mr-1.5 text-xs text-subtle sm:hidden">状态</span>
-        <Badge variant={status.variant}>{status.label}</Badge>
+        <span className="inline-flex items-center gap-1.5">
+          <GatewayStatusDot tone={status.variant} />
+          <Badge variant={status.variant}>{status.label}</Badge>
+        </span>
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap justify-end gap-1.5">

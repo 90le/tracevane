@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import {
+  ArrowRight,
   Bot,
   Gauge,
   HeartPulse,
@@ -12,16 +13,16 @@ import {
   Server,
   ServerCog,
   Settings2,
-  ShieldCheck,
 } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 
-import { Panel, PanelHead, EvidenceRow, ToneBadge, metricTone } from "../_shared";
+import { Panel, PanelHead, EvidenceRow, HostTrustBanner, ToneBadge, metricTone } from "../_shared";
 import { OPENCLAW_SECTIONS } from "../sections";
 import type { PlatformSectionId } from "../types";
 import { usePlatformsAggregate } from "../usePlatformsAggregate";
@@ -80,6 +81,24 @@ export function OpenClawView() {
 
   return (
     <div className="grid gap-[18px]">
+      <PageHeader
+        className="px-0"
+        title="总览"
+        description="平台身份、健康、边界与关键入口。Platform 只承接 OpenClaw 原生平台能力；模型网关、IM、CLI、Workspace 的写入口仍留在各自 owner 域。"
+        meta={<><Badge variant="info">第三方平台</Badge><Badge variant="mute">OpenClaw</Badge></>}
+        actions={<Button variant="outline" size="sm" onClick={refetchAll}>刷新状态</Button>}
+      />
+
+      <HostTrustBanner
+        health={health}
+        recovery={recovery}
+        note="总览只请求轻量 health / recovery 数据，不触发 doctor、命令探测或完整诊断；深度配对与 doctor 证据统一进入诊断页。"
+        actions={<>
+          <Button size="sm" asChild><Link to="/platforms/openclaw/guard"><LifeBuoy />平台守护</Link></Button>
+          <Button variant="outline" size="sm" asChild><Link to="/platforms/openclaw/diagnostics"><HeartPulse />诊断</Link></Button>
+        </>}
+      />
+
       <MetricRail>
         <MetricTile label="网关" value={gatewayUp ? "在线" : "离线"} tone={gatewayUp ? "ok" : "warn"} hint={health ? `端口 ${health.gatewayPort}` : "等待健康数据"} icon={<Server />} />
         <MetricTile label="守护" value={recState ?? "—"} tone={recState ? metricTone(recoveryTone(recState)) : "default"} hint={daemonRunning ? `pid ${recovery?.daemon.pid}` : "daemon 未运行"} icon={<LifeBuoy />} />
@@ -87,26 +106,21 @@ export function OpenClawView() {
         <MetricTile label="运行时长" value={fmtUptime(health?.uptime)} hint={health ? `pid ${health.pid}` : "等待健康数据"} icon={<HeartPulse />} />
       </MetricRail>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-panel px-4 py-3 shadow-sm">
-        <div className="flex min-w-0 flex-1 items-start gap-2 text-sm leading-6 text-muted">
-          <ShieldCheck className="mt-1 size-4 shrink-0 text-primary" />
-          <span>总览只请求轻量 health / recovery 数据，不触发 doctor、命令探测或完整诊断；Platform 管第三方平台原生能力，模型网关、IM、CLI、Workspace 的写入口仍在各自 owner 域。</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" asChild><Link to="/platforms/openclaw/guard"><LifeBuoy />平台守护</Link></Button>
-          <Button variant="outline" size="sm" asChild><Link to="/platforms/openclaw/diagnostics"><HeartPulse />诊断</Link></Button>
-        </div>
-      </div>
-
       <Panel>
         <PanelHead title="子页面入口" sub="按对象分层进入，不在总览堆叠所有表单与日志。" action={<Badge variant="mute">9 个子页</Badge>} />
-        <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
           {primarySections.map((section) => (
-            <Link key={section.id} to={section.path} className="group min-w-0 rounded-sm border border-line bg-panel-2 px-3 py-3 transition hover:border-primary-line hover:bg-primary-soft/40">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel text-muted group-hover:text-primary [&_svg]:size-4">{SECTION_ICONS[section.id] ?? <Server />}</span>
-                <span className="min-w-0 flex-1"><strong className="block truncate text-sm text-ink-strong">{section.label}</strong><span className="line-clamp-2 text-xs leading-5 text-muted">{section.description}</span></span>
-              </div>
+            <Link
+              key={section.id}
+              to={section.path}
+              className="group flex min-w-0 items-center gap-3 rounded-sm bg-panel-2 px-3 py-3 outline-none transition-[background-color,box-shadow,transform] duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:bg-panel-3 focus-visible:shadow-[var(--ring)]"
+            >
+              <span className="grid size-9 shrink-0 place-items-center rounded-md bg-panel-3 text-muted transition-colors duration-[var(--dur-1)] group-hover:bg-primary-soft group-hover:text-primary [&_svg]:size-4">{SECTION_ICONS[section.id] ?? <Server />}</span>
+              <span className="min-w-0 flex-1">
+                <strong className="block truncate text-sm font-medium text-ink-strong">{section.label}</strong>
+                <span className="block truncate text-xs text-muted">{section.description}</span>
+              </span>
+              <ArrowRight className="size-4 shrink-0 text-subtle opacity-0 transition-[color,opacity,transform] duration-[var(--dur-1)] group-hover:translate-x-0.5 group-hover:text-primary group-hover:opacity-100" />
             </Link>
           ))}
         </div>

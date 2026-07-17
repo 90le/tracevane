@@ -2,16 +2,18 @@ import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
 
+import "./motion.css";
+
 /**
- * Shimmer skeleton block (Aurora .skeleton). Compose for placeholder rows/cards.
+ * Shimmer skeleton block. Compose for placeholder rows/cards.
  */
 function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-[7px] bg-panel-3",
-        "after:absolute after:inset-0 after:-translate-x-full after:animate-[aurora-sk_1.3s_ease-in-out_infinite]",
-        "after:bg-[linear-gradient(90deg,transparent,color-mix(in_srgb,var(--ink)_7%,transparent),transparent)]",
+        "relative overflow-hidden rounded-sm bg-panel-3",
+        "after:absolute after:inset-0 after:-translate-x-full after:animate-[tvu-shimmer_1.3s_ease-in-out_infinite]",
+        "after:bg-[linear-gradient(90deg,transparent,color-mix(in_srgb,var(--color-ink)_7%,transparent),transparent)]",
         className
       )}
       {...props}
@@ -29,7 +31,7 @@ function SkeletonRow({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
       )}
       {...props}
     >
-      <Skeleton className="size-[34px] rounded-[9px]" />
+      <Skeleton className="size-[34px] rounded-md" />
       <div className="grid gap-1.5">
         <Skeleton className="h-3.5 w-3/5" />
         <Skeleton className="h-2.5 w-2/5" />

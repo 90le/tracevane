@@ -46,6 +46,7 @@ import type {
   TerminalInstallResponse,
   TerminalInstallTarget,
   TerminalAgentCliId,
+  WorkbenchTone,
 } from "../types";
 import {
   Fact,
@@ -349,7 +350,7 @@ export function CliRuntimeView() {
               className="border-b border-line"
               icon={<Download />}
               title="尚未检测到已安装的 Agent CLI"
-              description="在下方任一运行时行点击“安装”由后端完成安装，或复制全部安装命令在本机终端手动执行，完成后点击“刷新检测”。"
+              description="在下方任一运行时卡片点击“安装”由后端完成安装，或复制全部安装命令在本机终端手动执行，完成后点击“刷新检测”。"
               action={
                 <Button
                   variant="outline"
@@ -362,7 +363,7 @@ export function CliRuntimeView() {
               }
             />
           ) : null}
-          <div className="grid divide-y divide-line">
+          <div className="grid gap-3 p-4 sm:grid-cols-3">
             {AGENT_CLI_ROSTER.map((item) => {
               const binary = byId.get(item.id);
               const target = fallbackInstallTarget(
@@ -374,11 +375,11 @@ export function CliRuntimeView() {
               return (
                 <article
                   key={item.id}
-                  className="grid gap-3 px-4 py-4 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1fr)_auto] lg:items-center"
+                  className="grid min-w-0 content-start gap-3 rounded-md border border-line bg-panel-2 p-4 shadow-sm transition-[border-color,box-shadow] duration-[var(--dur-2)] ease-[var(--ease-standard)] hover:border-line-2"
                 >
-                  <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex items-start justify-between gap-2">
                     <span
-                      className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-md ${toneIconClass(tone)}`}
+                      className={`grid size-9 shrink-0 place-items-center rounded-md ${toneIconClass(tone)}`}
                     >
                       {installed ? (
                         <CheckCircle2 className="size-4" />
@@ -388,39 +389,45 @@ export function CliRuntimeView() {
                         <CircleSlash className="size-4" />
                       )}
                     </span>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-ink-strong">
-                          {item.label}
-                        </h3>
-                        <ToneBadge tone={tone}>
-                          {cliStatusLabel(binary, statusPending)}
-                        </ToneBadge>
-                      </div>
-                      <p className="mt-1 text-sm text-muted">{item.purpose}</p>
-                      <p className="mt-1 truncate text-xs text-subtle">
-                        {binary?.path || binary?.version || item.docsHint}
-                      </p>
-                    </div>
+                    <ToneBadge tone={tone}>
+                      {cliStatusLabel(binary, statusPending)}
+                    </ToneBadge>
                   </div>
 
-                  <div className="grid min-w-0 gap-2 rounded-sm border border-line bg-panel-2 px-3 py-2 text-sm lg:mx-2">
-                    <div className="flex min-w-0 items-center gap-2 text-ink">
-                      <Terminal className="size-4 text-muted" />
-                      <code className="truncate font-mono text-xs sm:text-sm">
-                        {target.installHint}
-                      </code>
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-subtle">
-                      <span>
-                        版本：
-                        {binary?.version || (statusPending ? "检测中" : "—")}
-                      </span>
-                      <span>包：{target.packageName || "本地脚本/手动"}</span>
-                    </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate text-md font-semibold text-ink-strong">
+                      {item.label}
+                    </h3>
+                    <p className="mt-0.5 truncate text-xs text-subtle">
+                      {item.purpose}
+                    </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                  <div className="grid min-w-0 gap-0.5">
+                    <span className="truncate text-lg font-semibold tabular-nums text-ink-strong">
+                      {statusPending
+                        ? "检测中"
+                        : installed
+                          ? binary?.version || "已安装"
+                          : "未安装"}
+                    </span>
+                    <span className="truncate text-xs text-muted">
+                      {binary?.path || item.docsHint}
+                    </span>
+                  </div>
+
+                  <div className="flex min-w-0 items-center gap-2 rounded-sm border border-line bg-panel px-2.5 py-2">
+                    <Terminal className="size-3.5 shrink-0 text-subtle" />
+                    <code className="truncate font-mono text-xs text-muted">
+                      {target.installHint}
+                    </code>
+                  </div>
+
+                  <p className="truncate text-2xs text-subtle">
+                    包：{target.packageName || "本地脚本/手动"}
+                  </p>
+
+                  <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
                     <Button
                       variant={installed ? "outline" : "primary"}
                       size="sm"
@@ -435,7 +442,7 @@ export function CliRuntimeView() {
                       {installed ? "重装/修复" : "安装"}
                     </Button>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => openHash(item.configHref)}
                     >
@@ -445,8 +452,9 @@ export function CliRuntimeView() {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
+                          className="ml-auto px-2"
                           aria-label="复制安装命令"
                           onClick={() => copyText(target.installHint)}
                         >
@@ -459,6 +467,44 @@ export function CliRuntimeView() {
                 </article>
               );
             })}
+          </div>
+
+          <div className="grid gap-3 border-t border-line px-4 py-3 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1fr)_auto] lg:items-center">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="text-2xs font-semibold uppercase tracking-wider text-subtle">
+                运行环境
+              </span>
+              <EnvChip
+                tone={gatewayPending ? "info" : gatewayReady ? "ok" : "warn"}
+                label={`模型网关 · ${gatewayPending ? "检测中" : gatewayReady ? "可用" : "需检查"}`}
+              />
+              <EnvChip
+                tone={
+                  statusPending
+                    ? "info"
+                    : ptyAvailable === false
+                      ? "warn"
+                      : ptyAvailable
+                        ? "ok"
+                        : "mute"
+                }
+                label={`终端 PTY · ${statusPending ? "检测中" : ptyAvailable === false ? "不可用" : ptyAvailable ? "可用" : "—"}`}
+              />
+            </div>
+            <p className="truncate text-xs text-muted">
+              {gatewayPending
+                ? "网关状态检测中"
+                : health
+                  ? `${health.okProviders} 正常 · ${health.degradedProviders} 降级 · ${health.openCircuits} 熔断`
+                  : "网关状态未加载"}
+              {ptyAvailable === false ? " · PTY 不可用" : ""}
+            </p>
+            <span className="text-xs text-subtle lg:justify-self-end">
+              最近检测：
+              {statusPending
+                ? "检测中"
+                : formatTime(terminalStatus.data?.checkedAt)}
+            </span>
           </div>
           <div className="grid border-t border-line sm:grid-cols-4 divide-y divide-line sm:divide-x sm:divide-y-0">
             <Fact label="默认模型">
@@ -535,19 +581,19 @@ export function CliRuntimeView() {
                         : "失败"}
                     </ToneBadge>
                   </div>
-                  <div className="mt-1 text-sm text-muted">
+                  <div className="mt-1 break-all font-mono text-xs text-muted">
                     {result.command ||
                       result.error ||
                       result.path ||
                       "无安装命令记录"}
                   </div>
                   {result.output ? (
-                    <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-panel px-2 py-1 text-xs text-muted">
+                    <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-bg px-2 py-1 text-xs text-muted">
                       {result.output}
                     </pre>
                   ) : null}
                   {result.stderr ? (
-                    <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-panel px-2 py-1 text-xs text-danger">
+                    <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-bg px-2 py-1 text-xs text-danger">
                       {result.stderr}
                     </pre>
                   ) : null}
@@ -648,7 +694,7 @@ export function CliRuntimeView() {
               <EmptyState
                 icon={<CheckCircle2 />}
                 title="没有阻断项"
-                description="需要重装时可在上方任意 CLI 行点击“重装/修复”。"
+                description="需要重装时可在上方任意 CLI 卡片点击“重装/修复”。"
               />
             ) : null}
           </div>
@@ -703,6 +749,24 @@ export function CliRuntimeView() {
   );
 }
 
+const ENV_CHIP_DOT: Record<WorkbenchTone, string> = {
+  ok: "bg-success",
+  warn: "bg-warning",
+  bad: "bg-danger",
+  info: "bg-primary",
+  mute: "bg-subtle",
+};
+
+/** Compact readiness pill used in the runtime panel environment strip. */
+function EnvChip({ tone, label }: { tone: WorkbenchTone; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-1 text-xs text-ink">
+      <span className={`size-1.5 rounded-full ${ENV_CHIP_DOT[tone]}`} />
+      {label}
+    </span>
+  );
+}
+
 function RepairRow({
   icon,
   title,
@@ -717,7 +781,7 @@ function RepairRow({
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
       <span
-        className={`grid size-8 shrink-0 place-items-center rounded-[9px] ${toneIconClass("warn")}`}
+        className={`grid size-8 shrink-0 place-items-center rounded-md [&_svg]:size-4 ${toneIconClass("warn")}`}
       >
         {icon}
       </span>

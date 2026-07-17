@@ -6,7 +6,7 @@ import type { BadgeProps } from "@/design/ui/badge";
 
 import type { WorkbenchTone } from "../types";
 
-/** Panel shell matching the Aurora `.panel` block. */
+/** Panel shell: hairline border + low elevation over the page canvas. */
 export function Panel({
   className,
   children,
@@ -63,7 +63,7 @@ export function ToneBadge({
 export function toneIconClass(tone: WorkbenchTone): string {
   switch (tone) {
     case "ok":
-      return "bg-success/12 text-success";
+      return "bg-success-soft text-success";
     case "warn":
       return "bg-warning-soft text-warning";
     case "bad":
@@ -85,7 +85,7 @@ export function Fact({
 }) {
   return (
     <div className="grid min-w-0 gap-0.5 px-4 py-3">
-      <span className="text-xs text-subtle">{label}</span>
+      <span className="text-2xs uppercase tracking-wider text-subtle">{label}</span>
       <span className="truncate text-sm text-ink-strong">{children}</span>
     </div>
   );

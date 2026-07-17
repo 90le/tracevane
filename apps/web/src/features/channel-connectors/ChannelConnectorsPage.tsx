@@ -58,7 +58,7 @@ const VIEW_COMPONENTS: Record<
 
 function ChannelConnectorsViewFallback() {
   return (
-    <div className="rounded-md border border-line bg-panel">
+    <div className="rounded-md border border-line bg-panel shadow-sm">
       <LoadingState title="正在打开消息接入视图…" />
     </div>
   );

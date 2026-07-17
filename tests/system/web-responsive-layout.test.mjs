@@ -144,7 +144,7 @@ test("file manager fills the routed viewport instead of using hard-coded list he
   assert.match(page, /xl:grid-cols-\[minmax\(0,1fr\)_260px\]/);
   assert.doesNotMatch(page, /xl:fixed xl:bottom-4 xl:right-4/);
   assert.match(chrome, /data-file-manager-command-bar/);
-  assert.match(chrome, /border-b border-line px-3 py-1\.5/);
+  assert.match(chrome, /border-b border-line px-3 py-2/);
   assert.match(list, /data-file-manager-list/);
   assert.match(
     list,

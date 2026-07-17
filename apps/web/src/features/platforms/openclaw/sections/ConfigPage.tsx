@@ -3,12 +3,13 @@ import { useSearchParams } from "react-router-dom";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { SectionNav } from "@/design/ui/section-nav";
 import { toast } from "@/design/ui/sonner";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 import { useOpenClawConfigSummaryQuery, usePatchOpenClawConfigMutation, useSystemDiagnosticsQuery } from "@/lib/query/platform-read";
-import { BoundaryBadge, Panel, PanelHead, ReadOnlyStrip, RefreshButton, WorkbenchToolbar, fmtDate } from "../components";
+import { BoundaryBadge, Panel, PanelHead, ReadOnlyStrip, RefreshButton, fmtDate } from "../components";
 import type { ConfigPatchPayload, ConfigSummaryPayload } from "../../../../../../../types/config";
 
 type ConfigSection = "defaults" | "models" | "runtime" | "security" | "gateway" | "messages" | "extensions" | "browserLogging";
@@ -635,6 +636,16 @@ export function ConfigPage() {
   };
   const activeMeta = CONFIG_SECTIONS.find((section) => section.id === activeSection) ?? CONFIG_SECTIONS[0];
   return <div className="grid gap-[18px]">
+    <PageHeader
+      className="px-0"
+      title="配置"
+      description="OpenClaw config 摘要、默认模型、MCP 与安全边界。分组设置工作台，避免一个巨型表单和无保护覆盖。"
+      meta={<BoundaryBadge />}
+      actions={<>
+        <Badge variant={dirty ? "warn" : "mute"}>{dirty ? "有未保存修改" : `已检查 ${fmtDate(data?.checkedAt)}`}</Badge>
+        <RefreshButton loading={config.isFetching} onClick={() => { void config.refetch(); void diagnostics.refetch(); }} />
+      </>}
+    />
     <ReadOnlyStrip>配置页按 Settings 子页面分层：基础、模型、策略、安全、网关、会话消息、扩展、浏览日志；常用项使用下拉、开关和数字控件，复杂对象回到各自 owner 域。</ReadOnlyStrip>
     <MetricRail>
       <MetricTile label="当前子页" value={activeMeta.title} hint={activeMeta.desc} />
@@ -642,12 +653,9 @@ export function ConfigPage() {
       <MetricTile label="网关端口" value={data?.gateway.port ?? "—"} hint={`${data?.gateway.mode ?? "—"} / ${data?.gateway.bind ?? "—"}`} />
       <MetricTile label="安全" value={data?.sandbox.mode ?? "—"} hint={data?.tools.execSecurity ?? "—"} />
     </MetricRail>
-    <Panel>
-      <WorkbenchToolbar title="OpenClaw 配置" description="分组设置工作台，避免一个巨型表单和无保护覆盖。"><RefreshButton loading={config.isFetching} onClick={() => { void config.refetch(); void diagnostics.refetch(); }} /><BoundaryBadge /><Badge variant={dirty ? "warn" : "mute"}>{dirty ? "有未保存修改" : `已检查 ${fmtDate(data?.checkedAt)}`}</Badge></WorkbenchToolbar>
-      <div className="px-3 py-2">
-        <SectionNav ariaLabel="OpenClaw 配置子页面" items={CONFIG_SECTIONS.map((section) => ({ id: section.id, label: section.title }))} value={activeSection} onChange={(id) => setActiveSection(id as ConfigSection)} />
-      </div>
-    </Panel>
+    <div className="min-w-0">
+      <SectionNav ariaLabel="OpenClaw 配置子页面" items={CONFIG_SECTIONS.map((section) => ({ id: section.id, label: section.title }))} value={activeSection} onChange={(id) => setActiveSection(id as ConfigSection)} />
+    </div>
     <div className="grid gap-[18px]">
       {renderSection(activeSection, draft, setField, setBool, data)}
       <Panel><div className="flex flex-wrap items-center gap-2 px-4 py-3"><Button size="sm" onClick={save} disabled={!dirty || patchConfig.isPending}>{patchConfig.isPending ? "保存中…" : "保存当前配置"}</Button><Button variant="ghost" size="sm" onClick={() => setDraft(currentDraft)} disabled={!dirty || patchConfig.isPending}>重置</Button>{savedAt ? <span className="text-xs text-muted">最近保存：{fmtDate(savedAt)}</span> : null}</div></Panel>

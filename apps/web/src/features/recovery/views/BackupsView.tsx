@@ -21,7 +21,7 @@ import {
   useRestoreRecoveryBackupMutation,
 } from "@/lib/query/recovery";
 import type { OpenClawRecoveryBackupSummary } from "../types";
-import { Pager, Panel, PanelHead, Row, formatBytes, formatTime } from "./shared";
+import { Pager, Panel, PanelHead, formatBytes, formatTime } from "./shared";
 
 const PAGE_SIZE = 8;
 
@@ -111,14 +111,27 @@ export function BackupsView() {
           />
         ) : (
           <>
-            <div className="py-1.5">
+            <div className="grid gap-3 p-4 sm:grid-cols-2">
               {backups.map((backup) => (
-                <Row
+                <div
                   key={backup.id}
-                  icon={<Archive />}
-                  title={backup.fileName || backup.id}
-                  subtitle={`${backup.reason || "backup"} · ${formatBytes(backup.sizeBytes)} · ${formatTime(backup.createdAt)}`}
-                  trailing={
+                  className="grid gap-2.5 rounded-md border border-line bg-panel-2 p-3.5 transition-colors duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:border-line-2"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4">
+                      <Archive />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <strong
+                        className="block truncate text-base text-ink-strong"
+                        title={backup.fileName || backup.id}
+                      >
+                        {backup.fileName || backup.id}
+                      </strong>
+                      <span className="text-2xs text-subtle">
+                        {formatTime(backup.createdAt)}
+                      </span>
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
@@ -128,8 +141,12 @@ export function BackupsView() {
                       <RotateCcw />
                       恢复
                     </Button>
-                  }
-                />
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted">
+                    <Badge variant="mute">{backup.reason || "backup"}</Badge>
+                    <span>{formatBytes(backup.sizeBytes)}</span>
+                  </div>
+                </div>
               ))}
             </div>
             {pagination && (

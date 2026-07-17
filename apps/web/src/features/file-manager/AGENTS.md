@@ -21,7 +21,7 @@ This file applies under `apps/web/src/features/file-manager/`.
 - Monaco owns text buffer and editor-native behaviors; React stores metadata, tabs and view state.
 - Preserve dirty content on close, delete, rename, move, reload and save conflict flows.
 - File operations must route through existing file APIs/mutations and respect permissions.
-- Theme and dense-surface styling must use Aurora tokens, not hardcoded VS Code or terminal colors.
+- Theme and dense-surface styling must use the design tokens in `apps/web/src/design/theme.css` (dark console default), not hardcoded VS Code or terminal colors. Monaco editor colors come from `apps/web/src/shared/editor-core/monacoTheme.ts` (`tracevane-dark` / `tracevane-light`), which mirrors those tokens.
 
 ## Verification
 

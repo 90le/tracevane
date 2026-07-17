@@ -77,7 +77,7 @@ export function GitDiffEditorPanel({ tab }: GitDiffEditorPanelProps) {
             </div>
           </div>
           {payload?.truncated || payload?.contentTruncated ? (
-            <span className="rounded border border-warning/40 bg-warning-soft px-2 py-0.5 text-2xs font-medium text-warning">已截断</span>
+            <span className="rounded border border-warning-line bg-warning-soft px-2 py-0.5 text-2xs font-medium text-warning">已截断</span>
           ) : null}
         </div>
       </div>

@@ -5,20 +5,22 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/design/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-base font-medium transition-[color,background-color,border-color,box-shadow,transform] outline-none focus-visible:shadow-[var(--ring)] disabled:pointer-events-none disabled:opacity-50 active:translate-y-px [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-base font-medium outline-none transition-[background-color,border-color,color,box-shadow,transform] duration-[var(--dur-1)] ease-[var(--ease-standard)] focus-visible:shadow-[var(--ring)] disabled:pointer-events-none disabled:opacity-50 active:translate-y-px [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "border border-line-2 bg-panel text-ink shadow-sm hover:border-primary-line hover:bg-[color-mix(in_srgb,var(--primary)_6%,var(--panel))]",
+          "border border-line-2 bg-panel-2 text-ink shadow-sm hover:border-line-2 hover:bg-panel-3",
         primary:
-          "border border-transparent text-primary-ink bg-[linear-gradient(180deg,color-mix(in_srgb,var(--primary)_92%,#fff_8%),var(--primary))] shadow-[0_8px_20px_-8px_color-mix(in_srgb,var(--primary)_70%,transparent)] hover:bg-primary",
+          "border border-transparent bg-primary text-primary-ink shadow-[0_6px_18px_-6px_color-mix(in_srgb,var(--color-primary)_60%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-primary)_92%,#fff_8%)]",
         ghost:
-          "border border-transparent bg-transparent hover:bg-panel-2 hover:border-line",
+          "border border-transparent bg-transparent hover:bg-panel-2",
         danger:
-          "border border-transparent text-primary-ink bg-[linear-gradient(180deg,color-mix(in_srgb,var(--red)_92%,#fff_8%),var(--red))] shadow-[0_8px_20px_-8px_color-mix(in_srgb,var(--red)_70%,transparent)]",
+          "border border-transparent bg-danger text-primary-ink shadow-[0_6px_18px_-6px_color-mix(in_srgb,var(--color-danger)_55%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-danger)_92%,#fff_8%)]",
+        "danger-soft":
+          "border border-danger-line bg-danger-soft text-danger hover:border-danger/60",
         outline:
-          "border border-line-2 bg-transparent text-ink hover:bg-panel-2 hover:border-primary-line",
+          "border border-line bg-panel-2 text-ink hover:bg-panel-3",
       },
       size: {
         default: "min-h-9 px-[13px]",

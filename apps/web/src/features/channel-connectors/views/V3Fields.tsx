@@ -32,8 +32,8 @@ export function SelectInput({
   return (
     <select
       className={cn(
-        "h-9 w-full rounded-sm border border-line bg-panel-2 px-[11px] text-base text-ink-strong outline-none",
-        "focus-visible:border-primary-line focus-visible:shadow-[var(--ring)] disabled:opacity-50",
+        "h-9 w-full rounded-sm border border-line bg-panel-2 px-[11px] text-base text-ink-strong outline-none transition-[border-color,color,box-shadow,background-color] duration-[var(--dur-1)] ease-[var(--ease-standard)]",
+        "hover:border-line-2 focus-visible:border-primary-line focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}
@@ -48,8 +48,8 @@ export function TextareaInput({
   return (
     <textarea
       className={cn(
-        "min-h-24 w-full resize-y rounded-sm border border-line bg-panel-2 px-[11px] py-2 text-sm text-ink-strong outline-none",
-        "placeholder:text-subtle focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]",
+        "min-h-24 w-full resize-y rounded-sm border border-line bg-panel-2 px-[11px] py-2 text-sm text-ink-strong outline-none transition-[border-color,color,box-shadow,background-color] duration-[var(--dur-1)] ease-[var(--ease-standard)]",
+        "placeholder:text-subtle hover:border-line-2 focus-visible:border-primary-line focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}
@@ -112,7 +112,7 @@ export function ToggleField({
   disabled?: boolean;
 }) {
   return (
-    <label className="flex min-w-0 items-start gap-3 rounded-sm border border-line bg-panel px-3 py-2.5">
+    <label className="flex min-w-0 items-start gap-3 rounded-sm border border-line bg-panel px-3 py-2.5 transition-colors duration-[var(--dur-1)] ease-[var(--ease-standard)] hover:border-line-2">
       <input
         type="checkbox"
         checked={checked}

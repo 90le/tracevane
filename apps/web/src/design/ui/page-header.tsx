@@ -33,7 +33,7 @@ function PageHeader({
       {...props}
     >
       <div className="min-w-0">
-        <h1 className="truncate text-xl font-semibold text-ink-strong">{title}</h1>
+        <h1 className="truncate text-xl font-semibold tracking-tight text-ink-strong">{title}</h1>
         {description ? (
           <p className="mt-1 max-w-[72ch] text-sm text-muted">{description}</p>
         ) : null}

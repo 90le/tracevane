@@ -3,6 +3,7 @@ import { AlertTriangle, ClipboardPaste, Copy, FileInput, FolderInput, ImagePlus,
 
 import { Button } from "@/design/ui/button";
 import { cn } from "@/design/lib/utils";
+import "@/design/ui/motion.css";
 import { toast } from "@/design/ui/sonner";
 import { createDirectory } from "@/lib/api/files";
 import { getTerminalSession } from "@/lib/api/terminal";
@@ -562,7 +563,7 @@ export function TerminalPaneView({
       {menu ? (
         <div
           role="menu"
-          className="fixed z-50 min-w-52 overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+          className="fixed z-50 min-w-52 overflow-y-auto rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-md animate-[tvu-pop-in_var(--dur-1)_var(--ease-standard)]"
           style={{
             left: menu.x,
             top: menu.y,

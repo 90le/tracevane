@@ -156,8 +156,11 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
             <HeartPulse />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-ink-strong">OpenClaw 平台守护</h2>
+            <span className="text-2xs font-semibold uppercase tracking-wider text-subtle">
+              平台守护 · 当前状态
+            </span>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold tracking-tight text-ink-strong">OpenClaw 平台守护</h2>
               <Badge variant={stateBadge.variant}>{stateBadge.label}</Badge>
             </div>
             <p className="mt-1 text-sm text-ink">

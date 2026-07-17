@@ -50,6 +50,7 @@ import type { ModelGatewayViewProps } from "./types";
 import {
   GatewayMark,
   GatewayMetricCard,
+  GatewayStatusDot,
   providerIdentityFromText,
   type GatewayComparison,
 } from "./GatewayUi";
@@ -616,7 +617,10 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                   <TableCell>
                     <span className="mr-1.5 text-xs text-subtle sm:hidden">状态</span>
                     <div className="grid gap-1">
-                      <Badge variant={status.variant}>{status.label}</Badge>
+                      <span className="inline-flex items-center gap-1.5">
+                        <GatewayStatusDot tone={status.variant} />
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      </span>
                       <span className="text-xs text-muted">{providerStatusDetail(provider)}</span>
                     </div>
                   </TableCell>

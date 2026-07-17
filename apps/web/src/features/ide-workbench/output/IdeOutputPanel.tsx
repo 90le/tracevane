@@ -67,7 +67,7 @@ export function IdeOutputPanel() {
       </PanelHeader>
       <div ref={viewportRef} className="min-h-0 overflow-auto bg-canvas px-3 py-1 font-mono text-xs" data-ide-output-events>
         {activeEvents.length ? activeEvents.map((event) => (
-          <div key={event.sequence} className="grid grid-cols-[74px_52px_minmax(0,1fr)] gap-2 border-b border-line/50 py-1 last:border-b-0" data-ide-output-event data-ide-output-level={event.level}>
+          <div key={event.sequence} className="grid grid-cols-[74px_52px_minmax(0,1fr)] gap-2 rounded-sm border-b border-line/50 px-1 py-1 -mx-1 last:border-b-0 hover:bg-panel-2" data-ide-output-event data-ide-output-level={event.level}>
             <span className="tabular-nums text-subtle">{formatOutputTime(event.timestamp)}</span>
             <span className={cn("font-sans text-2xs font-semibold uppercase leading-4 tracking-wide", levelClassName(event.level))}>{event.level}</span>
             <span className="whitespace-pre-wrap break-words text-ink">{event.text}</span>
@@ -90,7 +90,7 @@ function levelClassName(level: WorkbenchOutputLevel) {
   if (level === "error") return "text-danger";
   if (level === "warn") return "text-warning";
   if (level === "debug") return "text-subtle";
-  return "text-primary";
+  return "text-info";
 }
 
 function formatOutputTime(value: string) {

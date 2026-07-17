@@ -5,22 +5,19 @@ import { queryClient } from "@/lib/query/client";
 import { Toaster } from "@/design/ui/sonner";
 
 export type ThemeMode = "light" | "dark";
-export type Palette = "default" | "teal" | "violet" | "graphite";
-
-export const PALETTES: Palette[] = ["default", "teal", "violet", "graphite"];
 
 const THEME_KEY = "tracevane-theme";
-const PALETTE_KEY = "tracevane-palette";
+/** Legacy key from the removed accent-palette feature; cleaned up on load. */
+const LEGACY_PALETTE_KEY = "tracevane-palette";
 
-const DEFAULT_THEME: ThemeMode = "light";
-const DEFAULT_PALETTE: Palette = "default";
+// Dark console is the product default; light stays switchable and is the
+// only theme that needs a data-theme override on <html> (see theme.css).
+const DEFAULT_THEME: ThemeMode = "dark";
 
 interface ThemeContextValue {
   theme: ThemeMode;
-  palette: Palette;
   setTheme: (theme: ThemeMode) => void;
   toggleTheme: () => void;
-  setPalette: (palette: Palette) => void;
 }
 
 const ThemeContext = React.createContext<ThemeContextValue | null>(null);
@@ -46,43 +43,30 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = React.useState<ThemeMode>(() =>
     readStored(THEME_KEY, ["light", "dark"] as const, DEFAULT_THEME),
   );
-  const [palette, setPaletteState] = React.useState<Palette>(() =>
-    readStored(PALETTE_KEY, PALETTES, DEFAULT_PALETTE),
-  );
 
   React.useEffect(() => {
     const root = document.documentElement;
-    root.setAttribute("data-theme", theme);
+    // Dark is the unprefixed :root default — only light needs the attribute.
+    if (theme === "light") {
+      root.setAttribute("data-theme", "light");
+    } else {
+      root.removeAttribute("data-theme");
+    }
     try {
       window.localStorage.setItem(THEME_KEY, theme);
+      window.localStorage.removeItem(LEGACY_PALETTE_KEY);
     } catch {
       /* ignore */
     }
   }, [theme]);
 
-  React.useEffect(() => {
-    const root = document.documentElement;
-    if (palette === "default") {
-      root.removeAttribute("data-palette");
-    } else {
-      root.setAttribute("data-palette", palette);
-    }
-    try {
-      window.localStorage.setItem(PALETTE_KEY, palette);
-    } catch {
-      /* ignore */
-    }
-  }, [palette]);
-
   const value = React.useMemo<ThemeContextValue>(
     () => ({
       theme,
-      palette,
       setTheme: setThemeState,
       toggleTheme: () => setThemeState((prev) => (prev === "light" ? "dark" : "light")),
-      setPalette: setPaletteState,
     }),
-    [theme, palette],
+    [theme],
   );
 
   return (

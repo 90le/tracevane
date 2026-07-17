@@ -6,6 +6,7 @@ import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { Sheet, SheetBody, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/design/ui/sheet";
 import { MetricRail, MetricTile } from "@/design/ui/metric";
+import { PageHeader } from "@/design/ui/page-header";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
@@ -24,7 +25,6 @@ import {
   SearchBox,
   SelectableRow,
   StatusPill,
-  WorkbenchToolbar,
   useSelectedKey,
 } from "../components";
 
@@ -223,6 +223,17 @@ export function BindingsPage() {
   const acpCount = bindings.filter((binding) => binding.type === "acp").length;
   return (
     <div className="grid gap-[18px]">
+      <PageHeader
+        className="px-0"
+        title="原生绑定"
+        description="这里配置 Bot / Account 到 Agent 或 ACP 的 OpenClaw 原生路由关系；编辑在抽屉完成，不使用左右分栏。"
+        meta={<Badge variant="info">可编辑</Badge>}
+        actions={<>
+          <SearchBox value={query} onChange={setQuery} placeholder="搜索 OpenClaw binding / agent" />
+          <Button variant="primary" size="sm" onClick={() => openEditor("new")}><Plus className="size-4" />新增绑定</Button>
+          <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
+        </>}
+      />
       <MetricRail>
         <MetricTile label="原生绑定" value={bindings.length} hint="OpenClaw 静态绑定" />
         <MetricTile label="可选 Agent" value={channels.data?.agents.length ?? 0} hint="来自 OpenClaw 配置" />
@@ -230,12 +241,7 @@ export function BindingsPage() {
         <MetricTile label="ACP 绑定" value={acpCount} tone={acpCount > 0 ? "warn" : "default"} hint="外部 ACP 后端路由" />
       </MetricRail>
       <Panel>
-        <WorkbenchToolbar title="OpenClaw 原生绑定" description="这里配置 Bot / Account 到 Agent 或 ACP 的 OpenClaw 原生路由关系；编辑在抽屉完成，不使用左右分栏。">
-          <SearchBox value={query} onChange={setQuery} placeholder="搜索 OpenClaw binding / agent" />
-          <Button size="sm" onClick={() => openEditor("new")}><Plus className="size-4" />新增绑定</Button>
-          <RefreshButton loading={channels.isFetching} onClick={() => { void channels.refetch(); }} />
-          <Badge variant="info">可编辑</Badge>
-        </WorkbenchToolbar>
+        <PanelHead title="OpenClaw 原生绑定" sub="静态绑定证据；选中一行在底部查看当前规则摘要。" />
         <ResponsiveTable
           columns={["Bot 匹配", "OpenClaw 目标", "匹配范围", "状态", "操作"]}
           rows={filtered.map((binding) => (

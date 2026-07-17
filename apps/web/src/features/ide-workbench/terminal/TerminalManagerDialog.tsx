@@ -5,6 +5,7 @@ import type { TerminalSessionDescriptor } from "@/features/cli-agents/types";
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
+import "@/design/ui/motion.css";
 import { getTerminalSessions } from "@/lib/api/terminal";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { LoadingState } from "@/shared/states/LoadingState";
@@ -149,7 +150,7 @@ export function TerminalManagerDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[60] grid place-items-center bg-canvas/70 p-3 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] grid place-items-center bg-[rgba(4,8,14,.6)] p-3 backdrop-blur-sm animate-[tvu-fade-in_var(--dur-2)_var(--ease-standard)]"
       role="presentation"
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onOpenChange(false);
@@ -160,7 +161,7 @@ export function TerminalManagerDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="ide-terminal-manager-title"
-        className="relative grid max-h-[92vh] w-[min(920px,96vw)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-line-2 bg-panel shadow-lg"
+        className="relative grid max-h-[92vh] w-[min(920px,96vw)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-line bg-panel shadow-lg animate-[tvu-dialog-in_var(--dur-3)_var(--ease-standard)]"
         data-ide-terminal-manager-dialog
       >
         <button

@@ -43,6 +43,7 @@ import { formatModelTokenBudget } from "../budget-format";
 import {
   GatewayMark,
   GatewayMetricCard,
+  GatewayStatusDot,
   ModelLogo,
   providerIdentityFromText,
   type GatewayComparison,
@@ -449,7 +450,10 @@ export function ModelsView({ goToView }: ModelGatewayViewProps) {
                   <TableCell>
                     <div className="flex justify-end">
                       {row.isDefault ? (
-                        <Badge variant="ok">默认</Badge>
+                        <span className="inline-flex items-center gap-1.5">
+                          <GatewayStatusDot tone="ok" />
+                          <Badge variant="ok">默认</Badge>
+                        </span>
                       ) : (
                         <Button
                           variant="ghost"

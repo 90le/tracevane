@@ -3,8 +3,8 @@ import { Toaster as SonnerToaster, toast } from "sonner";
 type ToasterProps = React.ComponentProps<typeof SonnerToaster>;
 
 /**
- * Aurora-themed sonner toaster. Drives colors from Aurora tokens so it
- * tracks light/dark/palette automatically. Mount once near the app root.
+ * Token-driven sonner toaster. Colors come from the design tokens so the
+ * toasts track light/dark automatically. Mount once near the app root.
  */
 function Toaster(props: ToasterProps) {
   return (
@@ -13,13 +13,13 @@ function Toaster(props: ToasterProps) {
       toastOptions={{
         classNames: {
           toast:
-            "!bg-panel !border !border-line !text-ink-strong !shadow-md !rounded-[11px] !text-base",
+            "!bg-panel !border !border-line !text-ink-strong !shadow-lg !rounded-md !text-base",
           description: "!text-muted",
           actionButton: "!bg-primary !text-primary-ink !rounded-sm",
           cancelButton: "!bg-panel-2 !text-muted !rounded-sm",
-          success: "!text-green",
-          error: "!text-red",
-          warning: "!text-amber",
+          success: "!text-success",
+          error: "!text-danger",
+          warning: "!text-warning",
           info: "!text-primary",
         },
       }}

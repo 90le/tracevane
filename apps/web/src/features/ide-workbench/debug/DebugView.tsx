@@ -189,7 +189,7 @@ export function IdeDebugView({
       <div className="min-h-0 overflow-auto overscroll-contain p-2 [scrollbar-width:thin]">
         <PanelSectionLabel className="px-1">启动</PanelSectionLabel>
         <div className="mb-4 grid min-w-0 gap-2">
-          <div className="rounded-md border border-line bg-canvas p-2" data-ide-debug-launch-config>
+          <div className="rounded-md border border-line bg-panel-2 p-2 shadow-sm" data-ide-debug-launch-config>
             <label className="block text-xs font-medium text-subtle" htmlFor="ide-debug-profile-select">启动配置</label>
             <select
               id="ide-debug-profile-select"
@@ -255,7 +255,7 @@ export function IdeDebugView({
               Node Lite
             </Button>
           </div>
-          <div className="flex min-w-0 items-center gap-1 rounded-md border border-line bg-canvas p-1" data-ide-debug-controls>
+          <div className="flex min-w-0 items-center gap-1 rounded-md border border-line bg-panel-2 p-1 shadow-sm" data-ide-debug-controls>
             <DebugToolbarButton icon={<Play />} label="继续" disabled={!canContinue || busy} onClick={() => handleControl("continue")} dataAttr="data-ide-debug-control-continue" />
             <DebugToolbarButton icon={<Pause />} label="暂停" disabled={!canPause || busy} onClick={() => handleControl("pause")} dataAttr="data-ide-debug-control-pause" />
             <DebugToolbarButton icon={<SkipForward />} label="单步跳过" disabled={!canStep || busy} onClick={() => handleControl("stepOver")} dataAttr="data-ide-debug-control-step-over" />
@@ -296,8 +296,8 @@ export function IdeDebugView({
                 <div
                   key={`${breakpoint.rootId}:${breakpoint.path}:${breakpoint.lineNumber}`}
                   className={cn(
-                    "group flex min-w-0 items-center gap-2 rounded-md border bg-canvas px-2 py-1.5",
-                    active ? "border-primary-line ring-1 ring-primary-line" : "border-line",
+                    "group flex min-w-0 items-center gap-2 rounded-md border bg-panel-2 px-2 py-1.5",
+                    active ? "border-primary-line bg-primary-soft/40" : "border-line",
                   )}
                   data-ide-debug-breakpoint-row
                   data-ide-debug-breakpoint-path={breakpoint.path}
@@ -355,7 +355,7 @@ export function IdeDebugView({
             {snapshot.sessions.map((session) => (
               <div
                 key={session.id}
-                className="rounded-md border border-line bg-canvas px-2 py-2 text-sm"
+                className="rounded-md border border-line bg-panel-2 px-2 py-2 text-sm shadow-sm"
                 data-ide-debug-session
                 data-ide-debug-session-state={session.state}
                 data-ide-debug-session-profile={session.profileId}
@@ -394,7 +394,7 @@ export function IdeDebugView({
               <button
                 key={`${activeSession?.id ?? "session"}:${frame.id}`}
                 type="button"
-                className="w-full rounded-md border border-line bg-canvas px-2 py-1.5 text-left outline-none hover:border-primary-line hover:bg-primary-soft/40 focus-visible:shadow-[var(--ring)]"
+                className="w-full rounded-md border border-transparent px-2 py-1.5 text-left outline-none hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
                 onClick={() => onOpenLocation(frame.source)}
                 data-ide-debug-stack-frame
               >
@@ -418,11 +418,11 @@ export function IdeDebugView({
             {scopes.map((scope) => (
               <div
                 key={`${activeSession?.id ?? "session"}:${scope.name}`}
-                className="overflow-hidden rounded-md border border-line bg-canvas"
+                className="overflow-hidden rounded-md border border-line bg-panel-2 shadow-sm"
                 data-ide-debug-scope
                 data-ide-debug-scope-name={scope.name}
               >
-                <div className="border-b border-line bg-panel-2 px-2 py-1.5 text-xs font-semibold text-ink-strong">
+                <div className="border-b border-line bg-panel-3 px-2 py-1.5 text-xs font-semibold text-ink-strong">
                   {scope.name}
                 </div>
                 <div className="grid gap-1 p-2">
@@ -453,7 +453,7 @@ export function IdeDebugView({
             {variables.map((variable) => (
               <div
                 key={`${activeSession?.id ?? "session"}:${variable.name}`}
-                className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-2 rounded-md border border-line bg-canvas px-2 py-1.5 text-xs"
+                className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-2 rounded-md border border-line bg-panel-2 px-2 py-1.5 text-xs"
                 data-ide-debug-variable
                 data-ide-debug-variable-name={variable.name}
               >

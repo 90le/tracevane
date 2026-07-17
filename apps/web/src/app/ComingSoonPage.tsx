@@ -13,23 +13,31 @@ export function ComingSoonPage() {
 
   return (
     <div className="grid min-h-[60dvh] place-items-center">
-      <EmptyState
-        icon={<Construction />}
-        title={`Tracevane「${label}」建设中`}
-        description={
-          item?.subtitle
-            ? `该模块将提供：${item.subtitle} 功能完成后会在这里上线。`
-            : "该模块正在建设中，功能完成后会在这里上线。"
-        }
-        action={
-          <Button asChild variant="outline" size="sm">
-            <Link to="/dashboard">
-              <ArrowLeft />
-              返回首页
-            </Link>
-          </Button>
-        }
-      />
+      <div className="w-full max-w-[560px] rounded-lg border border-line bg-panel shadow-sm">
+        <EmptyState
+          className="px-[28px] py-[64px]"
+          icon={<Construction />}
+          title={`Tracevane「${label}」建设中`}
+          description={
+            item?.subtitle
+              ? `该模块将提供：${item.subtitle} 功能完成后会在这里上线。`
+              : "该模块正在建设中，功能完成后会在这里上线。"
+          }
+          action={
+            <Button asChild variant="outline" size="sm">
+              <Link to="/dashboard">
+                <ArrowLeft />
+                返回首页
+              </Link>
+            </Button>
+          }
+        >
+          <span className="mt-3 font-mono text-2xs text-subtle">
+            {"// "}
+            {pathname}
+          </span>
+        </EmptyState>
+      </div>
     </div>
   );
 }

@@ -36,7 +36,7 @@ function CommandDialog({
       <DialogContent
         showClose={false}
         className={cn(
-          "w-[min(560px,92vw)] overflow-hidden rounded-md border-line-2 p-0",
+          "w-[min(560px,92vw)] overflow-hidden rounded-md p-0",
           contentClassName,
         )}
       >
@@ -62,7 +62,7 @@ const CommandInput = React.forwardRef<
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
-        "flex-1 bg-transparent text-[14.5px] text-ink-strong outline-none placeholder:text-subtle disabled:cursor-not-allowed disabled:opacity-50",
+        "flex-1 bg-transparent text-md text-ink-strong outline-none placeholder:text-subtle disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       {...props}
@@ -126,7 +126,7 @@ const CommandItem = React.forwardRef<
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
-      "flex h-10 cursor-pointer select-none items-center gap-[11px] rounded-lg px-[11px] text-base text-ink outline-none",
+      "flex h-10 cursor-pointer select-none items-center gap-[11px] rounded-md px-[11px] text-base text-ink outline-none transition-[background-color,color] duration-[var(--dur-1)] ease-[var(--ease-standard)]",
       "data-[selected=true]:bg-primary-soft data-[selected=true]:text-ink-strong",
       "data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
       "[&_svg]:size-4 [&_svg]:text-muted data-[selected=true]:[&_svg]:text-primary",

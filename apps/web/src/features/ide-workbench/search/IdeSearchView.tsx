@@ -590,7 +590,7 @@ function SymbolResultRow({
   return (
     <button
       type="button"
-      className="group grid min-w-0 overflow-hidden rounded-sm border border-transparent bg-panel px-2 py-2 text-left outline-none hover:border-primary-line hover:bg-primary-soft/50 focus-visible:shadow-[var(--ring)]"
+      className="group grid min-w-0 overflow-hidden rounded-sm border border-transparent bg-panel px-2 py-2 text-left outline-none hover:bg-panel-2 focus-visible:shadow-[var(--ring)]"
       onClick={onOpen}
       data-ide-symbol-result
       data-ide-symbol-result-name={item.name}
@@ -629,7 +629,7 @@ function SearchResultRow({
         "group grid min-w-0 overflow-hidden rounded-sm border border-transparent bg-panel px-2 py-2 text-left outline-none focus-visible:shadow-[var(--ring)]",
         isDirectory
           ? "cursor-default text-subtle"
-          : "hover:border-primary-line hover:bg-primary-soft/50",
+          : "hover:bg-panel-2",
       )}
       aria-disabled={isDirectory ? "true" : undefined}
       title={isDirectory ? "目录结果仅展示，不会切换资源管理器路径" : result.path}
@@ -643,7 +643,7 @@ function SearchResultRow({
       data-ide-search-result-match={result.matchKind ?? "name"}
     >
       <div className="flex min-w-0 items-center gap-2">
-        {result.kind === "directory" ? <Folder className="size-4 shrink-0 text-amber" /> : <FileText className="size-4 shrink-0 text-primary" />}
+        {result.kind === "directory" ? <Folder className="size-4 shrink-0 text-warning" /> : <FileText className="size-4 shrink-0 text-primary" />}
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-strong">{result.name}</span>
         <span className="shrink-0 rounded border border-line bg-panel-2 px-1.5 py-0.5 text-2xs text-subtle">
           {isDirectory ? "目录" : result.matchKind ?? "name"}
