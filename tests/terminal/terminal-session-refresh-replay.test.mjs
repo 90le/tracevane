@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -60,6 +61,29 @@ async function waitFor(check, timeoutMs = 8_000) {
   throw new Error("timed out waiting for terminal output");
 }
 
+function processIsRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+function forceCleanupProcess(pid) {
+  if (!pid || !processIsRunning(pid)) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    return;
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {}
+}
+
 test("terminal service replays backlog for refresh-like reattach without lastSeq", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
@@ -81,7 +105,7 @@ test("terminal service replays backlog for refresh-like reattach without lastSeq
     service.sendGatewayInput(
       {
         sid: attached.sid,
-        data: `printf '${marker}\\n'\r`,
+        data: `echo ${marker}\r`,
       },
       { connId: "conn-live" },
     );
@@ -145,7 +169,7 @@ test("terminal service replays backlog for refresh-like reattach without lastSeq
       false,
     );
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -163,13 +187,107 @@ test("terminal service exposes launch profile catalog for IDE workspace launcher
     assert.equal(byId["local-shell"]?.targetKind, "local");
     assert.equal(byId["local-shell"]?.launchable, true);
     assert.equal(byId["local-shell"]?.cwd, tempDir);
+    if (process.platform === "win32") {
+      assert.ok(["pwsh", "powershell", "cmd"].includes(byId["local-shell"]?.binaryId));
+      assert.notEqual(byId["local-shell"]?.command.toLowerCase(), "bash");
+    }
     assert.equal(byId["agent-codex"]?.kind, "agent");
     assert.equal(byId["marketplace-clawhub"]?.kind, "marketplace");
     assert.equal(byId["marketplace-skillhub"]?.kind, "marketplace");
     assert.equal(byId["remote-ssh"]?.targetKind, "ssh");
     assert.equal(byId["remote-ssh"]?.launchable, false);
   } finally {
-    service.dispose();
+    await service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal service resolves platform CLI shims without a POSIX shell", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-shim-"));
+  const binDir = path.join(tempDir, "bin with spaces");
+  fs.mkdirSync(binDir, { recursive: true });
+  const executable = path.join(binDir, process.platform === "win32" ? "codex.cmd" : "codex");
+  fs.writeFileSync(
+    executable,
+    process.platform === "win32"
+      ? "@echo off\r\necho codex 99.0.0\r\n"
+      : "#!/bin/sh\nprintf 'codex 99.0.0\\n'\n",
+    "utf8",
+  );
+  if (process.platform !== "win32") fs.chmodSync(executable, 0o755);
+
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${binDir}${path.delimiter}${previousPath || ""}`;
+  const service = createTestService(tempDir);
+
+  try {
+    const status = await service.getStatus();
+    const codex = status.binaries.find((binary) => binary.id === "codex");
+    assert.equal(codex?.installed, true);
+    const resolvedCodexPath = path.resolve(codex?.path || "");
+    const resolvedFixturePath = path.resolve(executable);
+    assert.equal(
+      process.platform === "win32" ? resolvedCodexPath.toLowerCase() : resolvedCodexPath,
+      process.platform === "win32" ? resolvedFixturePath.toLowerCase() : resolvedFixturePath,
+    );
+    assert.match(codex?.version || "", /codex 99\.0\.0/);
+  } finally {
+    await service.dispose();
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal CLI verification timeout cleans the shim descendant process tree", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-shim-timeout-"));
+  const binDir = path.join(tempDir, "bin");
+  const fixturePath = path.join(tempDir, "hang-with-child.mjs");
+  const processRecordFile = path.join(tempDir, "processes.ndjson");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    fixturePath,
+    [
+      'import fs from "node:fs";',
+      'import { spawn } from "node:child_process";',
+      'const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });',
+      'fs.appendFileSync(process.argv[2], `${JSON.stringify({ parentPid: process.pid, childPid: child.pid })}\\n`, "utf8");',
+      'setInterval(() => {}, 1000);',
+    ].join("\n"),
+    "utf8",
+  );
+  const executable = path.join(binDir, process.platform === "win32" ? "codex.cmd" : "codex");
+  fs.writeFileSync(
+    executable,
+    process.platform === "win32"
+      ? `@echo off\r\n"${process.execPath}" "${fixturePath}" "${processRecordFile}"\r\n`
+      : `#!/bin/sh\nexec "${process.execPath}" "${fixturePath}" "${processRecordFile}"\n`,
+    "utf8",
+  );
+  if (process.platform !== "win32") fs.chmodSync(executable, 0o755);
+
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${binDir}${path.delimiter}${previousPath || ""}`;
+  const service = createTestService(tempDir);
+  let ownedPids = [];
+
+  try {
+    await service.getStatus();
+    assert.equal(fs.existsSync(processRecordFile), true, "timeout fixture should start a descendant");
+    const processRecords = fs.readFileSync(processRecordFile, "utf8")
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    ownedPids = processRecords.flatMap((record) => [record.parentPid, record.childPid]);
+    assert.ok(ownedPids.length >= 2);
+    await waitFor(() => ownedPids.every((pid) => !processIsRunning(pid)), 5_000);
+    assert.deepEqual(ownedPids.filter((pid) => processIsRunning(pid)), []);
+  } finally {
+    for (const pid of ownedPids) forceCleanupProcess(pid);
+    await service.dispose();
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -231,7 +349,7 @@ test("terminal service attach responses include authoritative session descriptor
     assert.equal(persistedDescriptor?.profileId, "agent-codex");
     assert.equal(persistedDescriptor?.cwd, tempDir);
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -258,7 +376,7 @@ test("terminal service rejects unknown workspace roots instead of falling back",
       false,
     );
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -297,7 +415,7 @@ test("terminal service creates a persisted session before http stream attach", a
     assert.equal(events.some((event) => event.type === "session"), false);
     assert.equal(streamed.events.some((event) => event.type === "session"), true);
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -344,7 +462,7 @@ test("terminal service starts new pty sessions in requested resource cwd", async
           && String(event.data || "").includes(resourceDir),
       ));
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -393,7 +511,7 @@ test("terminal service treats requested resource files as parent cwd", async () 
           && String(event.data || "").includes(resourceDir),
       ));
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -433,7 +551,7 @@ test("terminal service rejects resume for explicitly ended session ids", async (
     assert.equal(persisted?.status, "completed");
     assert.equal(persisted?.canResume, false);
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -485,7 +603,7 @@ test("terminal service keeps fast gateway input off the full ack replay path", a
       true,
     );
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -575,7 +693,7 @@ test("terminal service consumes leaked gateway resize controls before pty input"
     );
     assert.deepEqual(resizeEvents.at(-1)?.detail, { cols: 132, rows: 44 });
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -634,7 +752,7 @@ test("terminal service can suppress gateway output while streaming over http", a
       false,
     );
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -666,7 +784,7 @@ test("terminal service rejects http stream attach before a session exists", asyn
       false,
     );
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -734,7 +852,7 @@ test("terminal service clear removes replay backlog for refreshed clients", asyn
     assert.ok(clearEvent);
     assert.equal(typeof clearEvent.detail?.outputSeq, "number");
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

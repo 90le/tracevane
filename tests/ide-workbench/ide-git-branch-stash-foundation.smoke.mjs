@@ -89,8 +89,7 @@ function createDefaultWorkbenchLayout(directoryPath = '') {
   };
 }
 
-function setupGitFixture() {
-  const tmpParent = path.join(process.cwd(), '.tmp');
+function setupGitFixture(tmpParent) {
   fs.mkdirSync(tmpParent, { recursive: true });
   const fixtureRoot = fs.mkdtempSync(path.join(tmpParent, 'ide-git-branch-stash-'));
   const repoDir = path.join(fixtureRoot, 'repo');
@@ -110,6 +109,7 @@ function setupGitFixture() {
 }
 
 async function run() {
+  const runnerTempDir = process.env.TRACEVANE_SMOKE_TEMP_DIR;
   const summary = await api('/api/files/summary');
   const roots = summary.roots ?? [];
   const root = roots.find((item) => item.absolutePath && item.absolutePath !== '/' && process.cwd().startsWith(item.absolutePath))
@@ -119,7 +119,7 @@ async function run() {
   const rootId = root?.id;
   if (!rootId || !root.absolutePath) throw new Error('No file root is available for IDE Git branch/stash smoke');
 
-  const { fixtureRoot, repoDir } = setupGitFixture();
+  const { fixtureRoot, repoDir } = setupGitFixture(runnerTempDir || path.join(process.cwd(), '.tmp'));
   const repoRelativePath = relativePathFromRoot(root.absolutePath, repoDir);
   if (!repoRelativePath) throw new Error(`Fixture repo is outside selected root: ${repoDir}`);
   const apiRootId = gitApiRootId(rootId);
@@ -159,6 +159,7 @@ async function run() {
       await page.locator('[data-ide-activity-bar]').getByRole('button', { name: 'Source Control' }).click();
       await page.locator('[data-ide-source-control-view]').waitFor({ state: 'visible', timeout: 30_000 });
 
+      await page.locator('[data-ide-source-control-section-toggle="branches"]').click();
       await page.locator('[data-ide-source-control-branches]').waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator('[data-ide-source-control-branch-row][data-ide-source-control-branch-name-value="main"][data-ide-source-control-branch-current="true"]').waitFor({ state: 'visible', timeout: 30_000 });
       await page.locator('[data-ide-source-control-branch-row][data-ide-source-control-branch-name-value="smoke/branch-ui"]').waitFor({ state: 'visible', timeout: 30_000 });
@@ -167,11 +168,12 @@ async function run() {
       await page.locator('[data-ide-source-control-create-branch]').click();
       await page.locator('[data-ide-source-control-branch-row][data-ide-source-control-branch-name-value="smoke/ui-created"]').waitFor({ state: 'visible', timeout: 30_000 });
 
+      await page.locator('[data-ide-source-control-section-toggle="stashes"]').click();
       await page.locator('[data-ide-source-control-stashes]').waitFor({ state: 'visible', timeout: 30_000 });
-      await page.locator('[data-ide-source-control-stash-message]').fill('smoke stash from ui');
+      await page.locator('[data-ide-source-control-stash-message]').fill('--all');
       await page.locator('[data-ide-source-control-save-stash]').click();
-      await page.locator('[data-ide-source-control-stash-row]').filter({ hasText: 'smoke stash from ui' }).waitFor({ state: 'visible', timeout: 30_000 });
-      await page.locator('[data-ide-source-control-change-count]').filter({ hasText: '0 变更' }).waitFor({ state: 'visible', timeout: 30_000 });
+      await page.locator('[data-ide-source-control-stash-row]').filter({ hasText: '--all' }).waitFor({ state: 'visible', timeout: 30_000 });
+      await page.locator('[data-ide-source-control-empty]').filter({ hasText: '工作区干净' }).waitFor({ state: 'visible', timeout: 30_000 });
     } catch (error) {
       console.error(logs.join('\n'));
       throw error;
@@ -179,7 +181,7 @@ async function run() {
       await browser.close();
     }
   } finally {
-    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    if (!runnerTempDir) fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 
   console.log('ide-git-branch-stash-foundation smoke passed');

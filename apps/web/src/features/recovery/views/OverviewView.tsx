@@ -15,6 +15,11 @@ import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
+import {
+  serviceStateBadge,
+  serviceStateLabel,
+  supervisorLabel,
+} from "@/shared/service-supervisor";
 
 import { useSystemHealthQuery } from "@/lib/query/dashboard";
 import { useRecoveryStatusQuery } from "@/lib/query/recovery";
@@ -83,6 +88,16 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
   const repair = status.lastRepair;
   const policy = status.policy;
   const service = status.service;
+  const serviceLabel = serviceStateLabel(service.manager.state);
+  const serviceBadge = serviceStateBadge(service.manager.state);
+  const serviceSupervisor = supervisorLabel(service.manager.supervisor);
+  const serviceEnabledLabel = service.manager.mode === "session"
+    ? "不适用"
+    : service.manager.enabled == null
+      ? "未检测"
+    : service.manager.enabled
+      ? "已启用"
+      : "未启用";
 
   return (
     <div className="grid gap-[18px]">
@@ -146,9 +161,9 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
           <div className="rounded-sm border border-line bg-panel p-3">
             <span className="text-xs text-subtle">平台守护服务</span>
             <div className="mt-1 text-xl font-semibold text-ink-strong">
-              {service.installed ? service.activeState || "已安装" : "未安装"}
+              {serviceLabel}
             </div>
-            <span className="text-xs text-muted">{service.supervisor}</span>
+            <span className="text-xs text-muted">{serviceSupervisor}</span>
           </div>
         </div>
       </section>
@@ -209,10 +224,10 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
             <Row
               icon={<Server />}
               title="恢复服务"
-              subtitle={`${service.serviceName} · ${service.enabledState || "未知"}`}
+              subtitle={`${service.serviceName} · ${serviceEnabledLabel}`}
               trailing={
-                <Badge variant={service.installed ? "ok" : "mute"}>
-                  {service.installed ? service.activeState || "已安装" : "未安装"}
+                <Badge variant={serviceBadge}>
+                  {serviceLabel}
                 </Badge>
               }
             />

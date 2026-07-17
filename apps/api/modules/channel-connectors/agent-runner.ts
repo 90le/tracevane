@@ -1,4 +1,5 @@
-import { spawn, spawnSync } from "node:child_process";
+import crossSpawn from "cross-spawn";
+import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +12,7 @@ import type {
   ChannelConnectorPlatformId,
   ChannelConnectorReasoningEffort,
 } from "../../../../types/channel-connectors.js";
+import { terminateOwnedProcessTree } from "../../core/owned-command.js";
 import { extractOctoAttachments, extractOctoContent, isOctoGroupChannel } from "./octo-adapter.js";
 
 export interface ChannelConnectorRuntimeProject {
@@ -924,17 +926,29 @@ function uniquePathEntries(values: string[]): string {
   const output: string[] = [];
   for (const value of values) {
     const normalized = normalizeString(value);
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
+    const key = process.platform === "win32" ? normalized.toLowerCase() : normalized;
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
     output.push(normalized);
   }
-  return output.join(":");
+  return output.join(path.delimiter);
 }
 
 function cliPathEnv(): string {
   const home = normalizeString(process.env.HOME) || os.homedir();
+  const currentEntries = (process.env.PATH || "").split(path.delimiter);
+  if (process.platform === "win32") {
+    const appData = normalizeString(process.env.APPDATA) || path.join(home, "AppData", "Roaming");
+    return uniquePathEntries([
+      ...currentEntries,
+      path.join(appData, "npm"),
+      path.join(home, ".bun", "bin"),
+      path.join(home, ".deno", "bin"),
+      path.join(home, ".cargo", "bin"),
+    ]);
+  }
   return uniquePathEntries([
-    ...(process.env.PATH || "").split(":"),
+    ...currentEntries,
     path.join(home, ".local", "bin"),
     path.join(home, "bin"),
     path.join(home, ".npm-global", "bin"),
@@ -956,6 +970,19 @@ function mergeProcessEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
     PATH: cliPathEnv(),
     ...Object.fromEntries(Object.entries(extra).filter(([, value]) => value !== "")),
   };
+}
+
+export function terminateChannelConnectorAgentChild(
+  child: ChildProcess,
+  signal: NodeJS.Signals = "SIGTERM",
+): Promise<string> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve("");
+  return terminateOwnedProcessTree(child, {
+    graceMs: signal === "SIGKILL" ? 0 : 2_000,
+    taskkillTimeoutMs: 5_000,
+  }).catch((error) => {
+    return error instanceof Error ? error.message : String(error);
+  });
 }
 
 function tomlString(value: string): string {
@@ -2306,9 +2333,11 @@ export async function defaultChannelConnectorAgentProcessRunner(
       });
       return;
     }
-    const child = spawn(request.command, request.args, {
+    const child = crossSpawn.spawn(request.command, request.args, {
       cwd: request.cwd,
+      detached: process.platform !== "win32",
       env: mergeProcessEnv(request.env),
+      shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
     const isClaudeCode = request.agent === "claude-code";
@@ -2355,6 +2384,9 @@ export async function defaultChannelConnectorAgentProcessRunner(
     let timeout: NodeJS.Timeout | null = null;
     let stallTimeout: NodeJS.Timeout | null = null;
     let terminalGraceTimeout: NodeJS.Timeout | null = null;
+    let termination: Promise<string> | null = null;
+    let terminationCleanupError = "";
+    let closeObserved = false;
     const progressReason = (event: ChannelConnectorAgentProgressEvent): string => {
       return normalizeString(event.rawType)
         || normalizeString(event.itemType)
@@ -2402,7 +2434,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
             terminalRawType: event.rawType,
           }),
         }));
-        terminateChild();
+        void terminateChild();
       }, terminalProgressGraceMs);
       terminalGraceTimeout.unref();
     };
@@ -2454,21 +2486,35 @@ export async function defaultChannelConnectorAgentProcessRunner(
       }
       if (isClaudeResultLine(line)) closeStdin();
     };
-    const terminateChild = (): void => {
-      child.kill("SIGTERM");
-      setTimeout(() => {
-        if (!settled) child.kill("SIGKILL");
-      }, 2000).unref();
+    const terminateChild = (): Promise<string> => {
+      if (termination) return termination;
+      if (timeout) clearTimeout(timeout);
+      if (stallTimeout) clearTimeout(stallTimeout);
+      if (terminalGraceTimeout) clearTimeout(terminalGraceTimeout);
+      termination = terminateChannelConnectorAgentChild(child, "SIGTERM").then(
+        (cleanupError) => {
+          terminationCleanupError = cleanupError;
+          return cleanupError;
+        },
+        (error) => {
+          terminationCleanupError = error instanceof Error ? error.message : String(error);
+          return terminationCleanupError;
+        },
+      );
+      void termination.then(() => {
+        if (!closeObserved) finishProcess(child.exitCode, child.signalCode);
+      });
+      return termination;
     };
     const abortListener = (): void => {
       if (settled) return;
       cancelled = true;
-      terminateChild();
+      void terminateChild();
     };
     request.signal?.addEventListener("abort", abortListener, { once: true });
     const armTimeout = (): void => {
       if (timeout) clearTimeout(timeout);
-      if (settled) return;
+      if (settled || termination) return;
       if (usesHeartbeatTimeout && heartbeatTimeoutMs <= 0) return;
       const timeoutMs = activeHeartbeatTimeoutMs();
       const usingAsyncTaskGrace = asyncTaskGraceActive();
@@ -2493,12 +2539,12 @@ export async function defaultChannelConnectorAgentProcessRunner(
             text: timeoutErrorMessage,
           }));
         }
-        terminateChild();
+        void terminateChild();
       }, timeoutMs);
     };
     const armStallTimeout = (): void => {
       if (stallTimeout) clearTimeout(stallTimeout);
-      if (!usesHeartbeatTimeout || heartbeatStallMs <= 0 || settled) return;
+      if (!usesHeartbeatTimeout || heartbeatStallMs <= 0 || settled || termination) return;
       const stallDelayMs = heartbeatStallDelayMs(heartbeatStallMs, heartbeatOnlyNoticeCount);
       stallTimeout = setTimeout(() => {
         if (settled) return;
@@ -2565,6 +2611,46 @@ export async function defaultChannelConnectorAgentProcessRunner(
       request.signal?.removeEventListener("abort", abortListener);
     };
 
+    function finishProcess(
+      exitCode: number | null,
+      signal: NodeJS.Signals | null,
+    ): void {
+      if (settled) return;
+      settle();
+      for (const trailingEvent of progressParser.parse(stdoutLineBuffer)) {
+        emitProgress(trailingEvent);
+      }
+      for (const trailingEvent of progressParser.flushFinal()) {
+        emitProgress(trailingEvent);
+      }
+      if (isClaudeCode && stdoutLineBuffer) void handleClaudeCodeLine(stdoutLineBuffer);
+      cleanupChannelConnectorAgentProcessRequest(request);
+      const terminalProgressFailed = terminalProgressEvent
+        ? terminalProgressEvent.type === "failed" || terminalProgressEvent.type === "error"
+        : false;
+      const effectiveExitCode = terminalProgressForcedExit && terminalProgressEvent?.type === "completed"
+        ? 0
+        : exitCode;
+      const processError = cancelled
+        ? "Agent process cancelled."
+        : timedOut ? timeoutErrorMessage || "Agent process timed out."
+          : terminalProgressFailed ? terminalProgressEvent?.text || "Agent process reported a terminal failure."
+            : null;
+      resolve({
+        exitCode: effectiveExitCode,
+        signal,
+        stdout,
+        stderr,
+        durationMs: Date.now() - startedAt,
+        timedOut,
+        cancelled,
+        error: terminationCleanupError
+          ? [processError, `Agent process cleanup failed: ${terminationCleanupError}`].filter(Boolean).join(" ")
+          : processError,
+        progressEvents,
+      });
+    }
+
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdin.on("error", (error) => {
@@ -2606,37 +2692,13 @@ export async function defaultChannelConnectorAgentProcessRunner(
       });
     });
     child.on("close", (exitCode, signal) => {
+      closeObserved = true;
       if (settled) return;
-      settle();
-      for (const trailingEvent of progressParser.parse(stdoutLineBuffer)) {
-        emitProgress(trailingEvent);
+      if (termination) {
+        void termination.then(() => finishProcess(exitCode, signal));
+      } else {
+        finishProcess(exitCode, signal);
       }
-      for (const trailingEvent of progressParser.flushFinal()) {
-        emitProgress(trailingEvent);
-      }
-      if (isClaudeCode && stdoutLineBuffer) void handleClaudeCodeLine(stdoutLineBuffer);
-      cleanupChannelConnectorAgentProcessRequest(request);
-      const terminalProgressFailed = terminalProgressEvent
-        ? terminalProgressEvent.type === "failed" || terminalProgressEvent.type === "error"
-        : false;
-      const effectiveExitCode = terminalProgressForcedExit && terminalProgressEvent?.type === "completed"
-        ? 0
-        : exitCode;
-      resolve({
-        exitCode: effectiveExitCode,
-        signal,
-        stdout,
-        stderr,
-        durationMs: Date.now() - startedAt,
-        timedOut,
-        cancelled,
-        error: cancelled
-          ? "Agent process cancelled."
-          : timedOut ? timeoutErrorMessage || "Agent process timed out."
-            : terminalProgressFailed ? terminalProgressEvent?.text || "Agent process reported a terminal failure."
-              : null,
-        progressEvents,
-      });
     });
     if (request.stdin) writeStdinLine(request.stdin);
     if (!isClaudeCode || !request.stdin) closeStdin();
@@ -2912,11 +2974,12 @@ function opencodeDbPath(env: NodeJS.ProcessEnv): string | null {
 }
 
 function runSqliteJson(dbPath: string, query: string, env: NodeJS.ProcessEnv): Record<string, unknown>[] {
-  const result = spawnSync("sqlite3", ["-json", dbPath, query], {
+  const result = crossSpawn.sync("sqlite3", ["-json", dbPath, query], {
     encoding: "utf8",
     env,
     timeout: 5000,
     maxBuffer: 1024 * 1024,
+    shell: false,
   });
   if (result.error || result.status !== 0) return [];
   try {

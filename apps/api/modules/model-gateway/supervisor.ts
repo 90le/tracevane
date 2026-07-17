@@ -3,309 +3,179 @@ import path from "node:path";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import {
   MODEL_GATEWAY_DAEMON_SERVICE_NAME,
-  type ModelGatewayDaemonServiceAction,
-  type ModelGatewayDaemonServiceCommand,
+  MODEL_GATEWAY_DEFAULT_HOST,
+  MODEL_GATEWAY_DEFAULT_PORT,
   type ModelGatewayDaemonServicePlan,
   type ModelGatewayDaemonServiceTemplate,
-  type ModelGatewaySupervisorKind,
 } from "../../../../types/model-gateway.js";
+import type { TracevaneServiceMode } from "../../../../types/supervisor.js";
+import {
+  createSupervisorPlan,
+  type ServiceDefinition,
+  type SupervisorPlan,
+} from "../supervisor/index.js";
 
 const LAUNCHD_LABEL = "dev.openclaw.tracevane.model-gateway";
 const WINDOWS_TASK_NAME = "TracevaneModelGateway";
 
-function normalizeHome(config: TracevaneServerConfig): string {
+export interface CreateModelGatewayServiceDefinitionOptions {
+  mode?: TracevaneServiceMode;
+  platform?: NodeJS.Platform;
+  host?: string;
+  port?: number;
+}
+
+export interface CreateModelGatewayDaemonServicePlanOptions {
+  homeDir?: string;
+  host?: string;
+  port?: number;
+}
+
+export function resolveModelGatewaySupervisorHome(
+  config: TracevaneServerConfig,
+): string {
   const openclawRoot = path.resolve(config.openclawRoot);
   return path.basename(openclawRoot) === ".openclaw"
     ? path.dirname(openclawRoot)
     : process.env.HOME || os.homedir();
 }
 
-function daemonEntryPath(config: TracevaneServerConfig): string {
-  return path.join(config.projectRoot, "dist", "apps", "api", "model-gateway-daemon.js");
+function persistentSupervisor(platform: NodeJS.Platform): string {
+  if (platform === "darwin") return "launchd-user";
+  if (platform === "win32") return "scheduled-task";
+  return "systemd-user";
 }
 
-function quoteSystemdValue(value: string): string {
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
+export function createModelGatewayServiceDefinition(
+  config: TracevaneServerConfig,
+  options: CreateModelGatewayServiceDefinitionOptions = {},
+): ServiceDefinition {
+  const mode = options.mode ?? "session";
+  const platform = options.platform ?? process.platform;
+  const host = options.host ?? MODEL_GATEWAY_DEFAULT_HOST;
+  const port = options.port ?? MODEL_GATEWAY_DEFAULT_PORT;
+  const supervisor = mode === "session"
+    ? "session"
+    : persistentSupervisor(platform);
+  const stateRoot = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "model-gateway",
+  );
 
-function escapeSystemdPath(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/ /g, "\\x20");
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-function inheritedProxyEnvironment(): Array<[string, string]> {
-  return [
-    "HTTP_PROXY",
-    "HTTPS_PROXY",
-    "ALL_PROXY",
-    "NO_PROXY",
-    "http_proxy",
-    "https_proxy",
-    "all_proxy",
-    "no_proxy",
-  ]
-    .map((key) => [key, process.env[key] || ""] as [string, string])
-    .filter(([, value]) => value.trim());
-}
-
-function command(label: string, commandName: string, args: string[]): ModelGatewayDaemonServiceCommand {
-  return { label, command: commandName, args };
-}
-
-function launchdUserDomain(): string {
-  return typeof process.getuid === "function" ? `gui/${process.getuid()}` : "gui/$UID";
-}
-
-function buildSystemdTemplate(options: {
-  nodePath: string;
-  daemonEntry: string;
-  projectRoot: string;
-  openclawRoot: string;
-  proxyEnv: Array<[string, string]>;
-}): string {
-  return [
-    "[Unit]",
-    "Description=Tracevane Model Gateway",
-    "After=network-online.target",
-    "",
-    "[Service]",
-    "Type=simple",
-    `WorkingDirectory=${escapeSystemdPath(options.projectRoot)}`,
-    `Environment=${quoteSystemdValue(`OPENCLAW_STATE_DIR=${options.openclawRoot}`)}`,
-    `Environment=${quoteSystemdValue("MODEL_GATEWAY_SUPERVISOR=systemd-user")}`,
-    ...options.proxyEnv.map(([key, value]) => `Environment=${quoteSystemdValue(`${key}=${value}`)}`),
-    `ExecStart=${quoteSystemdValue(options.nodePath)} ${quoteSystemdValue(options.daemonEntry)}`,
-    "Restart=always",
-    "RestartSec=2",
-    "",
-    "[Install]",
-    "WantedBy=default.target",
-    "",
-  ].join("\n");
-}
-
-function buildLaunchdTemplate(options: {
-  nodePath: string;
-  daemonEntry: string;
-  projectRoot: string;
-  openclawRoot: string;
-  proxyEnv: Array<[string, string]>;
-}): string {
-  const proxyLines = options.proxyEnv.flatMap(([key, value]) => [
-    `    <key>${escapeXml(key)}</key>`,
-    `    <string>${escapeXml(value)}</string>`,
-  ]);
-  return [
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
-    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
-    "<plist version=\"1.0\">",
-    "<dict>",
-    "  <key>Label</key>",
-    `  <string>${escapeXml(LAUNCHD_LABEL)}</string>`,
-    "  <key>ProgramArguments</key>",
-    "  <array>",
-    `    <string>${escapeXml(options.nodePath)}</string>`,
-    `    <string>${escapeXml(options.daemonEntry)}</string>`,
-    "  </array>",
-    "  <key>WorkingDirectory</key>",
-    `  <string>${escapeXml(options.projectRoot)}</string>`,
-    "  <key>EnvironmentVariables</key>",
-    "  <dict>",
-    "    <key>OPENCLAW_STATE_DIR</key>",
-    `    <string>${escapeXml(options.openclawRoot)}</string>`,
-    ...proxyLines,
-    "  </dict>",
-    "  <key>RunAtLoad</key>",
-    "  <true/>",
-    "  <key>KeepAlive</key>",
-    "  <true/>",
-    "</dict>",
-    "</plist>",
-    "",
-  ].join("\n");
-}
-
-function buildWindowsTaskTemplate(options: {
-  nodePath: string;
-  daemonEntry: string;
-  projectRoot: string;
-  openclawRoot: string;
-  proxyEnv: Array<[string, string]>;
-}): string {
-  return [
-    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
-    "<Task version=\"1.4\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">",
-    "  <RegistrationInfo>",
-    "    <Description>Tracevane Model Gateway</Description>",
-    "  </RegistrationInfo>",
-    "  <Triggers>",
-    "    <LogonTrigger>",
-    "      <Enabled>true</Enabled>",
-    "    </LogonTrigger>",
-    "  </Triggers>",
-    "  <Principals>",
-    "    <Principal id=\"Author\">",
-    "      <LogonType>InteractiveToken</LogonType>",
-    "      <RunLevel>LeastPrivilege</RunLevel>",
-    "    </Principal>",
-    "  </Principals>",
-    "  <Settings>",
-    "    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
-    "    <RestartOnFailure>",
-    "      <Interval>PT30S</Interval>",
-    "      <Count>999</Count>",
-    "    </RestartOnFailure>",
-    "    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
-    "  </Settings>",
-    "  <Actions Context=\"Author\">",
-    "    <Exec>",
-    `      <Command>${escapeXml(options.nodePath)}</Command>`,
-    `      <Arguments>${escapeXml(options.daemonEntry)}</Arguments>`,
-    `      <WorkingDirectory>${escapeXml(options.projectRoot)}</WorkingDirectory>`,
-    "    </Exec>",
-    "  </Actions>",
-    "</Task>",
-    `<!-- OPENCLAW_STATE_DIR=${escapeXml(options.openclawRoot)} -->`,
-    "",
-  ].join("\n");
-}
-
-function commandsFor(supervisor: ModelGatewaySupervisorKind, configPath: string): Partial<Record<ModelGatewayDaemonServiceAction, ModelGatewayDaemonServiceCommand[]>> {
-  if (supervisor === "systemd-user") {
-    return {
-      install: [
-        command("Reload user systemd units", "systemctl", ["--user", "daemon-reload"]),
-        command("Enable daemon service", "systemctl", ["--user", "enable", MODEL_GATEWAY_DAEMON_SERVICE_NAME]),
-      ],
-      start: [command("Start daemon service", "systemctl", ["--user", "start", MODEL_GATEWAY_DAEMON_SERVICE_NAME])],
-      stop: [command("Stop daemon service", "systemctl", ["--user", "stop", MODEL_GATEWAY_DAEMON_SERVICE_NAME])],
-      restart: [command("Restart daemon service", "systemctl", ["--user", "restart", MODEL_GATEWAY_DAEMON_SERVICE_NAME])],
-      status: [
-        command("Check daemon active state", "systemctl", ["--user", "is-active", MODEL_GATEWAY_DAEMON_SERVICE_NAME]),
-        command("Check daemon enabled state", "systemctl", ["--user", "is-enabled", MODEL_GATEWAY_DAEMON_SERVICE_NAME]),
-      ],
-    };
-  }
-  if (supervisor === "launchd-user") {
-    const domain = launchdUserDomain();
-    return {
-      install: [
-        command("Bootstrap launchd agent", "launchctl", ["bootstrap", domain, configPath]),
-        command("Enable launchd agent", "launchctl", ["enable", `${domain}/${LAUNCHD_LABEL}`]),
-      ],
-      start: [command("Kickstart launchd agent", "launchctl", ["kickstart", "-k", `${domain}/${LAUNCHD_LABEL}`])],
-      stop: [command("Bootout launchd agent", "launchctl", ["bootout", `${domain}/${LAUNCHD_LABEL}`])],
-      restart: [command("Restart launchd agent", "launchctl", ["kickstart", "-k", `${domain}/${LAUNCHD_LABEL}`])],
-      status: [command("Print launchd agent status", "launchctl", ["print", `${domain}/${LAUNCHD_LABEL}`])],
-    };
-  }
-  if (supervisor === "scheduled-task") {
-    return {
-      install: [command("Create scheduled task", "schtasks.exe", ["/Create", "/TN", WINDOWS_TASK_NAME, "/XML", configPath, "/F"])],
-      start: [command("Run scheduled task", "schtasks.exe", ["/Run", "/TN", WINDOWS_TASK_NAME])],
-      stop: [command("Stop scheduled task", "schtasks.exe", ["/End", "/TN", WINDOWS_TASK_NAME])],
-      restart: [
-        command("Stop scheduled task", "schtasks.exe", ["/End", "/TN", WINDOWS_TASK_NAME]),
-        command("Run scheduled task", "schtasks.exe", ["/Run", "/TN", WINDOWS_TASK_NAME]),
-      ],
-      status: [command("Query scheduled task", "schtasks.exe", ["/Query", "/TN", WINDOWS_TASK_NAME])],
-    };
-  }
-  return {};
-}
-
-function templateFor(
-  supervisor: ModelGatewaySupervisorKind,
-  platform: ModelGatewayDaemonServiceTemplate["platform"],
-  configPath: string,
-  options: {
-    nodePath: string;
-    daemonEntry: string;
-    projectRoot: string;
-    openclawRoot: string;
-    proxyEnv: Array<[string, string]>;
-  },
-): ModelGatewayDaemonServiceTemplate {
-  const template = supervisor === "systemd-user"
-    ? buildSystemdTemplate(options)
-    : supervisor === "launchd-user"
-      ? buildLaunchdTemplate(options)
-      : buildWindowsTaskTemplate(options);
   return {
-    supervisor,
-    platform,
-    serviceName: supervisor === "launchd-user"
-      ? LAUNCHD_LABEL
-      : supervisor === "scheduled-task"
-        ? WINDOWS_TASK_NAME
-        : MODEL_GATEWAY_DAEMON_SERVICE_NAME,
-    configPath,
-    template,
-    commands: commandsFor(supervisor, configPath),
+    id: "model-gateway",
+    displayName: "Tracevane Model Gateway",
+    serviceName: MODEL_GATEWAY_DAEMON_SERVICE_NAME,
+    windowsTaskName: WINDOWS_TASK_NAME,
+    launchdLabel: LAUNCHD_LABEL,
+    entryPath: path.join(
+      config.projectRoot,
+      "dist",
+      "apps",
+      "api",
+      "model-gateway-daemon.js",
+    ),
+    workingDirectory: config.projectRoot,
+    configPath: config.openclawConfigFile,
+    runtimePath: path.join(stateRoot, "daemon-runtime.json"),
+    logPath: path.join(stateRoot, "logs", "daemon.log"),
+    healthUrl:
+      `http://127.0.0.1:${port}/api/model-gateway/status`,
+    args: [
+      "--state-dir",
+      config.openclawRoot,
+      "--host",
+      host,
+      "--port",
+      String(port),
+      "--supervisor",
+      supervisor,
+      "--service-name",
+      MODEL_GATEWAY_DAEMON_SERVICE_NAME,
+    ],
   };
 }
 
-export function createModelGatewayDaemonServicePlan(config: TracevaneServerConfig): ModelGatewayDaemonServicePlan {
-  const home = normalizeHome(config);
-  const nodePath = process.execPath;
-  const daemonEntry = daemonEntryPath(config);
-  const common = {
-    nodePath,
-    daemonEntry,
-    projectRoot: config.projectRoot,
-    openclawRoot: config.openclawRoot,
-    proxyEnv: inheritedProxyEnvironment(),
+function compatibilityTemplate(
+  platform: ModelGatewayDaemonServiceTemplate["platform"],
+  plan: SupervisorPlan,
+): ModelGatewayDaemonServiceTemplate {
+  return {
+    supervisor: plan.supervisor,
+    platform,
+    serviceName: plan.serviceName,
+    configPath: plan.configPath,
+    template: plan.template,
+    commands: plan.commands,
+  };
+}
+
+export function createModelGatewayDaemonServicePlan(
+  config: TracevaneServerConfig,
+  options: CreateModelGatewayDaemonServicePlanOptions = {},
+): ModelGatewayDaemonServicePlan {
+  const homeDir = options.homeDir ?? resolveModelGatewaySupervisorHome(config);
+  const host = options.host ?? MODEL_GATEWAY_DEFAULT_HOST;
+  const port = options.port ?? MODEL_GATEWAY_DEFAULT_PORT;
+  const definitions = {
+    linux: createModelGatewayServiceDefinition(config, {
+      mode: "persistent",
+      platform: "linux",
+      host,
+      port,
+    }),
+    macos: createModelGatewayServiceDefinition(config, {
+      mode: "persistent",
+      platform: "darwin",
+      host,
+      port,
+    }),
+    windows: createModelGatewayServiceDefinition(config, {
+      mode: "persistent",
+      platform: "win32",
+      host,
+      port,
+    }),
   };
   const templates = [
-    templateFor(
-      "systemd-user",
+    compatibilityTemplate(
       "linux",
-      path.join(home, ".config", "systemd", "user", MODEL_GATEWAY_DAEMON_SERVICE_NAME),
-      common,
+      createSupervisorPlan(definitions.linux, "linux", homeDir),
     ),
-    templateFor(
-      "launchd-user",
+    compatibilityTemplate(
       "macos",
-      path.join(home, "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`),
-      common,
+      createSupervisorPlan(definitions.macos, "darwin", homeDir),
     ),
-    templateFor(
-      "scheduled-task",
+    compatibilityTemplate(
       "windows",
-      path.join(home, "AppData", "Roaming", "OpenClaw", "Tracevane", `${WINDOWS_TASK_NAME}.xml`),
-      common,
+      createSupervisorPlan(definitions.windows, "win32", homeDir),
     ),
   ];
-
-  const supervisor: ModelGatewaySupervisorKind = process.platform === "darwin"
-    ? "launchd-user"
+  const selectedPlatform = process.platform === "darwin"
+    ? "macos"
     : process.platform === "win32"
-      ? "scheduled-task"
-      : "systemd-user";
-  const selectedTemplate = templates.find((item) => item.supervisor === supervisor) || templates[0];
+      ? "windows"
+      : "linux";
+  const selectedTemplate = templates.find(
+    (template) => template.platform === selectedPlatform,
+  )!;
+  const definition = definitions[selectedPlatform];
 
   return {
     platform: process.platform,
     supported: true,
-    supervisor,
+    supervisor: selectedTemplate.supervisor,
     serviceName: selectedTemplate.serviceName,
-    nodePath,
-    daemonEntry,
+    nodePath: process.execPath,
+    daemonEntry: definition.entryPath,
     stateDir: config.openclawRoot,
     selectedTemplate,
     templates,
     notes: [
-      "Install writes only the selected user-service template unless runCommands is true.",
-      "CLI takeover should keep using the daemon loopback endpoint, not the OpenClaw single-port mount.",
-      "Restart guarantees require the selected OS/user supervisor to be installed and enabled.",
+      "Development defaults to an API-owned session supervisor.",
+      "Persistent installation is explicit and current-user scoped.",
+      "Templates contain trusted launch state only; secrets and proxy credentials are not persisted.",
     ],
   };
 }

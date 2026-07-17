@@ -186,13 +186,16 @@ test("Overview view can smoke each visible active route by scope", () => {
   assert.match(overview, /model: route\.resolvedModel \?\? undefined/);
   assert.match(overview, /smokeAllActiveRoutes/);
   assert.match(overview, /for \(const route of checkableRoutes\)/);
-  assert.match(overview, /routeSmokeResults/);
-  assert.match(overview, /ROUTE_SMOKE_STORAGE_KEY/);
-  assert.match(overview, /readStoredRouteSmokeResults/);
-  assert.match(overview, /writeStoredRouteSmokeResults/);
-  assert.match(overview, /routeSmokeKey\(route\)/);
+  assert.doesNotMatch(overview, /route\.scope !== "codex"/);
+  assert.match(overview, /route\.verification/);
+  assert.doesNotMatch(overview, /routeSmokeResults/);
+  assert.doesNotMatch(overview, /ROUTE_SMOKE_STORAGE_KEY/);
+  assert.doesNotMatch(overview, /localStorage/);
   assert.match(overview, /checkedAt/);
-  assert.match(overview, /已验 \$\{lastSmoke\.latencyMs/);
+  assert.match(overview, /未验证/);
+  assert.match(overview, /通过/);
+  assert.match(overview, /失败/);
+  assert.match(overview, /过期/);
   assert.match(overview, /routeBudgetLabel\(route, providerList\)/);
   assert.match(overview, /formatModelBudgetPair/);
   assert.match(overview, /disabled=\{!canSmoke \|\| smokeMutation\.isPending\}/);
@@ -206,6 +209,12 @@ test("Overview view can smoke each visible active route by scope", () => {
 test("Overview view exposes a route cockpit for route and client readiness", () => {
   const overview = read(`${VIEWS_DIR}/OverviewView.tsx`);
   assert.match(overview, /模型路由总览/);
+  assert.match(overview, /fixed: \{ variant: "ok", label: "已固定" \}/);
+  assert.match(overview, /auto: \{ variant: "ok", label: "自动选择" \}/);
+  assert.match(overview, /fallback: \{ variant: "warn", label: "已降级" \}/);
+  assert.match(overview, /missing: \{ variant: "bad", label: "未解析" \}/);
+  assert.match(overview, /label="路由已解析"/);
+  assert.doesNotMatch(overview, /label="路由可用"/);
   assert.match(overview, /MODEL_GATEWAY_APP_SCOPES\.map/);
   assert.match(overview, /APP_SCOPE_LABEL/);
   assert.match(overview, /connectionForScope\(scope, appConnections\)/);
@@ -215,6 +224,9 @@ test("Overview view exposes a route cockpit for route and client readiness", () 
   assert.match(overview, /客户端接入风险/);
   assert.match(overview, /运行中状态看\s*CLI Agents/);
   assert.match(overview, /appConnectionIssues/);
+  assert.doesNotMatch(overview, /connection\.id !== "codex"/);
+  assert.doesNotMatch(overview, /账户直连/);
+  assert.match(overview, /configuredConnectionCount\}\/\{appConnections\.length/);
   assert.match(overview, /配置写入 \/ 回滚/);
   assert.match(overview, /检查全部/);
   assert.match(overview, /检查路由/);
@@ -235,8 +247,9 @@ test("Overview view exposes a route cockpit for route and client readiness", () 
 
 test("Daemon service panel refreshes real supervisor status", () => {
   const panel = read(`${VIEWS_DIR}/DaemonServicePanel.tsx`);
-  assert.match(panel, /runCommands: true/);
-  assert.doesNotMatch(panel, /runCommands: action !== "status"/);
+  assert.match(panel, /const manager = data\?\.manager/);
+  assert.match(panel, /\{ action, mode, apply: true \}/);
+  assert.doesNotMatch(panel, /runCommands/);
   assert.match(panel, /激活/);
   assert.match(panel, /开机自启/);
 });
@@ -378,8 +391,22 @@ test("App Connections view links client config rows to active route diagnostics"
   assert.match(apps, /connection\.appScope/);
   assert.match(apps, /connection\.protocol/);
   assert.match(apps, /connection\.endpoint/);
+  assert.doesNotMatch(apps, /保持账户直连/);
+  assert.doesNotMatch(apps, /gatewayManagedConnections/);
+  assert.match(apps, /connection\.configured \? "重新应用" : "应用"/);
+  assert.match(apps, /connections\.filter\(\(connection\) => connection\.configured\)/);
   assert.match(apps, /实际路由/);
   assert.match(apps, /formatModelBudgetPair/);
   assert.match(apps, /<Table className="table-fixed">/);
   assert.match(apps, /<colgroup>/);
+});
+
+test("App Connections confirmation dialog keeps block diff outside DialogDescription", () => {
+  const apps = read(`${VIEWS_DIR}/AppConnectionsView.tsx`);
+  const dialogStart = apps.indexOf("function ConfirmWriteDialog");
+  const descriptionStart = apps.indexOf("<DialogDescription", dialogStart);
+  const descriptionEnd = apps.indexOf("</DialogDescription>", descriptionStart);
+  const diffStart = apps.indexOf("<DiffView", descriptionStart);
+  assert.ok(dialogStart >= 0 && descriptionStart > dialogStart && descriptionEnd > descriptionStart);
+  assert.ok(diffStart > descriptionEnd, "DiffView must be a sibling after DialogDescription, not a descendant of its paragraph");
 });

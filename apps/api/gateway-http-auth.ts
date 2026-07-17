@@ -132,6 +132,45 @@ function readExpectedSecrets(config: TracevaneServerConfig): {
   return { mode, secrets, configured };
 }
 
+function isCanonicalLoopbackRemote(req: http.IncomingMessage): boolean {
+  const remoteAddress = req.socket?.remoteAddress || '';
+  return remoteAddress === '127.0.0.1'
+    || remoteAddress === '::1'
+    || remoteAddress === '::ffff:127.0.0.1';
+}
+
+function allowsCanonicalLoopbackOrigin(req: http.IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  if (typeof origin !== 'string' || !origin || origin !== origin.trim()) {
+    return false;
+  }
+  try {
+    const parsed = new URL(origin);
+    const hostname = parsed.hostname.toLowerCase().replace(/^\[(.*)\]$/, '$1');
+    return parsed.origin === origin
+      && (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      && (hostname === 'localhost'
+        || hostname === '127.0.0.1'
+        || hostname === '::1');
+  } catch {
+    return false;
+  }
+}
+
+export function isTracevaneTrustedManagementRequest(
+  config: TracevaneServerConfig,
+  req: http.IncomingMessage,
+): boolean {
+  if (isCanonicalLoopbackRemote(req) && allowsCanonicalLoopbackOrigin(req)) {
+    return true;
+  }
+  const { mode, secrets, configured } = readExpectedSecrets(config);
+  return configured
+    && Boolean(mode && mode !== 'none' && secrets.length)
+    && isTracevaneGatewayHttpAuthorized(config, req);
+}
+
 function isHtmlNavigation(req: http.IncomingMessage): boolean {
   try {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);

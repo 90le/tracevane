@@ -69,11 +69,12 @@ test("OpenClaw read surfaces are split into workbench pages instead of one aggre
 
 
 
-test("OpenClaw guard service status probes live manager state instead of preserving unknown", () => {
+test("OpenClaw guard service status uses the canonical manager snapshot", () => {
   const service = read("apps/api/modules/openclaw-recovery/service.ts");
-  assert.match(service, /function preferKnownState/);
-  assert.match(service, /live && live !== "unknown"/);
-  assert.match(service, /probe: true/);
+  assert.match(service, /daemonServiceManager\.manage/);
+  assert.match(service, /service: serviceSnapshot\(managed\.manager\)/);
+  assert.match(service, /activeState: legacyActiveState\(manager\)/);
+  assert.doesNotMatch(service, /function preferKnownState/);
   assert.doesNotMatch(service, /activeState: stored\.activeState \|\| snapshot\.activeState/);
 });
 

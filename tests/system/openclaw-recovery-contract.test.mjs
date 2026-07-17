@@ -24,6 +24,7 @@ const gatewayRuntimeSource = read("apps/api/modules/openclaw-recovery/gateway-ru
 const gatewayServiceSource = read("apps/api/modules/openclaw-recovery/gateway-service.ts");
 const probeSource = read("apps/api/modules/openclaw-recovery/probe.ts");
 const repairSource = read("apps/api/modules/openclaw-recovery/repair.ts");
+const recoveryTypesSource = read("types/openclaw-recovery.ts");
 const systemServiceSource = read("apps/api/modules/system/service.ts");
 const systemRoutesSource = read("apps/api/modules/system/routes.ts");
 const typesIndexSource = read("types/index.ts");
@@ -41,13 +42,35 @@ test("OpenClaw recovery service is wired into the API context and routes", () =>
   assert.match(typesIndexSource, /openclaw-recovery/);
 });
 
+test("OpenClaw recovery daemon-service contract requires the shared manager without exposing launch controls", () => {
+  const request = recoveryTypesSource.match(
+    /export interface OpenClawRecoveryDaemonServiceRequest \{[\s\S]*?\n\}/,
+  )?.[0] || "";
+  const snapshot = recoveryTypesSource.match(
+    /export interface OpenClawRecoveryDaemonServiceSnapshot \{[\s\S]*?\n\}/,
+  )?.[0] || "";
+
+  assert.match(recoveryTypesSource, /TracevaneServiceMode/);
+  assert.match(request, /mode\?: TracevaneServiceMode;/);
+  assert.match(snapshot, /manager: TracevaneServiceManagerStatus;/);
+  assert.doesNotMatch(
+    request,
+    /(?:^|\s)(?:executable|entryPath|command|args|argv|cwd|workingDirectory|environment|healthUrl|configPath|serviceName)\??\s*:/im,
+  );
+  assert.match(routesSource, /router\.get\([\s\S]*?\/api\/openclaw-recovery\/daemon-service/);
+  assert.match(routesSource, /router\.post\([\s\S]*?\/api\/openclaw-recovery\/daemon-service/);
+});
+
 test("recovery daemon separates lightweight probes from heavy repair commands", () => {
   assert.match(daemonSource, /probeOpenClawGateway/);
   assert.match(daemonSource, /failureThresholdMs/);
   assert.match(daemonSource, /repairCooldownMs/);
   assert.match(daemonSource, /runOpenClawRecoveryRepair/);
-  assert.match(serviceSource, /getRecoveryDaemonServiceSnapshot/);
-  assert.match(serviceSource, /applyRecoveryDaemonServiceAction/);
+  assert.match(serviceSource, /createOpenClawRecoveryServiceDefinition/);
+  assert.match(serviceSource, /createServiceManager/);
+  assert.match(serviceSource, /daemonServiceManager\.manage/);
+  assert.doesNotMatch(serviceSource, /getRecoveryDaemonServiceSnapshot/);
+  assert.doesNotMatch(serviceSource, /applyRecoveryDaemonServiceAction/);
   assert.match(serviceSource, /action === "config-repair"/);
   assert.match(serviceSource, /runOpenClawRecoveryConfigRepair/);
   assert.match(cliBootstrapSource, /ensureOpenClawCliAvailable/);

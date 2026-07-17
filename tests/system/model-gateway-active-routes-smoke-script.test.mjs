@@ -898,8 +898,9 @@ test("model gateway active route smoke restores active providers and lock on SIG
       ...process.env,
       TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
       TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_CONTROL: "stdio",
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
   const stdout = [];
   const stderr = [];
@@ -908,7 +909,10 @@ test("model gateway active route smoke restores active providers and lock on SIG
   try {
     await waitFor(() => gateway.requests.some((request) => request.path === "/api/model-gateway/active-route-smoke"));
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex", opencode: "glm" });
-    child.kill("SIGTERM");
+    child.stdin.write(`${JSON.stringify({
+      type: "tracevane-active-route-smoke-stop",
+      signal: "SIGTERM",
+    })}\n`);
     const exit = await new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
     assert.equal(exit.code, 143, Buffer.concat(stderr).toString("utf8"));
     assert.equal(exit.signal, null);

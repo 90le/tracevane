@@ -123,8 +123,7 @@ async function run() {
 
   const prefix = `tracevane-ide-command-palette-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const repoParentRelativePath = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
-  const smokeParent = repoParentRelativePath ? `${repoParentRelativePath}/tmp` : 'tmp';
-  const smokeDir = `${smokeParent}/${prefix}`;
+  const smokeDir = repoParentRelativePath ? `${repoParentRelativePath}/${prefix}` : prefix;
   const symbolPath = `${smokeDir}/palette-symbol.ts`;
   const symbolContent = [
     'export class TracevanePaletteSymbolAlpha {',

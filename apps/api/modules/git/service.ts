@@ -490,7 +490,12 @@ function buildRemoteArgs(remote?: string, branch?: string): string[] {
 }
 
 function currentBranchName(repositoryRoot: string): string {
-  const branch = runGit(repositoryRoot, ["branch", "--show-current"]).trim();
+  let branch = "";
+  try {
+    branch = runGit(repositoryRoot, ["symbolic-ref", "--quiet", "--short", "HEAD"]).trim();
+  } catch {
+    // Detached HEAD has no symbolic branch name.
+  }
   if (!branch) {
     throw new Error("Current Git branch is detached or unavailable");
   }
@@ -662,8 +667,9 @@ function parseBranchSummaryLine(line: string): GitBranchSummary | null {
 function listBranches(repositoryRoot: string): GitBranchSummary[] {
   try {
     const output = runGit(repositoryRoot, [
-      "branch",
+      "for-each-ref",
       "--format=%(refname:short)%00%(HEAD)%00%(upstream:short)%00%(objectname:short)%00%(subject)",
+      "refs/heads",
     ]);
     return output
       .split(/\r?\n/)
@@ -677,7 +683,7 @@ function listBranches(repositoryRoot: string): GitBranchSummary[] {
 
 function listRemoteBranches(repositoryRoot: string): string[] {
   try {
-    const output = runGit(repositoryRoot, ["branch", "-r", "--format=%(refname:short)"]);
+    const output = runGit(repositoryRoot, ["for-each-ref", "--format=%(refname:short)", "refs/remotes"]);
     return output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   } catch {
     return [];
@@ -1509,9 +1515,9 @@ export function createGitService(
       const { resolved, repositoryRoot } = resolveRepositoryRoot(config, rootId, directoryPath);
       runGit(repositoryRoot, [
         "stash",
-        "push",
+        "save",
         ...(includeUntracked ? ["--include-untracked"] : []),
-        "-m",
+        "--",
         normalizeStashMessage(message),
       ]);
       return buildStatus(resolved.root.id, resolved.relativePath);

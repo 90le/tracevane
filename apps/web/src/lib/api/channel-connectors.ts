@@ -165,10 +165,12 @@ export function getChannelConnectorsDaemonService(
 /** POST /api/channel-connectors/daemon/service — preview/install/lifecycle actions. */
 export function manageChannelConnectorsDaemonService(
   payload: ChannelConnectorsDaemonRequest = {},
+  signal?: AbortSignal,
 ): Promise<ChannelConnectorsDaemonResponse> {
   return apiRequest<ChannelConnectorsDaemonResponse>(`${BASE}/daemon/service`, {
     method: "POST",
     body: jsonBody(payload),
+    signal,
   });
 }
 

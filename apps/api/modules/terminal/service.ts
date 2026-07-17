@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { exec, execFile, spawnSync } from "node:child_process";
+import { exec, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,6 +8,7 @@ import type http from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
+import { runOwnedCommand } from "../../core/owned-command.js";
 import { resolveFilesServiceDirectoryPath, resolveFilesServiceExistingFilePath } from "../files/service.js";
 import { isRecoverableTerminalStatus } from "../../../../types/terminal.js";
 import type { SkillsService } from "../skills/service.js";
@@ -52,7 +53,20 @@ import type {
 
 const require = createRequire(import.meta.url);
 const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
+
+interface WhichModule {
+  sync(
+    command: string,
+    options?: {
+      all?: boolean;
+      nothrow?: boolean;
+      path?: string;
+      pathExt?: string;
+    },
+  ): string | string[] | null;
+}
+
+const whichModule = require("which") as WhichModule;
 
 type PtyModule = typeof import("@homebridge/node-pty-prebuilt-multiarch");
 type PtyInstance = ReturnType<PtyModule["spawn"]>;
@@ -116,6 +130,9 @@ interface TerminalSession {
   lastAttachedAt: string | null;
   durableBackend: "pty" | "tmux";
   tmuxSessionName: string | null;
+  endRequested: boolean;
+  exitPromise: Promise<void>;
+  resolveExit: () => void;
 }
 
 type TerminalSessionLaunchMetadata = Partial<TerminalGatewayAttachPayload>;
@@ -146,7 +163,7 @@ interface TerminalCliSpec {
 
 interface TerminalPackageManager {
   id: string;
-  checkCommand: string;
+  binary: string;
   installCommand: (pkg: string) => string;
 }
 
@@ -170,6 +187,8 @@ const TERMINAL_SESSION_GRACE_MS = 30 * 60 * 1000;
 const TERMINAL_BUFFER_LIMIT = 256 * 1024;
 const TERMINAL_INSTALL_TIMEOUT_MS = 8 * 60 * 1000;
 const TERMINAL_BINARY_VERIFY_TIMEOUT_MS = 2_500;
+const TERMINAL_SESSION_STOP_TIMEOUT_MS = 5_000;
+const TERMINAL_SESSION_KILL_ATTEMPTS = 5;
 const TERMINAL_GATEWAY_LEASE_MS = 35_000;
 const TERMINAL_GATEWAY_SWEEP_INTERVAL_MS = 10_000;
 const TERMINAL_DESCRIPTOR_ACTIVITY_FLUSH_MS = 1_500;
@@ -362,7 +381,11 @@ const TERMINAL_CLI_SPECS: Record<TerminalBinaryId, TerminalCliSpec> = {
     packageName: null,
     category: "shell",
     installMode: "none",
-    verifyArgs: ["-Version"],
+    verifyArgs: [
+      "-NoProfile",
+      "-Command",
+      "$PSVersionTable.PSVersion.ToString()",
+    ],
   },
   cmd: {
     id: "cmd",
@@ -378,25 +401,30 @@ const TERMINAL_CLI_SPECS: Record<TerminalBinaryId, TerminalCliSpec> = {
 const TERMINAL_PACKAGE_MANAGERS: TerminalPackageManager[] = [
   {
     id: "npm",
-    checkCommand: "command -v npm",
+    binary: "npm",
     installCommand: (pkg) => `npm install -g ${pkg}`,
   },
   {
     id: "pnpm",
-    checkCommand: "command -v pnpm",
+    binary: "pnpm",
     installCommand: (pkg) => `pnpm add -g ${pkg}`,
   },
   {
     id: "yarn",
-    checkCommand: "command -v yarn",
+    binary: "yarn",
     installCommand: (pkg) => `yarn global add ${pkg}`,
   },
   {
     id: "bun",
-    checkCommand: "command -v bun",
+    binary: "bun",
     installCommand: (pkg) => `bun add -g ${pkg}`,
   },
 ];
+
+function terminalInstallSupported(spec: TerminalCliSpec): boolean {
+  if (spec.installMode === "none") return false;
+  return spec.installMode !== "script" || process.platform !== "win32";
+}
 
 function shellQuote(raw: string): string {
   return `"${String(raw || "").replace(/(["\\$`])/g, "\\$1")}"`;
@@ -438,6 +466,74 @@ function isWindowsMountedPath(binPath: string): boolean {
     .trim()
     .toLowerCase();
   return normalized.startsWith("/mnt/c/") || normalized.startsWith("/mnt/d/");
+}
+
+function isWindowsWslLauncher(binPath: string): boolean {
+  if (process.platform !== "win32") return false;
+  const normalized = path.normalize(String(binPath || "")).toLowerCase();
+  return normalized.endsWith("\\windows\\system32\\bash.exe") ||
+    normalized.includes("\\microsoft\\windowsapps\\bash.exe");
+}
+
+function resolveExecutableCandidates(binary: string): string[] {
+  try {
+    const resolved = whichModule.sync(binary, { all: true, nothrow: true });
+    const candidates = Array.isArray(resolved) ? resolved : resolved ? [resolved] : [];
+    return candidates
+      .map((candidate) => String(candidate || "").trim())
+      .filter((candidate, index, all) => candidate && all.indexOf(candidate) === index);
+  } catch {
+    return [];
+  }
+}
+
+async function verifyExecutable(
+  command: string,
+  args: readonly string[],
+  timeoutMs = TERMINAL_BINARY_VERIFY_TIMEOUT_MS,
+): Promise<{ success: boolean; output: string }> {
+  try {
+    const result = await runOwnedCommand(command, [...args], {
+      timeoutMs,
+      maxOutputBytes: 4 * 1024 * 1024,
+    });
+    return {
+      success: result.ok,
+      output: [result.stdout, result.stderr].filter(Boolean).join("\n").trim(),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      output: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function resolveDefaultTerminalShell(): {
+  binaryId: TerminalBinaryId;
+  command: string;
+} {
+  if (process.platform === "win32") {
+    for (const binaryId of ["pwsh", "powershell", "cmd"] as const) {
+      const resolved = resolveExecutableCandidates(binaryId)[0];
+      if (resolved) return { binaryId, command: resolved };
+    }
+    return {
+      binaryId: "cmd",
+      command: String(process.env.ComSpec || "cmd.exe").trim() || "cmd.exe",
+    };
+  }
+
+  const configured = String(process.env.SHELL || "").trim();
+  const configuredId = path.basename(configured).toLowerCase() as TerminalBinaryId;
+  if (configured && ["bash", "sh", "zsh", "fish"].includes(configuredId)) {
+    return { binaryId: configuredId, command: configured };
+  }
+  for (const binaryId of ["bash", "sh"] as const) {
+    const resolved = resolveExecutableCandidates(binaryId)[0];
+    if (resolved) return { binaryId, command: resolved };
+  }
+  return { binaryId: "sh", command: "sh" };
 }
 
 function normalizeSessionId(value: string | null | undefined): string {
@@ -665,18 +761,26 @@ export interface TerminalService {
     socket: Duplex,
     head: Buffer,
   ): boolean;
-  dispose(): void;
+  dispose(): Promise<void>;
 }
 
 export interface CreateTerminalServiceOptions {
   config: TracevaneServerConfig;
   skills: SkillsService;
+  ptyModule?: PtyModule | null;
+  sessionStopTimeoutMs?: number;
 }
 
 export function createTerminalService(
   options: CreateTerminalServiceOptions,
 ): TerminalService {
-  const pty = createOptionalPty();
+  const pty = options.ptyModule === undefined
+    ? createOptionalPty()
+    : options.ptyModule;
+  const sessionStopTimeoutMs = Math.max(
+    50,
+    options.sessionStopTimeoutMs ?? TERMINAL_SESSION_STOP_TIMEOUT_MS,
+  );
   const wss = new WebSocketServer({ noServer: true });
   const sessions = new Map<string, TerminalSession>();
   const persistenceStateDir = path.join(
@@ -1415,52 +1519,58 @@ export function createTerminalService(
     return events;
   }
 
-  function destroySession(sessionId: string): void {
-    const session = sessions.get(sessionId);
-    if (!session) return;
-    flushGatewayOutput(session);
-    clearCleanupTimer(session);
-    clearDescriptorPersistTimer(session);
-    sessions.delete(sessionId);
-    session.closed = true;
-    appendLedgerEvent(session, "ended", { reason: "session_ended" }, null);
-    descriptorStore.upsert(buildSessionDescriptor(session, "completed"));
-    broadcastGatewayEvent(session, {
-      type: "closed",
-      sid: session.id,
-      reason: "session_ended",
+  function waitForTerminalExit(
+    exitPromise: Promise<void>,
+    timeoutMs = sessionStopTimeoutMs,
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (exited: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve(exited);
+      };
+      const timeout = setTimeout(() => finish(false), timeoutMs);
+      void exitPromise.then(() => finish(true), () => finish(false));
     });
-    broadcastStreamEvent(session, {
-      type: "closed",
-      sid: session.id,
-      reason: "session_ended",
-    });
-    for (const client of Array.from(session.clients)) {
-      try {
-        client.close();
-      } catch {}
-    }
-    session.clients.clear();
-    session.gatewaySubscribers.clear();
-    session.streamSubscribers.clear();
-    forceKillTerminalProcess(session);
   }
 
-  function forceKillTerminalProcess(session: TerminalSession, attempt = 0): void {
-    let needsRetry = false;
-    if (session.durableBackend === "tmux") {
-      needsRetry = !killTmuxSession(session.tmuxSessionName) || hasTmuxSession(session.tmuxSessionName);
+  async function destroySession(sessionId: string): Promise<boolean> {
+    const session = sessions.get(sessionId);
+    if (!session) return true;
+    session.endRequested = true;
+    return forceKillTerminalProcess(session);
+  }
+
+  async function forceKillTerminalProcess(session: TerminalSession): Promise<boolean> {
+    const deadline = Date.now() + sessionStopTimeoutMs;
+    const attemptBudgetMs = Math.ceil(
+      sessionStopTimeoutMs / TERMINAL_SESSION_KILL_ATTEMPTS,
+    );
+
+    for (let attempt = 0; attempt < TERMINAL_SESSION_KILL_ATTEMPTS; attempt += 1) {
+      if (session.closed || !sessions.has(session.id)) return true;
+      if (session.durableBackend === "tmux") {
+        killTmuxSession(session.tmuxSessionName);
+      }
+      try {
+        if (attempt === 0) session.term.kill();
+        else session.term.kill("SIGKILL");
+      } catch {
+        // A failed signal is not proof of exit; the bounded retry loop confirms it.
+      }
+
+      const remainingMs = Math.max(0, deadline - Date.now());
+      if (remainingMs <= 0) break;
+      const exited = await waitForTerminalExit(
+        session.exitPromise,
+        Math.min(attemptBudgetMs, remainingMs),
+      );
+      if (exited || session.closed || !sessions.has(session.id)) return true;
     }
-    try {
-      session.term.kill();
-    } catch {
-      needsRetry = true;
-    }
-    if (!needsRetry || attempt >= 4) return;
-    const retryTimer = setTimeout(() => {
-      forceKillTerminalProcess(session, attempt + 1);
-    }, 500 * (attempt + 1));
-    retryTimer.unref?.();
+
+    return session.closed || !sessions.has(session.id);
   }
 
   function scheduleCleanup(session: TerminalSession): void {
@@ -1474,7 +1584,7 @@ export function createTerminalService(
     session.cleanupTimer = setTimeout(() => {
       const current = sessions.get(session.id);
       if (!current || getActiveClientCount(current) > 0) return;
-      destroySession(session.id);
+      void destroySession(session.id);
     }, TERMINAL_SESSION_GRACE_MS);
     session.cleanupTimer.unref?.();
   }
@@ -1588,7 +1698,7 @@ export function createTerminalService(
   function normalizeTerminalShell(value: unknown): string | null {
     const raw = String(value || "").trim();
     if (!raw) return null;
-    const shellName = path.basename(raw).toLowerCase();
+    const shellName = path.basename(raw).toLowerCase().replace(/\.exe$/, "");
     if (!ALLOWED_TERMINAL_SHELLS.has(shellName)) {
       throw new Error(`terminal_shell_not_allowed: ${shellName || raw}`);
     }
@@ -1599,13 +1709,18 @@ export function createTerminalService(
     profileId: unknown,
     requestedShell: unknown,
   ): string {
-    const normalizedProfileId = String(profileId || "").trim();
-    if (normalizedProfileId && !KNOWN_TERMINAL_PROFILE_IDS.has(normalizedProfileId)) {
+    const requestedProfileId = String(profileId || "").trim();
+    const normalizedProfileId = requestedProfileId || "local-shell";
+    if (!KNOWN_TERMINAL_PROFILE_IDS.has(normalizedProfileId)) {
       throw new Error(`terminal_profile_not_allowed: ${normalizedProfileId}`);
     }
 
-    const explicitShell = normalizeTerminalShell(requestedShell);
-    if (explicitShell) return explicitShell;
+    const explicitShell = requestedProfileId === "local-shell"
+      ? null
+      : normalizeTerminalShell(requestedShell);
+    if (explicitShell) {
+      return resolveExecutableCandidates(explicitShell)[0] || explicitShell;
+    }
 
     const shellByProfileId: Record<string, string> = {
       "shell-bash": "bash",
@@ -1617,9 +1732,12 @@ export function createTerminalService(
       "shell-cmd": "cmd",
     };
     const profileShell = shellByProfileId[normalizedProfileId];
-    if (profileShell) return profileShell;
+    if (profileShell) {
+      return resolveExecutableCandidates(profileShell)[0] || profileShell;
+    }
 
-    return normalizeTerminalShell(process.env.SHELL) || "bash";
+    if (process.platform === "win32") return resolveDefaultTerminalShell().command;
+    return normalizeTerminalShell(process.env.SHELL) || resolveDefaultTerminalShell().command;
   }
 
   function resolveLaunchCwd(metadata: TerminalSessionLaunchMetadata = {}): string {
@@ -1670,7 +1788,14 @@ export function createTerminalService(
         );
         assertResolvedTerminalRoot(file.root.id, rootId);
         return path.dirname(file.absolutePath);
-      } catch {
+      } catch (fileError) {
+        if (
+          [directoryError, fileError].some((error) =>
+            error instanceof Error && error.message === "Unknown file root"
+          )
+        ) {
+          throw new Error(`Terminal workspace root was not found: ${rootId}`);
+        }
         throw directoryError;
       }
     }
@@ -1765,6 +1890,10 @@ export function createTerminalService(
       cwd,
       env: buildTerminalEnv(options.config),
     });
+    let resolveExit = () => {};
+    const exitPromise = new Promise<void>((resolve) => {
+      resolveExit = resolve;
+    });
 
     const session: TerminalSession = {
       id: sessionId,
@@ -1803,6 +1932,9 @@ export function createTerminalService(
       title: String((metadata as TerminalSessionLaunchMetadata & { title?: string | null }).title || `Terminal ${sessionId}`).trim() || `Terminal ${sessionId}`,
       durableBackend: launchMetadata.durableBackend,
       tmuxSessionName: launchMetadata.tmuxSessionName,
+      endRequested: false,
+      exitPromise,
+      resolveExit,
     };
 
     term.onData((data) => {
@@ -1813,14 +1945,18 @@ export function createTerminalService(
     term.onExit((event) => {
       const alreadyClosed = session.closed;
       flushGatewayOutput(session);
+      const closeReason = session.endRequested ? "session_ended" : "session_exited";
       if (!alreadyClosed) {
         const closedEvent: TerminalGatewayEvent = {
           type: "closed",
           sid: session.id,
-          reason: "session_exited",
+          reason: closeReason,
         };
         broadcastGatewayEvent(session, closedEvent);
         broadcastStreamEvent(session, closedEvent);
+      }
+      if (session.endRequested) {
+        appendLedgerEvent(session, "ended", { reason: "session_ended" }, null);
       }
       appendLedgerEvent(
         session,
@@ -1846,6 +1982,7 @@ export function createTerminalService(
       clearDescriptorPersistTimer(session);
       sessions.delete(session.id);
       session.closed = true;
+      session.resolveExit();
     });
 
     sessions.set(session.id, session);
@@ -1895,11 +2032,18 @@ export function createTerminalService(
     return nextDescriptor;
   }
 
-  function endSessionById(sid: string): TerminalEndResponse {
+  async function endSessionById(sid: string): Promise<TerminalEndResponse> {
     const existed = sessions.has(sid);
     let ended = existed;
     if (existed) {
-      destroySession(sid);
+      const stopped = await destroySession(sid);
+      if (!stopped) {
+        return {
+          success: false,
+          sid,
+          ended: false,
+        };
+      }
       markPersistedSessionEnded(sid);
     } else {
       ended = Boolean(markPersistedSessionEnded(sid));
@@ -2152,48 +2296,27 @@ export function createTerminalService(
   async function checkBinary(
     spec: TerminalCliSpec,
   ): Promise<TerminalBinaryStatus> {
-    const [whichResult, commandVResult] = await Promise.all([
-      runCommand(`which -a ${spec.binary}`),
-      runCommand(`command -v ${spec.binary}`),
-    ]);
-
-    const candidates: string[] = [];
-    for (const line of String(whichResult.output || "").split("\n")) {
-      const value = line.trim();
-      if (value && !candidates.includes(value)) candidates.push(value);
-    }
-    for (const line of String(commandVResult.output || "").split("\n")) {
-      const value = line.trim();
-      if (value && !candidates.includes(value)) candidates.push(value);
-    }
+    const candidates = resolveExecutableCandidates(spec.binary);
+    const compatibleCandidates = candidates.filter((item) => !isWindowsWslLauncher(item));
 
     const binaryPath =
-      candidates.find((item) => !isWindowsMountedPath(item)) || "";
+      compatibleCandidates.find((item) => !isWindowsMountedPath(item)) || "";
     const hasOnlyWindowsMountedCandidates =
-      !binaryPath && candidates.some((item) => isWindowsMountedPath(item));
+      !binaryPath && compatibleCandidates.some((item) => isWindowsMountedPath(item));
+    const hasOnlyUnsupportedCandidates =
+      !binaryPath && candidates.length > 0 && compatibleCandidates.length === 0;
 
     const verifyArgs = spec.verifyArgs || ["--version"];
     async function verifyAt(pathToBinary: string): Promise<{
       success: boolean;
       output: string;
     }> {
-      return execFileAsync(pathToBinary, verifyArgs, {
-        timeout: TERMINAL_BINARY_VERIFY_TIMEOUT_MS,
-        maxBuffer: 4 * 1024 * 1024,
-      })
-        .then((result) => ({
-          success: true,
-          output: `${result.stdout}${result.stderr}`.trim(),
-        }))
-        .catch(() => ({
-          success: false,
-          output: "",
-        }));
+      return verifyExecutable(pathToBinary, verifyArgs);
     }
 
     const verifyFromPath = binaryPath ? await verifyAt(binaryPath) : null;
     const fallbackVerify =
-      verifyFromPath?.success || hasOnlyWindowsMountedCandidates
+      verifyFromPath?.success || hasOnlyWindowsMountedCandidates || hasOnlyUnsupportedCandidates
         ? null
         : await verifyAt(spec.binary);
     const installed = Boolean(
@@ -2213,18 +2336,16 @@ export function createTerminalService(
       path: resolvedPath,
       version: installed ? truncateLog(versionOutput, 300) : null,
       packageName: spec.packageName,
-      installSupported: spec.installMode !== "none",
+      installSupported: terminalInstallSupported(spec),
       category: spec.category,
     };
   }
 
   async function detectPackageManager(): Promise<TerminalPackageManager | null> {
     for (const manager of TERMINAL_PACKAGE_MANAGERS) {
-      const result = await runCommand(manager.checkCommand);
-      const firstPath = String(result.output || "")
-        .split("\n")[0]
-        .trim();
-      if (result.success && firstPath && !isWindowsMountedPath(firstPath)) {
+      const firstPath = resolveExecutableCandidates(manager.binary)
+        .find((candidate) => !isWindowsMountedPath(candidate));
+      if (firstPath) {
         return manager;
       }
     }
@@ -2256,6 +2377,33 @@ export function createTerminalService(
         output: "",
         stderr: "",
         error: "",
+        attempts: [],
+      };
+    }
+
+    if (!before.installSupported) {
+      const error = process.platform === "win32" && spec.installMode === "script"
+        ? "install_not_supported_on_windows"
+        : "install_not_supported";
+      await emit?.({
+        type: "result",
+        cli: targetId,
+        success: false,
+        error,
+        message: `${spec.label} installation is not supported on this platform`,
+      });
+      return {
+        cli: targetId,
+        label: spec.label,
+        success: false,
+        alreadyInstalled: false,
+        packageName: spec.packageName,
+        packageManager: null,
+        path: null,
+        command: null,
+        output: "",
+        stderr: "",
+        error,
         attempts: [],
       };
     }
@@ -2486,7 +2634,21 @@ export function createTerminalService(
   }
 
   async function buildSkillsDependencySummary() {
-    const summary = await options.skills.getSummary({ fast: true });
+    let summary;
+    try {
+      summary = await options.skills.getSummary({ fast: true });
+    } catch {
+      return {
+        needsSetupCount: 0,
+        blockedCount: 0,
+        missingBinaryCount: 0,
+        missingBinaries: [],
+        marketplaceCli: {
+          clawhubInstalled: false,
+          skillhubInstalled: false,
+        },
+      };
+    }
     const needsSetupSkills = summary.skills.filter(
       (skill) => skill.status === "needs-setup",
     );
@@ -2581,7 +2743,7 @@ export function createTerminalService(
         provider,
       },
       installTargets: Object.values(TERMINAL_CLI_SPECS)
-        .filter((spec) => spec.installMode !== "none")
+        .filter((spec) => terminalInstallSupported(spec))
         .map((spec): TerminalInstallTarget => ({
           id: spec.id,
           label: spec.label,
@@ -2624,6 +2786,7 @@ export function createTerminalService(
     const binaryById = new Map(
       status.binaries.map((binary) => [binary.id, binary]),
     );
+    const defaultShell = resolveDefaultTerminalShell();
     const profileSpecs: Array<{
       id: string;
       label: string;
@@ -2645,8 +2808,8 @@ export function createTerminalService(
         descriptionZh: "打开工作区环境解析出的默认本地 Shell。",
         kind: "shell",
         targetKind: "local",
-        binaryId: "bash",
-        command: "bash",
+        binaryId: defaultShell.binaryId,
+        command: defaultShell.command,
         pinned: true,
         color: "slate",
       },
@@ -2828,15 +2991,11 @@ export function createTerminalService(
         const binary = profile.binaryId
           ? binaryById.get(profile.binaryId)
           : null;
-        const installed =
-          profile.binaryId === "bash" || profile.binaryId === "sh"
-            ? true
-            : profile.binaryId
-              ? Boolean(binary?.installed)
-              : false;
-        return {
-          ...profile,
-          cwd: options.config.openclawRoot || null,
+        const installed = profile.binaryId ? Boolean(binary?.installed) : false;
+          return {
+            ...profile,
+            command: binary?.path || profile.command,
+            cwd: options.config.openclawRoot || null,
           installed,
           launchable: profile.targetKind === "local" && installed,
         };
@@ -3089,7 +3248,7 @@ export function createTerminalService(
 
     async endSessions(sessionIds: string[]): Promise<TerminalEndBatchResponse> {
       const sids = [...new Set(sessionIds.map((sid) => String(sid || "").trim()).filter(Boolean))];
-      const results = sids.map((sid) => endSessionById(sid));
+      const results = await Promise.all(sids.map((sid) => endSessionById(sid)));
       return {
         success: true,
         total: results.length,
@@ -3318,16 +3477,27 @@ export function createTerminalService(
       return true;
     },
 
-    dispose(): void {
+    async dispose(): Promise<void> {
       clearInterval(pingTimer);
       clearInterval(gatewaySweepTimer);
       flushRealtimeLedgerQueue();
-      for (const sessionId of Array.from(sessions.keys())) {
-        destroySession(sessionId);
-      }
+      const sessionIds = Array.from(sessions.keys());
+      const exits = sessionIds.map((sessionId) => destroySession(sessionId));
       try {
         wss.close();
       } catch {}
+      if (exits.length === 0) return;
+      const outcomes = await Promise.allSettled(exits);
+      const retainedSessionIds = outcomes.flatMap((outcome, index) =>
+        outcome.status === "fulfilled" && outcome.value
+          ? []
+          : [sessionIds[index]!]
+      );
+      if (retainedSessionIds.length > 0) {
+        throw new Error(
+          `Terminal cleanup failed; sessions did not exit: ${retainedSessionIds.join(", ")}`,
+        );
+      }
     },
   };
 }

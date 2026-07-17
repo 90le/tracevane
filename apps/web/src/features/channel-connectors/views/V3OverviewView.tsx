@@ -80,6 +80,7 @@ export function V3OverviewView({ goToView }: ChannelConnectorsViewProps) {
   const recentEvents = sessionsQuery.data?.recentEvents.slice(0, 8) ?? [];
   const ingress = runtime?.ingressQueue;
   const daemonOnline = runtime?.reachable === true;
+  const sessionRuntimeReachable = sessionsQuery.data?.runtimeReachable !== false;
 
   return (
     <div className="grid gap-[18px]">
@@ -97,6 +98,13 @@ export function V3OverviewView({ goToView }: ChannelConnectorsViewProps) {
           <div className="col-span-2 p-3 sm:col-span-1"><div className="text-xs text-subtle">需关注</div><div className="text-xl font-semibold text-ink-strong">{attentionCount}</div><div className="text-xs text-muted">配置或运行异常</div></div>
         </div>
       </section>
+
+      {!sessionRuntimeReachable ? (
+        <div className="flex items-start gap-2 rounded-sm border border-amber/30 bg-amber-soft px-4 py-3 text-sm text-amber" role="status">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <span><strong>会话运行态暂不可用。</strong>消息守护当前离线；账号与分发配置仍可查看，守护启动后会自动刷新会话数据。</span>
+        </div>
+      ) : null}
 
       <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)]">
         <Panel>

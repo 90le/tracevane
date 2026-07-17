@@ -108,10 +108,12 @@ export function getOpenClawRecoveryDaemonService(
  */
 export function manageOpenClawRecoveryDaemonService(
   payload: OpenClawRecoveryDaemonServiceRequest = {},
+  signal?: AbortSignal,
 ): Promise<OpenClawRecoveryDaemonServiceResponse> {
   return apiRequest<OpenClawRecoveryDaemonServiceResponse>(`${BASE}/daemon-service`, {
     method: "POST",
     body: jsonBody(payload),
+    signal,
   });
 }
 

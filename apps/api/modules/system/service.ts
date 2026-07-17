@@ -2,8 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import net from "node:net";
 import path from "node:path";
-import { execFile, spawn, spawnSync } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn, spawnSync } from "node:child_process";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   SystemBootstrapPayload,
@@ -51,10 +50,10 @@ import { buildSystemEventSummaryCards } from "./event-summary.js";
 import { createSystemEventWriter } from "./event-writer.js";
 import { buildSystemRuntimeSummary } from "./runtime-summary.js";
 import { buildSystemTerminalActionSuggestions } from "./terminal-handoff.js";
+import { runSystemOpenClawCommand } from "./openclaw-command.js";
 // seam import marker: from './runtime-summary.js'
 // seam import marker: from './terminal-handoff.js'
 
-const execFileAsync = promisify(execFile);
 const COMMAND_CACHE_MS = 15_000;
 const TRACEVANE_UPDATE_TIMEOUT_MS = 4_500;
 const TRACEVANE_UPDATE_SITE_BASE = (
@@ -736,7 +735,6 @@ export function createSystemService(
 
   async function runCachedCommand(
     cacheKey: string,
-    command: string,
     args: string[],
     timeout = 10_000,
   ): Promise<SystemCommandSnapshot> {
@@ -744,18 +742,18 @@ export function createSystemService(
     const cached = commandCache.get(cacheKey);
     if (cached && cached.expiresAt > now) return cached.value;
 
-    const start = Date.now();
+    const startedAt = Date.now();
     try {
-      const result = await execFileAsync(command, args, {
-        timeout,
-        maxBuffer: 8 * 1024 * 1024,
+      const result = await runSystemOpenClawCommand(args, {
+        timeoutMs: timeout,
+        maxOutputBytes: 8 * 1024 * 1024,
       });
       const rawStdout = String(result.stdout || "");
       const rawStderr = String(result.stderr || "");
       const value: SystemCommandSnapshot = {
-        ok: true,
-        durationMs: Date.now() - start,
-        error: "",
+        ok: result.ok,
+        durationMs: result.durationMs,
+        error: result.error,
         stdout: clipText(rawStdout),
         stderr: clipText(rawStderr),
         parsedJson: extractJsonFromMixedOutput(rawStdout),
@@ -772,8 +770,8 @@ export function createSystemService(
       const rawStderr = String(cast.stderr || "");
       const value: SystemCommandSnapshot = {
         ok: false,
-        durationMs: Date.now() - start,
-        error: cast.message || `${command} failed`,
+        durationMs: Date.now() - startedAt,
+        error: cast.message || "openclaw failed",
         stdout: clipText(rawStdout),
         stderr: clipText(rawStderr),
         parsedJson: extractJsonFromMixedOutput(rawStdout),
@@ -847,6 +845,35 @@ export function createSystemService(
       };
     }
 
+    const configured = resolveConfiguredTracevaneMode(config);
+    const mode: "standalone" | "gateway" =
+      payload.mode === "gateway" || payload.mode === "standalone"
+        ? payload.mode
+        : configured.mode;
+    if (process.platform === "win32") {
+      const checkedAt = new Date().toISOString();
+      const failed: SystemTracevaneUpgradeStatusPayload = {
+        ...current,
+        checkedAt,
+        status: "failed",
+        running: false,
+        pid: null,
+        mode,
+        targetVersion:
+          normalizeVersionCandidate(payload.version)
+          || normalizeVersionCandidate(config.version),
+        startedAt: null,
+        finishedAt: checkedAt,
+        lastError:
+          "Tracevane self-upgrade is not supported on Windows; install a Windows release without the POSIX installer.",
+      };
+      writeTracevaneUpgradeStatus(config, failed);
+      return {
+        ok: false,
+        status: failed,
+      };
+    }
+
     const installerPath = path.join(
       config.projectRoot,
       "install-tracevane.sh",
@@ -867,11 +894,6 @@ export function createSystemService(
       };
     }
 
-    const configured = resolveConfiguredTracevaneMode(config);
-    const mode: "standalone" | "gateway" =
-      payload.mode === "gateway" || payload.mode === "standalone"
-        ? payload.mode
-        : configured.mode;
     const siteBaseRaw =
       normalizeString(payload.siteBase) || TRACEVANE_UPDATE_SITE_BASE;
     const siteBase = siteBaseRaw.replace(/\/+$/g, "");
@@ -1039,17 +1061,15 @@ export function createSystemService(
         ? await Promise.all([
             runCachedCommand(
               "gateway-status",
-              "openclaw",
               ["gateway", "status", "--json"],
               12_000,
             ),
             runCachedCommand(
               "status-all",
-              "openclaw",
               ["status", "--json"],
               12_000,
             ),
-            runCachedCommand("doctor", "openclaw", ["doctor"], 18_000),
+            runCachedCommand("doctor", ["doctor"], 18_000),
           ])
         : [
             skippedCommand("gateway-status"),

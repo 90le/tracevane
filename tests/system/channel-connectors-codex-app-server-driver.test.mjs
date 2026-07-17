@@ -6,10 +6,35 @@ import path from "node:path";
 
 import {
   CodexAppServerSession,
+  JsonLineCodexAppServerTransport,
+  createCodexAppServerSessionDriverFactory,
 } from "../../dist/apps/api/modules/channel-connectors/codex-app-server-driver.js";
 import {
   isChannelConnectorProcessProgressEvent,
 } from "../../dist/apps/api/modules/channel-connectors/agent-runner.js";
+import * as channelConnectorsDaemonModule from "../../dist/apps/api/modules/channel-connectors/daemon.js";
+
+test("bounded persistent session key keeps Windows CODEX_HOME below MAX_PATH", () => {
+  const sessionId = [
+    "feishu-account:default",
+    "default-codex",
+    "feishu:chat:user",
+    "codex",
+    "gpt-5.6-luna",
+    "C:\\Users\\Administrator\\Desktop\\tracevane\\.worktrees\\codex-cross-platform-supervisor",
+    "suggest",
+  ].join("|").repeat(2);
+  const storageKey = channelConnectorsDaemonModule.channelConnectorPersistentSessionStorageKey?.(sessionId);
+
+  assert.match(storageKey || "", /^[a-f0-9]{32}$/);
+  assert.equal(
+    storageKey,
+    channelConnectorsDaemonModule.channelConnectorPersistentSessionStorageKey?.(sessionId),
+  );
+  const windowsRoot = "C:\\Users\\Administrator\\.config\\tracevane\\channel-connectors\\daemon\\state\\agent-runtime\\codex\\default-codex\\account-default";
+  const codexHome = path.win32.join(windowsRoot, "persistent-sessions", storageKey, "codex-home");
+  assert.ok(codexHome.length < 260, `bounded CODEX_HOME length=${codexHome.length}`);
+});
 
 class FakeCodexAppServerTransport {
   messages = [];
@@ -346,6 +371,217 @@ function agentTurnRequest(overrides = {}) {
     nativeCommand: overrides.nativeCommand || null,
   };
 }
+
+function writeFakeCodexAppServer(binDir) {
+  fs.mkdirSync(binDir, { recursive: true });
+  const scriptPath = path.join(binDir, "fake-codex-app-server.cjs");
+  fs.writeFileSync(scriptPath, `
+const readline = require("node:readline");
+
+const threadId = "thread-native-command";
+const turnId = "turn-native-command";
+const send = (message, callback) => {
+  process.stdout.write(JSON.stringify(message) + "\\n", callback);
+};
+const lines = readline.createInterface({ input: process.stdin });
+lines.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    send({
+      id: message.id,
+      result: {
+        userAgent: "codex-native-command-test",
+        codexHome: process.cwd(),
+        platformFamily: process.platform === "win32" ? "windows" : "unix",
+        platformOs: process.platform,
+      },
+    });
+    return;
+  }
+  if (message.method === "thread/start") {
+    send({
+      id: message.id,
+      result: {
+        thread: { id: threadId, sessionId: "session-native-command", turns: [] },
+        model: "gpt-5",
+        modelProvider: "tracevane_gateway",
+        cwd: process.cwd(),
+      },
+    });
+    return;
+  }
+  if (message.method !== "turn/start") return;
+  send({
+    id: message.id,
+    result: {
+      turn: { id: turnId, status: "running", items: [], error: null },
+    },
+  });
+  send({
+    method: "item/agentMessage/delta",
+    params: { threadId, turnId, itemId: "agent-native-command", delta: "WINDOWS_APP_SERVER_OK" },
+  });
+  send({
+    method: "item/completed",
+    params: {
+      threadId,
+      turnId,
+      item: { type: "agentMessage", id: "agent-native-command", text: "WINDOWS_APP_SERVER_OK" },
+    },
+  });
+  send({
+    method: "turn/completed",
+    params: {
+      threadId,
+      turn: { id: turnId, status: "completed", items: [], error: null, durationMs: 1 },
+    },
+  }, () => process.exit(0));
+});
+`, "utf8");
+
+  if (process.platform === "win32") {
+    const commandPath = path.join(binDir, "codex.cmd");
+    fs.writeFileSync(
+      commandPath,
+      `@echo off\r\n"${process.execPath}" "%~dp0fake-codex-app-server.cjs" %*\r\n`,
+      "utf8",
+    );
+    return commandPath;
+  }
+
+  const commandPath = path.join(binDir, "codex");
+  fs.writeFileSync(commandPath, `#!/usr/bin/env node\n${fs.readFileSync(scriptPath, "utf8")}`, "utf8");
+  fs.chmodSync(commandPath, 0o755);
+  return commandPath;
+}
+
+function writeHangingCodexCommand(root) {
+  const binDir = path.join(root, "hanging Codex CLI bin");
+  const descendantPath = path.join(binDir, "hanging-descendant.cjs");
+  const leaderPath = path.join(binDir, "hanging-codex.cjs");
+  const pidPath = path.join(root, "hanging-descendant.pid");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    descendantPath,
+    `process.on("SIGTERM", () => {});\nsetInterval(() => {}, 1000);\n`,
+    "utf8",
+  );
+  fs.writeFileSync(
+    leaderPath,
+    `const fs = require("node:fs");
+const { spawn } = require("node:child_process");
+const descendant = spawn(process.execPath, [${JSON.stringify(descendantPath)}], { stdio: "ignore" });
+fs.writeFileSync(${JSON.stringify(pidPath)}, String(descendant.pid), "utf8");
+process.on("SIGTERM", () => process.exit(0));
+setInterval(() => {}, 1000);
+`,
+    "utf8",
+  );
+  if (process.platform === "win32") {
+    fs.writeFileSync(
+      path.join(binDir, "codex.cmd"),
+      `@echo off\r\n"${process.execPath}" "%~dp0hanging-codex.cjs" %*\r\n`,
+      "utf8",
+    );
+  } else {
+    const commandPath = path.join(binDir, "codex");
+    fs.writeFileSync(
+      commandPath,
+      `#!/usr/bin/env node\n${fs.readFileSync(leaderPath, "utf8")}`,
+      { encoding: "utf8", mode: 0o755 },
+    );
+    fs.chmodSync(commandPath, 0o755);
+  }
+  return { binDir, pidPath };
+}
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+test("Codex app-server transport dispose removes the platform-native command tree", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane codex close 测试 "));
+  const fixture = writeHangingCodexCommand(root);
+  const transport = new JsonLineCodexAppServerTransport({
+    cwd: root,
+    env: {
+      PATH: [fixture.binDir, process.env.PATH || ""].filter(Boolean).join(path.delimiter),
+    },
+  });
+  let descendantPid = null;
+
+  try {
+    await waitFor(() => fs.existsSync(fixture.pidPath), 2_000);
+    descendantPid = Number(fs.readFileSync(fixture.pidPath, "utf8"));
+    assert.equal(processIsAlive(descendantPid), true);
+
+    transport.close("test-complete");
+
+    await waitFor(() => !processIsAlive(descendantPid), 3_000);
+    assert.equal(processIsAlive(descendantPid), false);
+  } finally {
+    if (descendantPid && processIsAlive(descendantPid)) {
+      try {
+        process.kill(descendantPid, "SIGKILL");
+      } catch {
+        // best-effort fixture cleanup
+      }
+    }
+    await sleep(50);
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("Codex app-server persistent factory launches the platform-native codex command", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane codex app-server 测试 "));
+  const binDir = path.join(root, "native cli bin");
+  writeFakeCodexAppServer(binDir);
+  const pathValue = [binDir, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
+  const request = agentTurnRequest({ messageId: "m-native-command" });
+  request.project = { ...request.project, workDir: root };
+  const key = {
+    bindingId: "octo-codex",
+    projectId: "codex-app-server",
+    sessionKey: "dmwork:dm:user-native-command",
+    agent: "codex",
+    model: "gpt-5",
+    workDir: root,
+    permissionMode: "suggest",
+  };
+  const turnInput = {
+    mode: "persistent",
+    key,
+    messageId: "m-native-command",
+    agentTurnRequest: request,
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for the native app-server transport");
+    },
+  };
+  const factory = createCodexAppServerSessionDriverFactory({
+    requestTimeoutMs: 2_000,
+    transportFactory: ({ key: transportKey }) => new JsonLineCodexAppServerTransport({
+      cwd: transportKey.workDir,
+      env: { PATH: pathValue },
+    }),
+  });
+  const session = await factory.create({ key, poolKey: "native-command", turnInput });
+
+  try {
+    const result = await session.runTurn(turnInput);
+    assert.equal(result.ok, true);
+    assert.equal(result.replyText, "WINDOWS_APP_SERVER_OK");
+    assert.equal(result.session.codexThreadId, "thread-native-command");
+  } finally {
+    await session.dispose?.("test-complete");
+    await sleep(50);
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
 
 test("Codex app-server driver starts one thread and reuses it across turns", async () => {
   const transport = new FakeCodexAppServerTransport();

@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -16,7 +15,7 @@ const DEFAULT_POLL_MS = 1_000;
 function parseArgs(argv) {
   const options = {
     apply: false,
-    restart: true,
+    restart: false,
     configPath: DEFAULT_CONFIG_PATH,
     daemonConfigPath: DEFAULT_DAEMON_CONFIG_PATH,
     runtimePath: DEFAULT_RUNTIME_PATH,
@@ -114,7 +113,7 @@ Options:
                             Metadata mode to write. Default: persistent.
   --apply                   Write config. Without this flag, only dry-runs the plan.
   --dry-run                 Force no writes.
-  --restart / --no-restart  Restart user service after write. Default: restart.
+  --restart / --no-restart  Request restart. Cross-platform helper reports an explicit SKIP; default: no restart.
   --wait-active             After readiness, wait for a real IM message to create an active session.
   --wait-idle-after-active  Wait for active session to become idle/cleaned after it appears.
   --restore-latest          Restore latest backup from backup dir.
@@ -266,7 +265,13 @@ function restoreConfig(options) {
 }
 
 function restartService(serviceName) {
-  execFileSync("systemctl", ["--user", "restart", serviceName], { stdio: "pipe" });
+  return {
+    requested: true,
+    attempted: false,
+    status: "skipped",
+    serviceName,
+    reason: "Cross-platform restart must use the authenticated Channel lifecycle API.",
+  };
 }
 
 function readManagementEndpoint(runtimePath) {
@@ -376,7 +381,9 @@ async function main() {
   let result;
   if (options.restoreLatest || options.restorePath) {
     result = restoreConfig(options);
-    if (result.applied && options.restart) restartService(options.serviceName);
+    result.restart = result.applied && options.restart
+      ? restartService(options.serviceName)
+      : { requested: options.restart, attempted: false, status: "not-requested" };
   } else {
     if (!fs.existsSync(options.configPath)) throw new Error(`Config not found: ${options.configPath}`);
     const config = readJson(options.configPath);
@@ -412,11 +419,18 @@ async function main() {
       writeJsonAtomic(options.configPath, nextConfig);
       result.daemonConfig = applyDaemonConfigMode(options.daemonConfigPath, selectedIds, options.mode);
       result.applied = true;
-      if (options.restart) restartService(options.serviceName);
     }
+    result.restart = result.applied && options.restart
+      ? restartService(options.serviceName)
+      : { requested: options.restart, attempted: false, status: "not-requested" };
   }
 
-  const shouldPollRuntime = options.restart || fs.existsSync(options.runtimePath);
+  const shouldPollReadiness = result.restart?.attempted === true;
+  const shouldMonitorRuntime =
+    options.waitActive &&
+    result.applied !== true &&
+    result.restart?.status !== "skipped";
+  const shouldPollRuntime = shouldPollReadiness || shouldMonitorRuntime;
   const selected = new Set(result.selectedBindings || []);
   const expectPersistent = selected.size > 0 && result.mode === "persistent" && result.applied;
   const status = shouldPollRuntime ? await pollStatus(options, (candidate) => {
@@ -433,7 +447,7 @@ async function main() {
 
   let activeSummary = null;
   let idleSummary = null;
-  if (options.waitActive) {
+  if (options.waitActive && shouldPollRuntime) {
     const active = await pollStatus(options, (candidate) => (candidate.agentSessionDriver?.activeSessions || []).length > 0);
     activeSummary = summarizeStatus(active);
     if (options.waitIdleAfterActive) {
@@ -447,7 +461,7 @@ async function main() {
   }
 
   const output = {
-    ok: true,
+    ok: result.restart?.status !== "skipped",
     result,
     status: readySummary,
     active: activeSummary,

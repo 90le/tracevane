@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   upsertAgentProgressAssistant,
   upsertAgentProgressTool,
-} from '../../lib/agent-progress-timeline.ts';
+} from '../../dist/lib/agent-progress-timeline.js';
 
 test('agent progress timeline appends assistant segments after tool events to preserve stream order', () => {
   let timeline = [];

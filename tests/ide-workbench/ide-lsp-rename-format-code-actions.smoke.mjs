@@ -159,8 +159,7 @@ async function run() {
   const prefix = `tracevane-ide-lsp-rename-format-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const repoParentRelativePath = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
   const explorerDirectoryPath = repoParentRelativePath;
-  const smokeParent = explorerDirectoryPath ? `${explorerDirectoryPath}/tmp` : 'tmp';
-  const smokeDir = `${smokeParent}/.${prefix}`;
+  const smokeDir = explorerDirectoryPath ? `${explorerDirectoryPath}/.${prefix}` : `.${prefix}`;
   const tsPath = `${smokeDir}/rename-format.ts`;
   const tsContent = 'function tracevaneAlpha(value:number){return value+1}\nconst result=tracevaneAlpha(1)\nexport { result }\n';
 

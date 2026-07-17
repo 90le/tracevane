@@ -13,6 +13,82 @@ const terminalTypes = await import("../../types/terminal.ts");
 const terminalSessionSummary =
   await import("../../apps/api/modules/terminal/terminal-session-summary.ts");
 
+function createFakePtyController({ exitOnKill = false } = {}) {
+  let exitHandler = () => {};
+  let shouldExitOnKill = exitOnKill;
+  const killSignals = [];
+  const launches = [];
+
+  return {
+    killSignals,
+    launches,
+    allowExitOnKill() {
+      shouldExitOnKill = true;
+    },
+    ptyModule: {
+      spawn(command, args, options) {
+        let exited = false;
+        launches.push({ command, args: [...args], options: { ...options } });
+        return {
+          onData() {
+            return { dispose() {} };
+          },
+          onExit(handler) {
+            exitHandler = handler;
+            return { dispose() {} };
+          },
+          write() {},
+          resize() {},
+          kill(signal) {
+            killSignals.push(signal ?? null);
+            if (!shouldExitOnKill || exited) return;
+            exited = true;
+            queueMicrotask(() => exitHandler({ exitCode: 0, signal: 0 }));
+          },
+        };
+      },
+    },
+  };
+}
+
+function createTestTerminalService(tempDir, ptyModule, overrides = {}) {
+  const configFile = path.join(tempDir, "openclaw-config.json");
+  fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
+  return terminalService.createTerminalService({
+    config: {
+      pluginId: "test",
+      pluginName: "test",
+      version: "0.0.0",
+      port: 0,
+      autoStart: false,
+      openclawRoot: tempDir,
+      openclawConfigFile: configFile,
+      projectRoot: tempDir,
+      webDistDir: tempDir,
+      gatewayPort: 0,
+      gatewayWsUrl: "ws://127.0.0.1",
+      gatewayControlUiBasePath: "/",
+      transport: {
+        standalone: { enabled: false, port: 0 },
+        gateway: { enabled: false, basePath: "/" },
+      },
+    },
+    skills: {
+      async getSummary() {
+        return {
+          skills: [],
+          tools: {
+            clawhubInstalled: false,
+            skillhubInstalled: false,
+          },
+        };
+      },
+    },
+    ptyModule,
+    ...overrides,
+  });
+}
+
 test("terminal session summary exposes recoverable status and controller metadata", () => {
   const summary = sessionSummary.buildTerminalSessionSummary({
     sid: "term-1",
@@ -129,7 +205,7 @@ test("terminal service session summaries derive detached status from real activi
     );
     assert.equal(detachedSummary.source, "manual");
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -262,7 +338,7 @@ test("terminal service rename/delete return missing-session signals", async () =
       sessionId: "missing-session",
     });
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -349,7 +425,7 @@ test("terminal service delete rejects running and detached sessions", async () =
       sessionId: attached.sid,
     });
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -445,7 +521,7 @@ test("terminal service batch end marks sessions non-recoverable", async () => {
     assert.equal(firstAfterRejectedResume?.canResume, false);
     assert.equal(firstAfterRejectedResume?.status, "completed");
   } finally {
-    service.dispose();
+    await service.dispose();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -540,6 +616,254 @@ test("terminal client source deletes only confirmed ended batch descriptors", ()
   assert.match(source, /const failedIds = sids\.filter\(\(sid\) => !endedIds\.has\(sid\)\)/);
   assert.match(source, /const confirmedEnded = results\.filter\(\(result\) => result\.ended\)\.length/);
   assert.match(source, /const ended = results\.length \? confirmedEnded :/);
+});
+
+test("terminal end keeps ownership and recoverable metadata when PTY kill never reports exit", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-kill-timeout-"));
+  const fakePty = createFakePtyController();
+  const service = createTestTerminalService(tempDir, fakePty.ptyModule);
+
+  try {
+    const created = await service.createPersistedSession({
+      sid: "term-kill-timeout",
+      profileId: "local-shell",
+      pinned: true,
+    });
+    assert.equal(created.canResume, true);
+
+    const timedOut = await service.endSession({ sid: created.sessionId });
+    assert.deepEqual(timedOut, {
+      success: false,
+      sid: created.sessionId,
+      ended: false,
+    });
+    assert.ok(fakePty.killSignals.length >= 2, "kill should escalate after an unconfirmed PTY exit");
+    assert.equal(fakePty.killSignals[0], null);
+    assert.ok(fakePty.killSignals.slice(1).includes("SIGKILL"));
+
+    const persistedAfterTimeout = await service.getPersistedSession(created.sessionId);
+    assert.ok(persistedAfterTimeout);
+    assert.notEqual(persistedAfterTimeout.status, "completed");
+    assert.equal(persistedAfterTimeout.canResume, true);
+    const runtimeAfterTimeout = await service.listWorkspaceSessions();
+    assert.equal(
+      runtimeAfterTimeout.sessions.some((session) => session.sessionId === created.sessionId),
+      true,
+      "timed-out termination must retain runtime ownership for retry",
+    );
+
+    fakePty.allowExitOnKill();
+    const retried = await service.endSession({ sid: created.sessionId });
+    assert.deepEqual(retried, {
+      success: true,
+      sid: created.sessionId,
+      ended: true,
+    });
+    const persistedAfterRetry = await service.getPersistedSession(created.sessionId);
+    assert.equal(persistedAfterRetry?.status, "completed");
+    assert.equal(persistedAfterRetry?.canResume, false);
+  } finally {
+    await service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal dispose rejects retained PTY ownership and succeeds after a retry", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-dispose-timeout-"));
+  const fakePty = createFakePtyController();
+  const service = createTestTerminalService(tempDir, fakePty.ptyModule, {
+    sessionStopTimeoutMs: 100,
+  });
+
+  try {
+    const created = await service.createPersistedSession({
+      sid: "term-dispose-timeout",
+      profileId: "local-shell",
+      pinned: true,
+    });
+    await assert.rejects(
+      service.dispose(),
+      new RegExp(`Terminal cleanup failed.*${created.sessionId}`),
+    );
+    assert.ok(fakePty.killSignals.length >= 2);
+
+    fakePty.allowExitOnKill();
+    await service.dispose();
+  } finally {
+    fakePty.allowExitOnKill();
+    await service.dispose().catch(() => undefined);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("Windows PowerShell probing uses a non-interactive version command", () => {
+  const serviceSource = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    serviceSource,
+    /powershell:\s*\{[\s\S]*?verifyArgs:\s*\[\s*"-NoProfile",\s*"-Command",\s*"\$PSVersionTable\.PSVersion\.ToString\(\)",?\s*\]/,
+  );
+  assert.doesNotMatch(
+    serviceSource,
+    /powershell:\s*\{[\s\S]*?verifyArgs:\s*\["-Version"\]/,
+  );
+});
+
+test("terminal binary probing degrades spawn errors instead of rejecting the profile catalog", () => {
+  const serviceSource = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    serviceSource,
+    /async function verifyExecutable[\s\S]*?try \{[\s\S]*?await runOwnedCommand[\s\S]*?catch \(error\)[\s\S]*?success:\s*false/,
+  );
+});
+
+test("terminal shell profiles launch the executable path that probing verified", () => {
+  const serviceSource = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    serviceSource,
+    /command:\s*binary\?\.path\s*\|\|\s*profile\.command/,
+  );
+});
+
+test("native Windows shell discovery excludes WSL bash launchers", () => {
+  const serviceSource = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(serviceSource, /function isWindowsWslLauncher/);
+  assert.match(serviceSource, /hasOnlyUnsupportedCandidates/);
+});
+
+test("terminal profile discovery degrades unrelated skill summary failures", () => {
+  const serviceSource = fs.readFileSync(
+    new URL("../../apps/api/modules/terminal/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    serviceSource,
+    /async function buildSkillsDependencySummary[\s\S]*?try \{[\s\S]*?options\.skills\.getSummary[\s\S]*?catch/,
+  );
+});
+
+test("terminal profileless attach preserves the explicit shell API contract", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-explicit-shell-"));
+  const fakePty = createFakePtyController({ exitOnKill: true });
+  const service = createTestTerminalService(tempDir, fakePty.ptyModule);
+  const requestedShell = process.platform === "win32" ? "pwsh" : "zsh";
+
+  try {
+    const created = await service.createPersistedSession({
+      sid: "term-profileless-explicit-shell",
+      shell: requestedShell,
+      pinned: true,
+    });
+    assert.equal(fakePty.launches.length, 1);
+    assert.equal(
+      path.basename(fakePty.launches[0].command).toLowerCase().replace(/\.exe$/, ""),
+      requestedShell,
+    );
+    await service.endSession({ sid: created.sessionId });
+  } finally {
+    await service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("Windows local-shell ignores a legacy persisted bash override", {
+  skip: process.platform !== "win32",
+}, async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-local-shell-"));
+  const fakePty = createFakePtyController({ exitOnKill: true });
+  const service = createTestTerminalService(tempDir, fakePty.ptyModule);
+
+  try {
+    const created = await service.createPersistedSession({
+      sid: "term-legacy-local-shell",
+      profileId: "local-shell",
+      shell: "bash",
+      pinned: true,
+    });
+    assert.equal(fakePty.launches.length, 1);
+    assert.notEqual(path.basename(fakePty.launches[0].command).toLowerCase().replace(/\.exe$/, ""), "bash");
+    await service.endSession({ sid: created.sessionId });
+
+    const implicitLocal = await service.createPersistedSession({
+      sid: "term-implicit-local-shell",
+      shell: "bash",
+      pinned: true,
+    });
+    assert.equal(path.basename(fakePty.launches[1].command).toLowerCase().replace(/\.exe$/, ""), "bash");
+    await service.endSession({ sid: implicitLocal.sessionId });
+
+    const explicitBash = await service.createPersistedSession({
+      sid: "term-explicit-bash",
+      profileId: "shell-bash",
+      pinned: true,
+    });
+    assert.equal(path.basename(fakePty.launches[2].command).toLowerCase().replace(/\.exe$/, ""), "bash");
+    await service.endSession({ sid: explicitBash.sessionId });
+  } finally {
+    await service.dispose();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("terminal profile picker defers an unloaded local-shell fallback to the backend", () => {
+  const tabsSource = fs.readFileSync(
+    new URL("../../apps/web/src/features/ide-workbench/terminal/TerminalTabs.tsx", import.meta.url),
+    "utf8",
+  );
+  const layoutSource = fs.readFileSync(
+    new URL("../../apps/web/src/features/ide-workbench/terminal/terminalLayoutState.ts", import.meta.url),
+    "utf8",
+  );
+  const clientSource = fs.readFileSync(
+    new URL("../../apps/web/src/features/ide-workbench/terminal/terminalClient.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(tabsSource, /profileId: "local-shell", shell: null, label: "Terminal"/);
+  assert.doesNotMatch(tabsSource, /profileId: "local-shell", shell: "bash"/);
+  assert.match(tabsSource, /data-terminal-shell="system-default"/);
+  assert.match(layoutSource, /function normalizeShell[\s\S]*?return raw \|\| null;/);
+  assert.doesNotMatch(layoutSource, /function normalizeShell[\s\S]*?return raw \|\| "bash";/);
+  assert.match(clientSource, /\.\.\.\(shell \? \{ shell \} : \{\}\)/);
+  assert.match(clientSource, /if \(shell\) params\.set\("shell", shell\);/);
+  assert.match(clientSource, /function normalizeShellName[\s\S]*?return raw \|\| null;/);
+});
+
+test("terminal layout migration drops legacy bash only for the local-shell profile", () => {
+  const layoutSource = fs.readFileSync(
+    new URL("../../apps/web/src/features/ide-workbench/terminal/terminalLayoutState.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    layoutSource,
+    /shell: normalizePersistedShell\(pane\.profileId, pane\.shell\)/,
+  );
+  assert.match(
+    layoutSource,
+    /function normalizePersistedShell[\s\S]*?profileId \|\| ""[\s\S]*?=== "local-shell"\) return null;/,
+  );
+});
+
+test("terminal manager labels an unspecified shell as the system default", () => {
+  const managerSource = fs.readFileSync(
+    new URL("../../apps/web/src/features/ide-workbench/terminal/TerminalManagerDialog.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(managerSource, /session\.shell \|\| "系统默认"/);
+  assert.doesNotMatch(managerSource, /session\.shell \|\| "bash"/);
 });
 
 test("terminal recent output summary resets stale output after clear marker", () => {

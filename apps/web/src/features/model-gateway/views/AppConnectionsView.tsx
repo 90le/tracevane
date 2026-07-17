@@ -569,17 +569,17 @@ function ConfirmWriteDialog({
                 ) : (
                   <span>目标文件当前不存在，将新建并写入内容。</span>
                 )}
-                {(kind === "apply" || kind === "apply-edit") && (
-                  <DiffView
-                    base={current}
-                    proposed={proposed}
-                    format={connection.preview.format}
-                    redacted={kind === "apply"}
-                    label={isEdit ? "当前文件 → 编辑后" : "当前文件 → 将写入"}
-                    maxHeightClassName="max-h-[34vh]"
-                  />
-                )}
               </DialogDescription>
+              {(kind === "apply" || kind === "apply-edit") && (
+                <DiffView
+                  base={current}
+                  proposed={proposed}
+                  format={connection.preview.format}
+                  redacted={kind === "apply"}
+                  label={isEdit ? "当前文件 → 编辑后" : "当前文件 → 将写入"}
+                  maxHeightClassName="max-h-[34vh]"
+                />
+              )}
             </DialogBody>
             <DialogFooter>
               <Button variant="outline" size="sm" onClick={onClose} disabled={pending}>

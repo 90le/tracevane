@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import which from "which";
 
 import {
   channelConnectorAgentSessionDriverPoolKey,
@@ -81,12 +81,11 @@ function positiveInt(value, fallback) {
 }
 
 function commandExists(command) {
-  const result = spawnSync("sh", ["-lc", `command -v ${shellQuote(command)}`], { encoding: "utf8" });
-  return result.status === 0 ? result.stdout.trim() : null;
-}
-
-function shellQuote(value) {
-  return `'${String(value).replace(/'/g, "'\\''")}'`;
+  return which.sync(command, {
+    path: process.env.PATH,
+    pathExt: process.env.PATHEXT,
+    nothrow: true,
+  });
 }
 
 function readRequestBody(req) {

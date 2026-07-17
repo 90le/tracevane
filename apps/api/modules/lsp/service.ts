@@ -1987,10 +1987,10 @@ async function diagnoseWithExternalLanguageServer({
     gateway.notify(providerId, "textDocument/didOpen", {
       textDocument: { uri, languageId, version, text: content },
     });
-    if (providerId === "eslint") {
+    if (providerId === "eslint" || providerId === "pyright") {
       const report = await gateway.request(providerId, "textDocument/diagnostic", {
         textDocument: { uri },
-        identifier: "eslint",
+        identifier: providerId,
       }, 5_000);
       return diagnosticsFromDocumentReport(report).map((diagnostic) => externalDiagnosticToTracevaneDiagnostic(diagnostic, sourceFallback));
     }

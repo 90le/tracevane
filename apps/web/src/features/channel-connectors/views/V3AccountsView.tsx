@@ -504,11 +504,16 @@ function AccountEditor({
     }));
   }, []);
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (planning && !nextOpen) return;
+    onOpenChange(nextOpen);
+  };
+
   const smokePending = feishuSmoke.isPending || octoSmoke.isPending;
   const previewResult = preview.data?.result ?? null;
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[94vh] w-[min(980px,97vw)] flex-col">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="flex max-h-[94vh] w-[min(980px,97vw)] flex-col" showClose={!planning}>
         <DialogHeader><DialogTitle>{creating ? "新建渠道账号" : `编辑渠道账号 · ${account?.displayName ?? ""}`}</DialogTitle></DialogHeader>
         <DialogBody className="grid min-h-0 gap-5 overflow-y-auto">
           <section className="grid gap-3">
@@ -604,7 +609,7 @@ function AccountEditor({
             {enabled && !preflight?.ok && <span className="text-xs text-subtle">保存成功不代表已能收消息；启用后还需在运行中心验证真实入站。</span>}
           </section>
         </DialogBody>
-        <DialogFooter><Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button><Button variant="primary" disabled={!valid || planning || secretsLoading} onClick={buildAndPlan}><ShieldCheck />检查并保存</Button></DialogFooter>
+        <DialogFooter><Button variant="ghost" disabled={planning} onClick={() => handleOpenChange(false)}>取消</Button><Button variant="primary" disabled={!valid || planning || secretsLoading} onClick={buildAndPlan}>{planning ? <Loader2 className="animate-spin" /> : <ShieldCheck />}{planning ? "正在检查…" : "检查并保存"}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -643,8 +648,26 @@ export function V3AccountsView({ selectedAccount, goToView }: ChannelConnectorsV
   const targets = new Map(config.targets.map((target) => [target.id, target]));
 
   const requestPlan = (candidate: ChannelConnectorsV3Config) => {
-    setPendingCandidate(candidate); setPlan(null); setPlanOpen(true);
-    planMutation.mutate({ config: candidate, expectedRevision: configQuery.data?.revision }, { onSuccess: setPlan, onError: (error) => { setPlanOpen(false); toast.error("无法生成变更计划", { description: error.message }); } });
+    if (planMutation.isPending) return;
+    setPendingCandidate(candidate);
+    setPlan(null);
+    planMutation.mutate(
+      { config: candidate, expectedRevision: configQuery.data?.revision },
+      {
+        onSuccess: (nextPlan) => {
+          setPlan(nextPlan);
+          setPlanOpen(true);
+        },
+        onError: (error) => {
+          setPendingCandidate(null);
+          toast.error("无法生成变更计划", { description: error.message });
+        },
+      },
+    );
+  };
+  const handleDeleteOpenChange = (open: boolean) => {
+    if (open || planMutation.isPending) return;
+    setDeleteAccount(null);
   };
   const applyPlan = () => {
     if (!plan?.planId || !pendingCandidate) return;
@@ -676,7 +699,19 @@ export function V3AccountsView({ selectedAccount, goToView }: ChannelConnectorsV
       )}
 
       <AccountEditor open={creating || editing != null} account={editing} policy={editing ? policies.get(editing.id) || null : null} targets={config.targets} secrets={secretsQuery.data?.secrets || null} secretsLoading={Boolean(editing) && secretsQuery.isLoading} planning={planMutation.isPending} onOpenChange={(open) => { if (!open) { setCreating(false); setEditing(null); } }} onPlan={(account, policy) => requestPlan(replaceAccountAndPolicy(config, account, policy))} />
-      <Dialog open={deleteAccount != null} onOpenChange={(open) => { if (!open) setDeleteAccount(null); }}><DialogContent><DialogHeader><DialogTitle>删除渠道账号</DialogTitle></DialogHeader><DialogBody>将删除 <strong className="text-ink-strong">{deleteAccount?.displayName}</strong>、其连接配置和全部来源例外。Agent 工作区不会被删除。</DialogBody><DialogFooter><Button variant="ghost" onClick={() => setDeleteAccount(null)}>取消</Button><Button variant="danger" onClick={() => deleteAccount && requestPlan({ ...config, accounts: config.accounts.filter((account) => account.id !== deleteAccount.id), deliveryPolicies: config.deliveryPolicies.filter((policy) => policy.accountRef !== deleteAccount.id) })}><Trash2 />检查并删除</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={deleteAccount != null} onOpenChange={handleDeleteOpenChange}>
+        <DialogContent showClose={!planMutation.isPending}>
+          <DialogHeader><DialogTitle>删除渠道账号</DialogTitle></DialogHeader>
+          <DialogBody>将删除 <strong className="text-ink-strong">{deleteAccount?.displayName}</strong>、其连接配置和全部来源例外。Agent 工作区不会被删除。</DialogBody>
+          <DialogFooter>
+            <Button variant="ghost" disabled={planMutation.isPending} onClick={() => handleDeleteOpenChange(false)}>取消</Button>
+            <Button variant="danger" disabled={planMutation.isPending} onClick={() => deleteAccount && requestPlan({ ...config, accounts: config.accounts.filter((account) => account.id !== deleteAccount.id), deliveryPolicies: config.deliveryPolicies.filter((policy) => policy.accountRef !== deleteAccount.id) })}>
+              {planMutation.isPending ? <Loader2 className="animate-spin" /> : <Trash2 />}
+              {planMutation.isPending ? "正在检查…" : "检查并删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <V3PlanDialog plan={plan} open={planOpen} applying={applyMutation.isPending} onOpenChange={setPlanOpen} onConfirm={applyPlan} />
     </div>
   );

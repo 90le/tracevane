@@ -1,8 +1,9 @@
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,10 +13,13 @@ import {
   ensureOpenClawCliAvailable,
   writeOpenClawRecoveryInstallManifest,
 } from "../../dist/apps/api/modules/openclaw-recovery/cli-bootstrap.js";
+import { createOpenClawRecoveryDaemon } from "../../dist/apps/api/modules/openclaw-recovery/daemon.js";
 import {
+  discoverOpenClawGatewayRuntime,
   isOpenClawGatewayProcess,
   parseLsofListeners,
   parseSsListeners,
+  takeoverOpenClawGatewayListeners,
 } from "../../dist/apps/api/modules/openclaw-recovery/gateway-runtime.js";
 import {
   assessOpenClawGatewayServiceStatus,
@@ -34,16 +38,36 @@ import {
   repairOpenClawGatewayAuthSecretRefDrift,
   repairOpenClawPluginConfigFromFindings,
   restoreOpenClawRecoveryBackup,
+  runOpenClawRecoveryConfigRepair,
 } from "../../dist/apps/api/modules/openclaw-recovery/repair.js";
 import { createOpenClawRecoveryService } from "../../dist/apps/api/modules/openclaw-recovery/service.js";
+import * as recoveryServiceModule from "../../dist/apps/api/modules/openclaw-recovery/service.js";
 import {
   appendRecoveryEvent,
   buildDefaultRecoveryState,
   createRecoveryEvent,
+  DEFAULT_RECOVERY_POLICY,
   listRecoveryBackupsPage,
   listRecoveryEventsPage,
+  readRecoveryState,
   writeRecoveryState,
 } from "../../dist/apps/api/modules/openclaw-recovery/store.js";
+import * as recoverySupervisor from "../../dist/apps/api/modules/openclaw-recovery/supervisor.js";
+import {
+  createServiceLaunchArguments,
+  createSessionSupervisor,
+  createSupervisorPlan,
+} from "../../dist/apps/api/modules/supervisor/index.js";
+import {
+  OPENCLAW_RECOVERY_DEFAULT_PORT,
+  OPENCLAW_RECOVERY_DAEMON_SERVICE_NAME,
+} from "../../dist/types/openclaw-recovery.js";
+import * as recoveryDaemonEntry from "../../dist/apps/api/openclaw-recovery-daemon.js";
+import {
+  createTracevaneContext,
+  createTracevaneRequestHandler,
+} from "../../dist/apps/api/index.js";
+import { isTracevaneTrustedManagementRequest } from "../../dist/apps/api/gateway-http-auth.js";
 
 const rootDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -52,9 +76,102 @@ const rootDir = path.resolve(
 const CURRENT_TRACEVANE_VERSION = JSON.parse(
   fs.readFileSync(path.join(rootDir, "package.json"), "utf8"),
 ).version;
+const temporaryRoots = new Set();
+
+afterEach(() => {
+  for (const root of temporaryRoots) {
+    fs.rmSync(root, { force: true, maxRetries: 3, recursive: true });
+  }
+  temporaryRoots.clear();
+});
+
+test("recovery readiness retries transient failures until the daemon responds", async () => {
+  assert.equal(
+    typeof recoveryServiceModule.createOpenClawRecoveryReadinessProbe,
+    "function",
+  );
+  let now = 0;
+  let requests = 0;
+  const probe = recoveryServiceModule.createOpenClawRecoveryReadinessProbe({
+    fetchImpl: async () => {
+      requests += 1;
+      if (requests < 3) throw new Error("listener not ready");
+      return { ok: true, body: null };
+    },
+    timeoutMs: 100,
+    requestTimeoutMs: 20,
+    pollIntervalMs: 10,
+    now: () => now,
+    sleep: async (ms) => {
+      now += ms;
+    },
+  });
+
+  assert.equal(await probe("http://127.0.0.1:18798/health"), true);
+  assert.equal(requests, 3);
+});
+
+test("recovery readiness returns false at its absolute deadline", async () => {
+  assert.equal(
+    typeof recoveryServiceModule.createOpenClawRecoveryReadinessProbe,
+    "function",
+  );
+  let now = 0;
+  let requests = 0;
+  const sleeps = [];
+  const probe = recoveryServiceModule.createOpenClawRecoveryReadinessProbe({
+    fetchImpl: async () => {
+      requests += 1;
+      throw new Error("listener unavailable");
+    },
+    timeoutMs: 25,
+    requestTimeoutMs: 20,
+    pollIntervalMs: 10,
+    now: () => now,
+    sleep: async (ms) => {
+      sleeps.push(ms);
+      now += ms;
+    },
+  });
+
+  assert.equal(await probe("http://127.0.0.1:18798/health"), false);
+  assert.equal(requests, 3);
+  assert.deepEqual(sleeps, [10, 10, 5]);
+});
+
+test("recovery session readiness waits for matching runtime ownership", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-recovery-readiness-"));
+  temporaryRoots.add(root);
+  const runtimePath = path.join(root, "daemon-runtime.json");
+  fs.writeFileSync(runtimePath, JSON.stringify({ version: 1, pid: process.pid + 1 }), "utf8");
+  let now = 0;
+  let requests = 0;
+  const probe = recoveryServiceModule.createOpenClawRecoveryReadinessProbe({
+    fetchImpl: async () => {
+      requests += 1;
+      return { ok: true, body: null };
+    },
+    runtimePath,
+    timeoutMs: 100,
+    requestTimeoutMs: 20,
+    pollIntervalMs: 10,
+    now: () => now,
+    sleep: async (ms) => {
+      now += ms;
+      fs.writeFileSync(runtimePath, JSON.stringify({ version: 1, pid: process.pid }), "utf8");
+    },
+  });
+
+  assert.equal(
+    await probe("http://127.0.0.1:18798/health", process.pid),
+    true,
+  );
+  assert.equal(requests, 2);
+});
 
 function makeConfig() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-recovery-"));
+  temporaryRoots.add(root);
   const openclawRoot = path.join(root, ".openclaw");
   fs.mkdirSync(openclawRoot, { recursive: true });
   const projectRoot = path.join(root, "tracevane");
@@ -146,6 +263,1490 @@ function closeServer(server) {
     server.close((error) => (error ? reject(error) : resolve()));
   });
 }
+
+function sendRawHttp(port, payload) {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(port, "127.0.0.1", () => socket.end(payload));
+    const chunks = [];
+    socket.setTimeout(2_000, () => {
+      socket.destroy(new Error("raw HTTP response timed out"));
+    });
+    socket.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    socket.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    socket.on("error", reject);
+  });
+}
+
+async function reserveLoopbackPort() {
+  const { server, port } = await listenProbeServer((_request, response) => {
+    response.writeHead(204);
+    response.end();
+  });
+  await closeServer(server);
+  return port;
+}
+
+async function fetchWhenListening(url, init, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  let latestError;
+  while (Date.now() < deadline) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      latestError = error;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  throw latestError || new Error(`server did not listen at ${url}`);
+}
+
+async function waitForFile(filePath, timeoutMs = 2_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(filePath)) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.fail(`file was not created before timeout: ${filePath}`);
+}
+
+function sharedManagerStatus(overrides = {}) {
+  return {
+    mode: "session",
+    supervisor: "session",
+    installed: false,
+    enabled: null,
+    active: false,
+    state: "stopped",
+    configCurrent: true,
+    checkedAt: "2026-07-12T00:00:00.000Z",
+    errorCode: null,
+    errorMessage: null,
+    ...overrides,
+  };
+}
+
+function managedResponse(request, overrides = {}) {
+  const manager = overrides.manager || sharedManagerStatus();
+  return {
+    ok: overrides.ok ?? manager.errorCode === null,
+    action: request.action,
+    manager,
+    commands: overrides.commands || [],
+    templateWritten: overrides.templateWritten ?? false,
+    configCurrent: overrides.configCurrent ?? manager.configCurrent,
+  };
+}
+
+function createFakeServiceManager(respond) {
+  const calls = [];
+  let disposeCalls = 0;
+  return {
+    calls,
+    get disposeCalls() {
+      return disposeCalls;
+    },
+    manager: {
+      async manage(definition, request) {
+        calls.push({ definition, request });
+        return respond(definition, request, calls.length - 1);
+      },
+      async dispose() {
+        disposeCalls += 1;
+      },
+    },
+  };
+}
+
+function createDeferred() {
+  let resolve;
+  const promise = new Promise((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
+async function withRecoveryHttpServer(config, service, task) {
+  const ctx = createTracevaneContext({
+    config,
+    logger: { info() {}, warn() {}, error() {}, debug() {} },
+  });
+  ctx.services.openclawRecovery = service;
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const server = http.createServer((req, res) => {
+    Promise.resolve(handler(req, res)).then((handled) => {
+      if (!handled && !res.writableEnded) {
+        res.statusCode = 404;
+        res.end("not found");
+      }
+    }).catch((error) => {
+      if (!res.writableEnded) {
+        res.statusCode = 500;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: String(error?.message || error) }));
+      }
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    await task(`http://127.0.0.1:${address.port}`);
+  } finally {
+    server.closeAllConnections?.();
+    await closeServer(server);
+  }
+}
+
+test("recovery daemon-service route gates browser origins before manager effects", async () => {
+  const config = makeConfig();
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  await withRecoveryHttpServer(config, service, async (baseUrl) => {
+    const endpoint = `${baseUrl}/api/openclaw-recovery/daemon-service`;
+    for (const origin of [
+      "https://evil.example",
+      "null",
+      "not an origin",
+      "http://LOCALHOST:80",
+    ]) {
+      const blocked = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin },
+        body: JSON.stringify({ action: "start", apply: true }),
+      });
+      assert.equal(blocked.status, 403, origin);
+      assert.equal((await blocked.json()).error.code, "openclaw_recovery_management_locked");
+      assert.equal(fake.calls.length, 0, origin);
+    }
+
+    for (const headers of [
+      { origin: "http://127.0.0.1:5173" },
+      { origin: "https://localhost" },
+      { origin: "http://[::1]:5173" },
+      {},
+    ]) {
+      const allowed = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ action: "status" }),
+      });
+      assert.equal(allowed.status, 200);
+      assert.equal((await allowed.json()).ok, true);
+    }
+
+    const openclaw = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+    openclaw.gateway = { auth: { mode: "token", token: "gateway-review-secret" } };
+    fs.writeFileSync(config.openclawConfigFile, `${JSON.stringify(openclaw)}\n`, "utf8");
+    const authenticated = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer gateway-review-secret",
+        "content-type": "application/json",
+        origin: "https://evil.example",
+      },
+      body: JSON.stringify({ action: "status" }),
+    });
+    assert.equal(authenticated.status, 200);
+    const authenticatedBody = await authenticated.json();
+    assert.equal(authenticatedBody.ok, true);
+    assert.doesNotMatch(JSON.stringify(authenticatedBody), /gateway-review-secret/);
+    assert.equal(fake.calls.length, 5);
+  });
+});
+
+test("trusted management helper denies remote native requests without configured auth", () => {
+  const config = makeConfig();
+  const remoteRequest = {
+    method: "POST",
+    url: "/api/openclaw-recovery/daemon-service",
+    headers: {},
+    socket: { remoteAddress: "203.0.113.9" },
+  };
+  assert.equal(
+    isTracevaneTrustedManagementRequest(config, remoteRequest),
+    false,
+  );
+
+  const openclaw = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  openclaw.gateway = { auth: { mode: "token", token: "remote-auth-secret" } };
+  fs.writeFileSync(config.openclawConfigFile, `${JSON.stringify(openclaw)}\n`, "utf8");
+  assert.equal(
+    isTracevaneTrustedManagementRequest(config, {
+      ...remoteRequest,
+      headers: { authorization: "Bearer remote-auth-secret" },
+    }),
+    true,
+  );
+});
+
+test("recovery daemon-service POST null defaults to read-only session status", async () => {
+  const config = makeConfig();
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  await withRecoveryHttpServer(config, service, async (baseUrl) => {
+    const response = await fetch(
+      `${baseUrl}/api/openclaw-recovery/daemon-service`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "null",
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).ok, true);
+    assert.deepEqual(fake.calls.map(({ request }) => request), [
+      { action: "status", mode: "session", apply: false },
+    ]);
+  });
+});
+
+test("recovery exports one trusted definition with dedicated runtime and control port", () => {
+  assert.equal(
+    typeof recoverySupervisor.createOpenClawRecoveryServiceDefinition,
+    "function",
+  );
+
+  const config = makeConfig();
+  const root = path.dirname(config.openclawRoot);
+  config.projectRoot = path.join(root, "Trace vane 项目 & workers");
+  config.openclawConfigFile = path.join(config.openclawRoot, "配置 & prod.json");
+  fs.mkdirSync(config.projectRoot, { recursive: true });
+  fs.writeFileSync(config.openclawConfigFile, "{}\n", "utf8");
+
+  const definition = recoverySupervisor.createOpenClawRecoveryServiceDefinition(
+    config,
+    { mode: "persistent", platform: "win32" },
+  );
+  assert.equal(OPENCLAW_RECOVERY_DEFAULT_PORT, 18798);
+  assert.deepEqual(
+    {
+      id: definition.id,
+      displayName: definition.displayName,
+      serviceName: definition.serviceName,
+      windowsTaskName: definition.windowsTaskName,
+      launchdLabel: definition.launchdLabel,
+      entryPath: definition.entryPath,
+      workingDirectory: definition.workingDirectory,
+      configPath: definition.configPath,
+      runtimePath: definition.runtimePath,
+      logPath: definition.logPath,
+      healthUrl: definition.healthUrl,
+    },
+    {
+      id: "openclaw-recovery",
+      displayName: "Tracevane Recovery Daemon",
+      serviceName: "tracevane-recovery.service",
+      windowsTaskName: "TracevaneRecovery",
+      launchdLabel: "dev.openclaw.tracevane.recovery",
+      entryPath: path.join(
+        config.projectRoot,
+        "dist",
+        "apps",
+        "api",
+        "openclaw-recovery-daemon.js",
+      ),
+      workingDirectory: config.projectRoot,
+      configPath: config.openclawConfigFile,
+      runtimePath: path.join(
+        config.openclawRoot,
+        "tracevane",
+        "recovery",
+        "daemon-runtime.json",
+      ),
+      logPath: path.join(
+        config.openclawRoot,
+        "tracevane",
+        "recovery",
+        "daemon.log",
+      ),
+      healthUrl: "http://127.0.0.1:18798/health",
+    },
+  );
+  assert.deepEqual(definition.args, [
+    "--project-root",
+    config.projectRoot,
+    "--openclaw-root",
+    config.openclawRoot,
+    "--control-port",
+    "18798",
+    "--supervisor",
+    "scheduled-task",
+    "--service-name",
+    OPENCLAW_RECOVERY_DAEMON_SERVICE_NAME,
+  ]);
+  const launchArgs = createServiceLaunchArguments(definition);
+  assert.equal(launchArgs.filter((item) => item === "--config").length, 1);
+  assert.equal(launchArgs.at(-1), config.openclawConfigFile);
+  assert.notEqual(
+    definition.runtimePath,
+    path.join(config.openclawRoot, "tracevane", "recovery", "state.json"),
+  );
+});
+
+test("recovery compatibility plans are byte-for-byte shared plans on all three platforms", () => {
+  assert.equal(
+    typeof recoverySupervisor.createOpenClawRecoveryServiceDefinition,
+    "function",
+  );
+  const config = makeConfig();
+  const root = path.dirname(config.openclawRoot);
+  config.projectRoot = path.join(root, "Trace vane 项目 & workers");
+  config.openclawConfigFile = path.join(config.openclawRoot, "配置 & prod.json");
+  fs.mkdirSync(config.projectRoot, { recursive: true });
+  fs.writeFileSync(config.openclawConfigFile, "{}\n", "utf8");
+  const homeDir = path.join(root, "home 用户");
+  const windowsUserId = "TESTDOMAIN\\测试 User & Ops";
+  const secretProxy = "http://proxy-user:proxy-secret@127.0.0.1:18080";
+  const previousProxy = process.env.HTTP_PROXY;
+  process.env.HTTP_PROXY = secretProxy;
+
+  try {
+    const compatibility = recoverySupervisor.createOpenClawRecoveryDaemonServicePlan(
+      config,
+      { homeDir, windowsUserId },
+    );
+    const cases = [
+      ["linux", "linux"],
+      ["darwin", "darwin"],
+      ["win32", "win32"],
+    ];
+    for (const [platform, templatePlatform] of cases) {
+      const definition = recoverySupervisor.createOpenClawRecoveryServiceDefinition(
+        config,
+        { mode: "persistent", platform },
+      );
+      const expected = createSupervisorPlan(
+        definition,
+        platform,
+        homeDir,
+        { windowsUserId },
+      );
+      const actual = compatibility.templates.find(
+        (template) => template.platform === templatePlatform,
+      );
+      assert.ok(actual, platform);
+      assert.equal(actual.content, expected.template, platform);
+      assert.equal(actual.configPath, expected.configPath, platform);
+      assert.equal(actual.serviceName, expected.serviceName, platform);
+      assert.equal(actual.supervisor, expected.supervisor, platform);
+      assert.deepEqual(actual.commands, expected.commands, platform);
+    }
+    const serialized = JSON.stringify(compatibility);
+    assert.equal(serialized.includes(secretProxy), false);
+    assert.doesNotMatch(serialized, /HTTP_PROXY|HTTPS_PROXY|proxy-secret/i);
+    const windows = compatibility.templates.find(
+      (template) => template.platform === "win32",
+    );
+    assert.equal(windows.commands.status?.[0]?.command, "powershell.exe");
+    assert.equal(windows.commands.status?.[0]?.kind, "windows-task-status");
+    assert.deepEqual(windows.commands.status?.[0]?.args.slice(0, 6), [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-WindowStyle",
+      "Hidden",
+      "-EncodedCommand",
+    ]);
+  } finally {
+    if (previousProxy === undefined) delete process.env.HTTP_PROXY;
+    else process.env.HTTP_PROXY = previousProxy;
+  }
+});
+
+test("recovery service defaults status and applied start to one injected session manager", async () => {
+  const config = makeConfig();
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request, {
+      manager: request.action === "start"
+        ? sharedManagerStatus({ active: true, state: "running" })
+        : sharedManagerStatus(),
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const status = await service.getDaemonService();
+  const started = await service.applyDaemonServiceAction({
+    action: "start",
+    apply: true,
+  });
+
+  assert.deepEqual(
+    fake.calls.map(({ request }) => request),
+    [
+      { action: "status", mode: "session", apply: false },
+      { action: "start", mode: "session", apply: true },
+    ],
+  );
+  assert.equal(status.manager.mode, "session");
+  assert.equal(status.activeState, "inactive");
+  assert.equal(started.ok, true);
+  assert.equal(started.service.manager.state, "running");
+  assert.equal(started.service.activeState, "active");
+  assert.equal(fake.calls[0].definition.id, "openclaw-recovery");
+  assert.equal(fake.calls[0].definition.healthUrl, "http://127.0.0.1:18798/health");
+  assert.equal(fake.disposeCalls, 0);
+});
+
+test("recovery persistent restart preserves task-not-found and never invents a stop command", async () => {
+  const config = makeConfig();
+  const query = {
+    label: "Query scheduled task",
+    command: "schtasks.exe",
+    args: ["/Query", "/TN", "TracevaneRecovery", "/HResult"],
+    ok: false,
+    exitCode: -2147024894,
+    stdout: "",
+    stderr: "计划任务不存在",
+    errorCode: "task-not-found",
+    errorMessage: "Scheduled task is not installed.",
+    durationMs: 1,
+  };
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request, {
+      ok: false,
+      manager: sharedManagerStatus({
+        mode: "persistent",
+        supervisor: "scheduled-task",
+        state: "not-installed",
+        configCurrent: true,
+        errorCode: "task-not-found",
+        errorMessage: "Persistent service is not installed.",
+      }),
+      commands: [query],
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const response = await service.applyDaemonServiceAction({
+    action: "restart",
+    mode: "persistent",
+    runCommands: true,
+  });
+
+  assert.deepEqual(fake.calls[0].request, {
+    action: "restart",
+    mode: "persistent",
+    apply: true,
+  });
+  assert.equal(response.ok, false);
+  assert.equal(response.service.manager.errorCode, "task-not-found");
+  assert.equal(response.commands.length, 1);
+  assert.equal(response.commands[0].status, -2147024894);
+  assert.equal(response.commands.some(({ args }) => args.includes("/End")), false);
+  assert.equal(fake.disposeCalls, 0);
+});
+
+test("recovery passes ensure-running and repair through the shared persistent manager", async () => {
+  const config = makeConfig();
+  const fake = createFakeServiceManager((_definition, request, index) =>
+    managedResponse(request, {
+      ok: index === 0,
+      manager: index === 0
+        ? sharedManagerStatus({
+            mode: "persistent",
+            supervisor: "systemd-user",
+            installed: true,
+            enabled: true,
+            active: true,
+            state: "running",
+          })
+        : sharedManagerStatus({
+            mode: "persistent",
+            supervisor: "systemd-user",
+            installed: true,
+            enabled: true,
+            active: null,
+            state: "stale-config",
+            configCurrent: false,
+            errorCode: "stale-config",
+            errorMessage: "Persistent service template is stale.",
+          }),
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const ensured = await service.applyDaemonServiceAction({
+    action: "ensure-running",
+    mode: "persistent",
+    apply: true,
+  });
+  const repaired = await service.applyDaemonServiceAction({
+    action: "repair",
+    mode: "persistent",
+    apply: true,
+  });
+
+  assert.deepEqual(
+    fake.calls.map(({ request }) => request.action),
+    ["ensure-running", "repair"],
+  );
+  assert.equal(ensured.service.manager.state, "running");
+  assert.equal(ensured.service.enabledState, "enabled");
+  assert.equal(repaired.service.manager.state, "stale-config");
+  assert.equal(repaired.service.activeState, "stale-config");
+  assert.equal(repaired.error, "Persistent service template is stale.");
+  assert.equal(fake.disposeCalls, 0);
+});
+
+test("recovery maps shared readiness failure to degraded legacy compatibility state", async () => {
+  const config = makeConfig();
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request, {
+      ok: false,
+      manager: sharedManagerStatus({
+        mode: "persistent",
+        supervisor: "launchd-user",
+        installed: true,
+        enabled: true,
+        active: null,
+        state: "degraded",
+        errorCode: "runtime-not-ready",
+        errorMessage: "Persistent service did not become ready.",
+      }),
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const response = await service.applyDaemonServiceAction({
+    action: "start",
+    mode: "persistent",
+    apply: true,
+  });
+
+  assert.equal(response.ok, false);
+  assert.equal(response.service.manager.active, null);
+  assert.equal(response.service.activeState, "degraded");
+  assert.equal(response.service.enabledState, "enabled");
+  assert.equal(response.error, "Persistent service did not become ready.");
+});
+
+test("recovery daemon check uses injected domain I/O instead of real external probes", async () => {
+  const config = makeConfig();
+  const probeCalls = [];
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: null,
+    gatewayProbe: async (port, timeoutMs) => {
+      probeCalls.push({ port, timeoutMs });
+      return true;
+    },
+    captureInstallManifest: async () => null,
+  });
+
+  await daemon.checkOnce();
+
+  assert.deepEqual(probeCalls, [
+    { port: config.gatewayPort, timeoutMs: 500 },
+  ]);
+});
+
+test("recovery daemon parseArgs resolves trusted flags before environment fallbacks", () => {
+  assert.equal(
+    typeof recoveryDaemonEntry.parseOpenClawRecoveryDaemonArgs,
+    "function",
+  );
+  assert.equal(
+    typeof recoveryDaemonEntry.resolveOpenClawRecoveryDaemonLaunch,
+    "function",
+  );
+  const config = makeConfig();
+  const args = [
+    "--project-root",
+    config.projectRoot,
+    "--openclaw-root",
+    config.openclawRoot,
+    "--control-port",
+    "18798",
+    "--supervisor",
+    "scheduled-task",
+    "--service-name",
+    "tracevane-recovery.service",
+    "--config",
+    config.openclawConfigFile,
+  ];
+  const parsed = recoveryDaemonEntry.parseOpenClawRecoveryDaemonArgs(args);
+  assert.deepEqual(parsed, {
+    projectRoot: config.projectRoot,
+    openclawRoot: config.openclawRoot,
+    controlPort: "18798",
+    supervisor: "scheduled-task",
+    serviceName: "tracevane-recovery.service",
+    configPath: config.openclawConfigFile,
+  });
+  const launch = recoveryDaemonEntry.resolveOpenClawRecoveryDaemonLaunch(
+    args,
+    {
+      OPENCLAW_STATE_DIR: path.join(path.dirname(config.openclawRoot), "decoy-state"),
+      OPENCLAW_RECOVERY_CONTROL_PORT: "19999",
+      OPENCLAW_RECOVERY_SUPERVISOR: "systemd-user",
+      OPENCLAW_RECOVERY_SERVICE_NAME: "decoy.service",
+    },
+  );
+  assert.equal(launch.config.projectRoot, path.resolve(config.projectRoot));
+  assert.equal(launch.config.openclawRoot, path.resolve(config.openclawRoot));
+  assert.equal(
+    launch.config.openclawConfigFile,
+    path.resolve(config.openclawConfigFile),
+  );
+  assert.deepEqual(launch.daemonOptions, {
+    controlPort: 18798,
+    supervisor: "scheduled-task",
+    serviceName: "tracevane-recovery.service",
+  });
+
+  const environmentLaunch = recoveryDaemonEntry.resolveOpenClawRecoveryDaemonLaunch(
+    [],
+    {
+      OPENCLAW_STATE_DIR: config.openclawRoot,
+      OPENCLAW_RECOVERY_CONTROL_PORT: "18888",
+      OPENCLAW_RECOVERY_SUPERVISOR: "launchd-user",
+      OPENCLAW_RECOVERY_SERVICE_NAME: "environment.service",
+    },
+  );
+  assert.equal(environmentLaunch.config.openclawRoot, config.openclawRoot);
+  assert.equal(environmentLaunch.daemonOptions.controlPort, 18888);
+  assert.equal(environmentLaunch.daemonOptions.supervisor, "launchd-user");
+  assert.equal(environmentLaunch.daemonOptions.serviceName, "environment.service");
+  assert.equal(
+    recoveryDaemonEntry.resolveOpenClawRecoveryDaemonLaunch([], {}).daemonOptions.controlPort,
+    18798,
+  );
+  assert.throws(
+    () => recoveryDaemonEntry.parseOpenClawRecoveryDaemonArgs(["--unknown", "value"]),
+    /unknown|option/i,
+  );
+});
+
+test("recovery control health is minimal and unauthenticated while control routes stay protected", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+
+  try {
+    await daemon.start();
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const health = await fetchWhenListening(`${baseUrl}/health`);
+    assert.equal(health.status, 200);
+    assert.equal(health.headers.get("access-control-allow-origin"), null);
+    assert.deepEqual(await health.json(), { ok: true, status: "ready" });
+
+    const unauthorized = await fetch(`${baseUrl}/status`);
+    assert.equal(unauthorized.status, 401);
+    const token = fs.readFileSync(
+      path.join(config.openclawRoot, "tracevane", "recovery", "token"),
+      "utf8",
+    ).trim();
+    const authorized = await fetch(`${baseUrl}/status`, {
+      headers: {
+        "x-openclaw-recovery-token": token,
+        origin: "http://127.0.0.1:5173",
+      },
+    });
+    assert.equal(authorized.status, 200);
+    const blockedOrigin = await fetch(`${baseUrl}/status`, {
+      headers: {
+        "x-openclaw-recovery-token": token,
+        origin: "https://evil.example",
+      },
+    });
+    assert.equal(blockedOrigin.status, 403);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("recovery health listener binds before the initial gateway check settles", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  let releaseProbe;
+  const probeGate = new Promise((resolve) => {
+    releaseProbe = resolve;
+  });
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => probeGate,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const starting = daemon.start();
+
+  try {
+    const health = await fetchWhenListening(
+      `http://127.0.0.1:${port}/health`,
+      undefined,
+      500,
+    );
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { ok: true, status: "ready" });
+  } finally {
+    releaseProbe(true);
+    await starting;
+    await daemon.stop();
+  }
+});
+
+test("recovery stop during pre-listen startup cannot create later runtime", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseListen;
+  const listenGate = new Promise((resolve) => {
+    releaseListen = resolve;
+  });
+  let listenGateCalls = 0;
+  let intervalCalls = 0;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = () => {
+    intervalCalls += 1;
+    return { unref() {} };
+  };
+  globalThis.clearInterval = () => {};
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    beforeControlListen: async () => {
+      listenGateCalls += 1;
+      await listenGate;
+    },
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const starting = daemon.start();
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(listenGateCalls, 1);
+    await daemon.stop();
+    releaseListen();
+    await starting;
+    assert.equal(intervalCalls, 0);
+    assert.equal(fs.existsSync(runtimePath), false);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    releaseListen();
+    await Promise.allSettled([starting]);
+    await daemon.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("recovery stop awaits a pending listen and its close before returning", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseListen;
+  let listenCalls = 0;
+  const listenQueued = new Promise((resolve) => {
+    releaseListen = resolve;
+  });
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    listenControlServer(server, requestedPort, host) {
+      listenCalls += 1;
+      void listenQueued.then(() => server.listen(requestedPort, host));
+    },
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const starting = daemon.start();
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(listenCalls, 1);
+    let stopReturned = false;
+    const stopping = daemon.stop().then(() => {
+      stopReturned = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(stopReturned, false);
+    releaseListen();
+    await stopping;
+    await starting;
+    assert.equal(fs.existsSync(runtimePath), false);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    releaseListen();
+    await Promise.allSettled([starting]);
+    await daemon.stop();
+  }
+});
+
+test("recovery stop bounds a pending listen that never emits", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  let releaseListen;
+  let listenCalls = 0;
+  let startSettled = false;
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    controlCloseTimeoutMs: 50,
+    listenControlServer(server, requestedPort, host) {
+      listenCalls += 1;
+      releaseListen = () => server.listen(requestedPort, host);
+    },
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const starting = daemon.start().finally(() => {
+    startSettled = true;
+  });
+
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(listenCalls, 1);
+    let timeout;
+    const stoppedPromptly = await Promise.race([
+      daemon.stop().then(() => true),
+      new Promise((resolve) => {
+        timeout = setTimeout(() => resolve(false), 300);
+      }),
+    ]);
+    clearTimeout(timeout);
+    assert.equal(stoppedPromptly, true);
+    await starting;
+    assert.equal(startSettled, true);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    if (!startSettled) releaseListen?.();
+    await Promise.allSettled([starting]);
+    await daemon.stop();
+  }
+});
+
+test("recovery stop during initial probe cannot resurrect interval or runtime", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseProbe;
+  const probeGate = new Promise((resolve) => {
+    releaseProbe = resolve;
+  });
+  let intervalCalls = 0;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = () => {
+    intervalCalls += 1;
+    return { unref() {} };
+  };
+  globalThis.clearInterval = () => {};
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => probeGate,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const starting = daemon.start();
+
+  try {
+    const health = await fetchWhenListening(
+      `http://127.0.0.1:${port}/health`,
+      { headers: { connection: "close" } },
+    );
+    assert.deepEqual(await health.json(), { ok: true, status: "ready" });
+    await waitForFile(runtimePath);
+    await daemon.stop();
+    assert.equal(fs.existsSync(runtimePath), false);
+    releaseProbe(true);
+    await starting;
+    assert.equal(intervalCalls, 0);
+    assert.equal(fs.existsSync(runtimePath), false);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    releaseProbe(true);
+    await Promise.allSettled([starting]);
+    await daemon.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("recovery start after stop waits out the cancelled generation then starts fresh", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseOldProbe;
+  let markOldProbeStarted;
+  const oldProbeGate = new Promise((resolve) => {
+    releaseOldProbe = resolve;
+  });
+  const oldProbeStarted = new Promise((resolve) => {
+    markOldProbeStarted = resolve;
+  });
+  let probeCalls = 0;
+  let intervalCalls = 0;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = () => {
+    intervalCalls += 1;
+    return { unref() {} };
+  };
+  globalThis.clearInterval = () => {};
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => {
+      probeCalls += 1;
+      if (probeCalls === 1) {
+        markOldProbeStarted();
+        return oldProbeGate;
+      }
+      return true;
+    },
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const oldStart = daemon.start();
+
+  try {
+    await oldProbeStarted;
+    await waitForFile(runtimePath);
+    await daemon.stop();
+    assert.equal(fs.existsSync(runtimePath), false);
+    const freshStart = daemon.start();
+    releaseOldProbe(true);
+    await Promise.all([oldStart, freshStart]);
+    assert.equal(probeCalls, 2);
+    assert.equal(intervalCalls, 1);
+    assert.equal(fs.existsSync(runtimePath), true);
+    const health = await fetch(`http://127.0.0.1:${port}/health`, {
+      headers: { connection: "close" },
+    });
+    assert.deepEqual(await health.json(), { ok: true, status: "ready" });
+  } finally {
+    releaseOldProbe(true);
+    await Promise.allSettled([oldStart]);
+    await daemon.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("recovery stop cancels an in-flight periodic check before state or repair", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const statePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "state.json",
+  );
+  let releasePeriodicProbe;
+  let markPeriodicProbeStarted;
+  let markPeriodicProbeReturned;
+  const periodicProbeGate = new Promise((resolve) => {
+    releasePeriodicProbe = resolve;
+  });
+  const periodicProbeStarted = new Promise((resolve) => {
+    markPeriodicProbeStarted = resolve;
+  });
+  const periodicProbeReturned = new Promise((resolve) => {
+    markPeriodicProbeReturned = resolve;
+  });
+  let probeCalls = 0;
+  let repairCalls = 0;
+  let intervalCallback;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = (callback) => {
+    intervalCallback = callback;
+    return { unref() {} };
+  };
+  globalThis.clearInterval = () => {};
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => {
+      probeCalls += 1;
+      if (probeCalls === 1) return true;
+      markPeriodicProbeStarted();
+      const result = await periodicProbeGate;
+      markPeriodicProbeReturned();
+      return result;
+    },
+    recoveryRepair: async () => {
+      repairCalls += 1;
+      throw new Error("cancelled periodic check must not repair");
+    },
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+
+  try {
+    await daemon.start();
+    const state = readRecoveryState(config);
+    writeRecoveryState(config, {
+      ...state,
+      policy: {
+        ...state.policy,
+        failureThresholdMs: 0,
+        repairCooldownMs: 0,
+      },
+    });
+    const stateBeforePeriodicProbe = fs.readFileSync(statePath, "utf8");
+    assert.equal(typeof intervalCallback, "function");
+    intervalCallback();
+    await periodicProbeStarted;
+    await daemon.stop();
+    releasePeriodicProbe(false);
+    await periodicProbeReturned;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fs.readFileSync(statePath, "utf8"), stateBeforePeriodicProbe);
+    assert.equal(repairCalls, 0);
+  } finally {
+    releasePeriodicProbe(false);
+    await daemon.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("recovery stop closes control without waiting for an active repair", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const runtimePath = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+    "daemon-runtime.json",
+  );
+  let releaseRepair;
+  let markRepairStarted;
+  const repairGate = new Promise((resolve) => {
+    releaseRepair = resolve;
+  });
+  const repairStarted = new Promise((resolve) => {
+    markRepairStarted = resolve;
+  });
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    recoveryRepair: async () => {
+      markRepairStarted();
+      await repairGate;
+      const finishedAt = new Date().toISOString();
+      return {
+        ok: true,
+        trigger: "manual",
+        startedAt: finishedAt,
+        finishedAt,
+        durationMs: 0,
+        backupPath: null,
+        changedKeys: [],
+        commands: [],
+        error: "",
+      };
+    },
+    logger: { info() {}, warn() {}, error() {} },
+  });
+
+  await daemon.start();
+  const token = fs.readFileSync(
+    path.join(config.openclawRoot, "tracevane", "recovery", "token"),
+    "utf8",
+  ).trim();
+  const repairRequest = fetch(`http://127.0.0.1:${port}/run`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, connection: "close" },
+  }).then((response) => response.arrayBuffer()).catch(() => null);
+
+  try {
+    await repairStarted;
+    let timeout;
+    const stoppedPromptly = await Promise.race([
+      daemon.stop().then(() => true),
+      new Promise((resolve) => {
+        timeout = setTimeout(() => resolve(false), 500);
+      }),
+    ]);
+    clearTimeout(timeout);
+    assert.equal(stoppedPromptly, true);
+    assert.equal(fs.existsSync(runtimePath), false);
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/health`));
+  } finally {
+    releaseRepair();
+    await repairRequest;
+    await daemon.stop();
+  }
+});
+
+test("concurrent recovery daemon starts share one bind and initial check", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  let releaseProbe;
+  const probeGate = new Promise((resolve) => {
+    releaseProbe = resolve;
+  });
+  let probeCalls = 0;
+  let manifestCalls = 0;
+  let intervalCalls = 0;
+  const originalSetInterval = globalThis.setInterval;
+  const originalClearInterval = globalThis.clearInterval;
+  globalThis.setInterval = () => {
+    intervalCalls += 1;
+    return { unref() {} };
+  };
+  globalThis.clearInterval = () => {};
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => {
+      probeCalls += 1;
+      return probeGate;
+    },
+    captureInstallManifest: async () => {
+      manifestCalls += 1;
+      return null;
+    },
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  const first = daemon.start();
+  const second = daemon.start();
+
+  try {
+    const health = await fetchWhenListening(
+      `http://127.0.0.1:${port}/health`,
+    );
+    assert.equal(health.status, 200);
+    assert.deepEqual(await health.json(), { ok: true, status: "ready" });
+    await new Promise((resolve) => setImmediate(resolve));
+    releaseProbe(true);
+    await Promise.all([first, second]);
+    assert.equal(probeCalls, 1);
+    assert.equal(manifestCalls, 1);
+    assert.equal(intervalCalls, 1);
+  } finally {
+    releaseProbe(true);
+    await Promise.allSettled([first, second]);
+    await daemon.stop();
+    globalThis.setInterval = originalSetInterval;
+    globalThis.clearInterval = originalClearInterval;
+  }
+});
+
+test("local recovery daemon cannot recursively create a session owner", async () => {
+  const config = makeConfig();
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request, {
+      manager: sharedManagerStatus({ active: true, state: "running" }),
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    runtimeHost: "local-daemon",
+    daemonServiceManager: fake.manager,
+  });
+
+  const response = await service.applyDaemonServiceAction({
+    action: "start",
+    mode: "session",
+    apply: true,
+  });
+
+  assert.equal(response.ok, false);
+  assert.equal(response.service.manager.errorCode, "runtime-not-ready");
+  assert.match(response.error, /cannot create another session owner/i);
+  assert.deepEqual(fake.calls, []);
+});
+
+test("direct recovery daemon removes only matching runtime metadata and preserves domain state", async () => {
+  const config = makeConfig();
+  const recoveryRoot = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+  );
+  const runtimePath = path.join(recoveryRoot, "daemon-runtime.json");
+  const statePath = path.join(recoveryRoot, "state.json");
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: null,
+    supervisor: "scheduled-task",
+    serviceName: "tracevane-recovery-fixture.service",
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+
+  try {
+    await daemon.start();
+    assert.equal(fs.existsSync(runtimePath), true);
+    const runtime = JSON.parse(fs.readFileSync(runtimePath, "utf8"));
+    assert.equal(runtime.pid, process.pid);
+    assert.equal(runtime.supervisor, "scheduled-task");
+    assert.equal(runtime.serviceName, "tracevane-recovery-fixture.service");
+    assert.equal("daemon" in runtime, false);
+    assert.equal(fs.existsSync(statePath), true);
+    const stateBeforeStop = fs.readFileSync(statePath, "utf8");
+
+    await daemon.stop();
+
+    assert.equal(fs.existsSync(runtimePath), false);
+    assert.equal(fs.existsSync(statePath), true);
+    assert.equal(fs.readFileSync(statePath, "utf8"), stateBeforeStop);
+  } finally {
+    await daemon.stop();
+  }
+});
+
+test("direct recovery daemon retains mismatched runtime metadata", async () => {
+  const config = makeConfig();
+  const recoveryRoot = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+  );
+  const runtimePath = path.join(recoveryRoot, "daemon-runtime.json");
+  const statePath = path.join(recoveryRoot, "state.json");
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: null,
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+
+  try {
+    await daemon.start();
+    fs.writeFileSync(
+      runtimePath,
+      `${JSON.stringify({ pid: process.pid + 1, sentinel: true })}\n`,
+      "utf8",
+    );
+    const stateBeforeStop = fs.readFileSync(statePath, "utf8");
+
+    await daemon.stop();
+
+    assert.deepEqual(JSON.parse(fs.readFileSync(runtimePath, "utf8")), {
+      pid: process.pid + 1,
+      sentinel: true,
+    });
+    assert.equal(fs.readFileSync(statePath, "utf8"), stateBeforeStop);
+  } finally {
+    await daemon.stop();
+    fs.rmSync(path.dirname(config.openclawRoot), {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test("shared session shutdown removes Recovery runtime metadata but preserves state", async () => {
+  const config = makeConfig();
+  const recoveryRoot = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+  );
+  const runtimePath = path.join(recoveryRoot, "daemon-runtime.json");
+  const statePath = path.join(recoveryRoot, "state.json");
+  const fixturePath = path.join(config.projectRoot, "recovery-session-fixture.mjs");
+  fs.writeFileSync(
+    fixturePath,
+    [
+      'import fs from "node:fs";',
+      'import path from "node:path";',
+      'const [runtimePath, statePath] = process.argv.slice(2);',
+      'fs.mkdirSync(path.dirname(runtimePath), { recursive: true });',
+      'fs.writeFileSync(runtimePath, JSON.stringify({ pid: process.pid }), "utf8");',
+      'fs.writeFileSync(statePath, JSON.stringify({ domain: "preserve", daemon: { pid: process.pid } }), "utf8");',
+      'setInterval(() => {}, 1000);',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const definition = recoverySupervisor.createOpenClawRecoveryServiceDefinition(
+    config,
+    { mode: "session" },
+  );
+  definition.entryPath = fixturePath;
+  definition.runtimePath = runtimePath;
+  definition.args = [runtimePath, statePath];
+  const session = createSessionSupervisor({
+    stopGraceMs: 500,
+    terminateOwnedTree: async (pid, force) => {
+      try {
+        process.kill(pid, force ? "SIGKILL" : "SIGTERM");
+      } catch (error) {
+        if (error?.code !== "ESRCH") throw error;
+      }
+    },
+  });
+
+  try {
+    await session.start(definition);
+    await waitForFile(runtimePath);
+    await waitForFile(statePath);
+    const stateBeforeStop = fs.readFileSync(statePath, "utf8");
+
+    await session.stop("openclaw-recovery");
+
+    assert.equal(fs.existsSync(runtimePath), false);
+    assert.equal(fs.readFileSync(statePath, "utf8"), stateBeforeStop);
+  } finally {
+    await session.dispose();
+    fs.rmSync(path.dirname(config.openclawRoot), {
+      recursive: true,
+      force: true,
+    });
+  }
+});
+
+test("recovery daemon listen failure cleans matching runtime metadata without deleting state", async () => {
+  const daemonSource = fs.readFileSync(
+    path.join(rootDir, "apps/api/modules/openclaw-recovery/daemon.ts"),
+    "utf8",
+  );
+  assert.match(daemonSource, /controlServer[\s\S]*?once\("error"/);
+
+  const config = makeConfig();
+  const occupied = await listenProbeServer((_request, response) => {
+    response.writeHead(204);
+    response.end();
+  });
+  const recoveryRoot = path.join(
+    config.openclawRoot,
+    "tracevane",
+    "recovery",
+  );
+  const runtimePath = path.join(recoveryRoot, "daemon-runtime.json");
+  const statePath = path.join(recoveryRoot, "state.json");
+  writeRecoveryState(config, {
+    ...buildDefaultRecoveryState(config),
+    notes: ["bind-failure-sentinel"],
+  });
+  const stateBeforeStart = fs.readFileSync(statePath, "utf8");
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: occupied.port,
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+
+  try {
+    const firstStart = daemon.start();
+    const concurrentStart = daemon.start();
+    const failedStarts = await Promise.allSettled([firstStart, concurrentStart]);
+    assert.deepEqual(
+      failedStarts.map((result) =>
+        result.status === "rejected" ? result.reason?.code : "fulfilled"),
+      ["EADDRINUSE", "EADDRINUSE"],
+    );
+    assert.equal(fs.existsSync(runtimePath), false);
+    assert.equal(fs.existsSync(statePath), true);
+    assert.equal(fs.readFileSync(statePath, "utf8"), stateBeforeStart);
+    assert.equal(
+      fs.readdirSync(recoveryRoot).some((name) => name.endsWith(".tmp")),
+      false,
+    );
+  } finally {
+    await daemon.stop();
+    await closeServer(occupied.server);
+  }
+});
+
+test("recovery daemon entrypoint cleans up on termination and abnormal failures", () => {
+  const source = fs.readFileSync(
+    path.join(rootDir, "apps/api/openclaw-recovery-daemon.ts"),
+    "utf8",
+  );
+  for (const reason of [
+    "SIGINT",
+    "SIGTERM",
+    "uncaughtException",
+    "unhandledRejection",
+  ]) {
+    assert.match(source, new RegExp(`process\\.once\\(["']${reason}["']`));
+  }
+  assert.match(source, /await daemon\.stop\(\)[\s\S]*?process\.exit/);
+  assert.ok(
+    source.indexOf('process.once("SIGINT"')
+      < source.indexOf("await daemon.start()"),
+    "termination cleanup must be armed before startup writes runtime metadata",
+  );
+});
+
+test("recovery daemon shutdown does not await an in-flight repair", () => {
+  const source = fs.readFileSync(
+    path.join(rootDir, "apps/api/modules/openclaw-recovery/daemon.ts"),
+    "utf8",
+  );
+  assert.match(source, /const recoveryRepair = options\.recoveryRepair/);
+  const stopStart = source.indexOf("async stop(): Promise<void>");
+  const stopEnd = source.indexOf("    checkOnce,", stopStart);
+  const stopBlock = source.slice(stopStart, stopEnd);
+  assert.doesNotMatch(stopBlock, /await repairInFlight/);
+  assert.match(stopBlock, /stopControlServer/);
+});
+
+test("recovery control rejects malformed request URLs before authentication", () => {
+  const source = fs.readFileSync(
+    path.join(rootDir, "apps/api/modules/openclaw-recovery/daemon.ts"),
+    "utf8",
+  );
+  assert.match(source, /function readControlRequestUrl/);
+  assert.match(source, /invalid_request_url/);
+});
+
+test("recovery control returns 400 for an unauthenticated malformed absolute URL", async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const daemon = createOpenClawRecoveryDaemon(config, {
+    controlPort: port,
+    gatewayProbe: async () => true,
+    captureInstallManifest: async () => null,
+    logger: { info() {}, warn() {}, error() {} },
+  });
+  try {
+    await daemon.start();
+    const raw = await sendRawHttp(
+      port,
+      "GET http://[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+    );
+    assert.match(raw, /^HTTP\/1\.1 400 /);
+    assert.deepEqual(JSON.parse(raw.split("\r\n\r\n")[1]), {
+      error: "invalid_request_url",
+    });
+  } finally {
+    await daemon.stop();
+  }
+});
 
 test("recovery repair creates backups before pruning dynamic validation paths", () => {
   const config = makeConfig();
@@ -707,6 +2308,98 @@ test("CLI bootstrap restores openclaw from install manifest when PATH entry is m
   }
 });
 
+test("CLI bootstrap executes a native Windows openclaw.cmd shim without a shell", {
+  skip: process.platform !== "win32" ? "native Windows .cmd execution only" : false,
+}, async () => {
+  const config = makeConfig();
+  const binDir = path.join(config.projectRoot, "fake CLI bin 空格");
+  const fakeCliScript = path.join(binDir, "fake-openclaw.cjs");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    fakeCliScript,
+    "console.log('OpenClaw 2099.3.0 (fake-windows-cmd)');\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(binDir, "openclaw.cmd"),
+    `@echo off\r\n"${process.execPath}" "%~dp0fake-openclaw.cjs" %*\r\n`,
+    "utf8",
+  );
+
+  const commands = [];
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath || ""}`;
+  try {
+    const result = await ensureOpenClawCliAvailable(
+      config,
+      { allowCliReinstall: false, cliReinstallTimeoutMs: 1 },
+      commands,
+    );
+
+    assert.equal(result.ok, true, JSON.stringify({ result, commands }, null, 2));
+    assert.equal(result.action, "none");
+    assert.equal(result.manifest?.cliVersion, "2099.3.0");
+    assert.equal(commands[0]?.ok, true);
+    assert.match(commands[0]?.stdout || "", /fake-windows-cmd/);
+  } finally {
+    process.env.PATH = originalPath;
+  }
+});
+
+test("config repair executes native Windows openclaw.cmd actions without a shell", {
+  skip: process.platform !== "win32" ? "native Windows .cmd execution only" : false,
+}, async () => {
+  const config = makeConfig();
+  const binDir = path.join(config.projectRoot, "repair CLI bin 空格");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(binDir, "fake-openclaw.cjs"),
+    [
+      "const args = process.argv.slice(2);",
+      "if (args[0] === 'config' && args[1] === 'validate') {",
+      "  console.log(JSON.stringify({ valid: true, marker: 'WINDOWS_REPAIR_OK' }));",
+      "} else {",
+      "  console.log('WINDOWS_REPAIR_OK ' + args.join(' '));",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(binDir, "openclaw.cmd"),
+    `@echo off\r\n"${process.execPath}" "%~dp0fake-openclaw.cjs" %*\r\n`,
+    "utf8",
+  );
+
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${binDir}${path.delimiter}${originalPath || ""}`;
+  try {
+    const repair = await runOpenClawRecoveryConfigRepair(config, {
+      trigger: "manual",
+      policy: {
+        ...DEFAULT_RECOVERY_POLICY,
+        allowGatewayProcessTakeover: false,
+        allowGatewayServiceRepair: false,
+        allowTracevaneWebRebuild: false,
+      },
+    });
+
+    assert.equal(repair.ok, true, JSON.stringify(repair, null, 2));
+    assert.equal(
+      repair.commands.filter((command) => command.command === "openclaw").length >= 3,
+      true,
+    );
+    assert.equal(
+      repair.commands
+        .filter((command) => command.command === "openclaw")
+        .every((command) => command.ok && command.stdout.includes("WINDOWS_REPAIR_OK")),
+      true,
+    );
+  } finally {
+    process.env.PATH = originalPath;
+  }
+});
+
 test("CLI bootstrap shim executes shell wrapper manifests directly", () => {
   if (process.platform === "win32") return;
   const config = makeConfig();
@@ -786,6 +2479,155 @@ test("gateway runtime discovery parses listeners and only trusts OpenClaw gatewa
   );
 });
 
+test("gateway takeover skips termination when current ownership evidence is missing or changed", async () => {
+  const port = 31879;
+  const missingPid = 41001;
+  const changedPid = 41002;
+  const snapshot = {
+    port,
+    listeners: [missingPid, changedPid].map((pid) => ({
+      pid,
+      command: "openclaw-gateway",
+      address: `127.0.0.1:${port}`,
+      process: {
+        pid,
+        ppid: 1,
+        command: "node",
+        args: "/opt/openclaw/dist/index.js gateway",
+      },
+      safeToTerminate: true,
+      reason: "openclaw-gateway",
+    })),
+    safeListenerPids: [missingPid, changedPid],
+    unsafeListenerPids: [],
+    notes: [],
+  };
+  const lookups = [];
+  const terminated = [];
+
+  const result = await takeoverOpenClawGatewayListeners(
+    port,
+    { allow: true, timeoutMs: 500 },
+    [],
+    {
+      discoverRuntime: async () => snapshot,
+      readProcessInfo: async (pid) => {
+        lookups.push(pid);
+        return pid === missingPid
+          ? null
+          : {
+              pid: changedPid + 100,
+              ppid: 1,
+              command: "node",
+              args: "/opt/openclaw/dist/index.js gateway",
+            };
+      },
+      terminatePid: async (pid) => {
+        terminated.push(pid);
+        return { ok: true, error: "" };
+      },
+    },
+  );
+
+  assert.equal(result.attempted, true);
+  assert.deepEqual(lookups, [missingPid, changedPid]);
+  assert.deepEqual(terminated, [], "termination must require current PID-matched process evidence");
+  assert.deepEqual(result.terminatedPids, []);
+  assert.deepEqual(result.skippedPids, [missingPid, changedPid]);
+  assert.match(result.error, /current process details are unavailable/);
+  assert.match(result.error, /process identity changed/);
+});
+
+test("gateway runtime discovers and takes over a native Windows OpenClaw listener tree", {
+  skip: process.platform !== "win32" ? "native Windows listener ownership" : false,
+}, async () => {
+  const config = makeConfig();
+  const port = await reserveLoopbackPort();
+  const fixturePath = path.join(config.openclawRoot, "windows-openclaw-gateway-fixture.cjs");
+  const readyPath = path.join(config.openclawRoot, "windows-openclaw-gateway.ready");
+  const descendantPidPath = path.join(config.openclawRoot, "windows-openclaw-descendant.pid");
+  fs.writeFileSync(
+    fixturePath,
+    `const fs = require("node:fs");
+const net = require("node:net");
+const { spawn } = require("node:child_process");
+const descendant = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+fs.writeFileSync(${JSON.stringify(descendantPidPath)}, String(descendant.pid), "utf8");
+const server = net.createServer(() => {});
+server.listen(Number(process.argv[4]), "127.0.0.1", () => {
+  fs.writeFileSync(${JSON.stringify(readyPath)}, "ready", "utf8");
+});
+setInterval(() => {}, 1000);
+`,
+    "utf8",
+  );
+  const child = spawn(
+    process.execPath,
+    [fixturePath, "openclaw", "gateway", String(port)],
+    { stdio: "ignore", windowsHide: true },
+  );
+  let descendantPid = 0;
+  const processIsAlive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      return error?.code === "EPERM";
+    }
+  };
+  const waitUntil = async (check, timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (check()) return true;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return check();
+  };
+
+  try {
+    await waitForFile(readyPath, 3_000);
+    descendantPid = Number(fs.readFileSync(descendantPidPath, "utf8"));
+    assert.equal(processIsAlive(child.pid), true);
+    assert.equal(processIsAlive(descendantPid), true);
+
+    const discoveryCommands = [];
+    const snapshot = await discoverOpenClawGatewayRuntime(port, discoveryCommands);
+    const listener = snapshot.listeners.find((entry) => entry.pid === child.pid);
+    assert.ok(listener, `expected listener pid ${child.pid}: ${JSON.stringify(snapshot)}`);
+    assert.equal(listener.safeToTerminate, true);
+    assert.equal(listener.reason, "openclaw-gateway");
+    assert.match(listener.process?.args || "", /openclaw.*gateway/i);
+    assert.ok(discoveryCommands.some((command) => /powershell\.exe/i.test(command.command)));
+
+    const takeoverCommands = [];
+    const takeover = await takeoverOpenClawGatewayListeners(
+      port,
+      { allow: true, timeoutMs: 5_000 },
+      takeoverCommands,
+    );
+    assert.equal(takeover.attempted, true);
+    assert.deepEqual(takeover.terminatedPids, [child.pid]);
+    assert.equal(takeover.error, "");
+    assert.ok(takeoverCommands.some((command) => /taskkill\.exe/i.test(command.command)));
+    assert.equal(await waitUntil(() => !processIsAlive(child.pid), 3_000), true);
+    assert.equal(await waitUntil(() => !processIsAlive(descendantPid), 3_000), true);
+  } finally {
+    if (child.pid && processIsAlive(child.pid)) {
+      try {
+        execFileSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+          timeout: 5_000,
+        });
+      } catch {
+        try { process.kill(child.pid, "SIGKILL"); } catch {}
+      }
+    }
+    if (descendantPid && processIsAlive(descendantPid)) {
+      try { process.kill(descendantPid, "SIGKILL"); } catch {}
+    }
+  }
+});
+
 test("recovery status is read-only and returns default daemon state without CLI output", async () => {
   const config = makeConfig();
   const service = createOpenClawRecoveryService(config);
@@ -800,28 +2642,325 @@ test("recovery status is read-only and returns default daemon state without CLI 
   assert.equal(status.lastRepair, null);
 });
 
-test("recovery status preserves the latest daemon service action snapshot", async () => {
+test("recovery live manager overrides persisted legacy service fields", async () => {
   const config = makeConfig();
-  const service = createOpenClawRecoveryService(config);
   const state = buildDefaultRecoveryState(config);
-
-  const initialStatus = await service.getStatus();
   writeRecoveryState(config, {
     ...state,
     service: {
-      ...initialStatus.service,
+      ...state.service,
       installed: true,
       activeState: "active",
       enabledState: "enabled",
       lastCheckedAt: "2026-06-05T00:00:00.000Z",
     },
   });
+  const liveManager = sharedManagerStatus({
+    checkedAt: "2026-07-12T08:00:00.000Z",
+  });
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request, { manager: liveManager }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
 
   const status = await service.getStatus();
 
+  assert.equal(status.service.installed, false);
+  assert.equal(status.service.activeState, "inactive");
+  assert.equal(status.service.enabledState, "unknown");
+  assert.equal(status.service.lastCheckedAt, liveManager.checkedAt);
+  assert.deepEqual(status.service.manager, liveManager);
+});
+
+test("recovery overview reports the active persistent owner when the session owner is stopped", async () => {
+  const config = makeConfig();
+  const sessionStopped = sharedManagerStatus();
+  const persistentRunning = sharedManagerStatus({
+    mode: "persistent",
+    supervisor: "scheduled-task",
+    installed: true,
+    enabled: true,
+    active: true,
+    state: "running",
+    checkedAt: "2026-07-12T08:30:00.000Z",
+  });
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request, {
+      manager: request.mode === "persistent"
+        ? persistentRunning
+        : sessionStopped,
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const status = await service.getStatus();
+
+  assert.equal(status.service.installed, true);
   assert.equal(status.service.activeState, "active");
   assert.equal(status.service.enabledState, "enabled");
-  assert.equal(status.service.lastCheckedAt, "2026-06-05T00:00:00.000Z");
+  assert.deepEqual(status.service.manager, persistentRunning);
+  assert.deepEqual(fake.calls.map(({ request }) => request), [
+    { action: "status", mode: "session", apply: false },
+    { action: "status", mode: "persistent", apply: true },
+    { action: "status", mode: "session", apply: false },
+  ]);
+});
+
+test("recovery overview revalidates a session owner after persistent inspection", async () => {
+  const config = makeConfig();
+  const sessionStopped = sharedManagerStatus();
+  const sessionRunning = sharedManagerStatus({
+    active: true,
+    state: "running",
+    checkedAt: "2026-07-12T09:00:02.000Z",
+  });
+  const persistentStopped = sharedManagerStatus({
+    mode: "persistent",
+    supervisor: "scheduled-task",
+    installed: true,
+    enabled: true,
+    active: false,
+    state: "stopped",
+    checkedAt: "2026-07-12T09:00:01.000Z",
+  });
+  const fake = createFakeServiceManager((_definition, request, index) =>
+    managedResponse(request, {
+      manager: index === 0
+        ? sessionStopped
+        : index === 1
+          ? persistentStopped
+          : sessionRunning,
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const status = await service.getStatus();
+
+  assert.deepEqual(status.service.manager, sessionRunning);
+  assert.equal(status.service.activeState, "active");
+  assert.deepEqual(fake.calls.map(({ request }) => request.mode), [
+    "session",
+    "persistent",
+    "session",
+  ]);
+});
+
+test("recovery overview preserves an inactive failed session over dormant persistent state", async () => {
+  const config = makeConfig();
+  const sessionFailed = sharedManagerStatus({
+    active: false,
+    state: "failed",
+    errorCode: "runtime-not-ready",
+    errorMessage: "Session restart budget exhausted.",
+  });
+  const persistentStopped = sharedManagerStatus({
+    mode: "persistent",
+    supervisor: "scheduled-task",
+    installed: true,
+    enabled: true,
+    active: false,
+    state: "stopped",
+  });
+  const fake = createFakeServiceManager((_definition, request) =>
+    managedResponse(request, {
+      manager: request.mode === "persistent" ? persistentStopped : sessionFailed,
+    }));
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const status = await service.getStatus();
+
+  assert.deepEqual(status.service.manager, sessionFailed);
+  assert.equal(status.service.activeState, "inactive");
+  assert.equal(status.service.manager.errorCode, "runtime-not-ready");
+  assert.deepEqual(fake.calls.map(({ request }) => request.mode), [
+    "session",
+    "persistent",
+    "session",
+  ]);
+});
+
+test("recovery overview prefers a live or transitional persistent owner over an inactive failed session", async () => {
+  for (const persistentOwner of [
+    sharedManagerStatus({
+      mode: "persistent",
+      supervisor: "scheduled-task",
+      installed: true,
+      enabled: true,
+      active: true,
+      state: "running",
+      checkedAt: "2026-07-12T09:10:01.000Z",
+    }),
+    sharedManagerStatus({
+      mode: "persistent",
+      supervisor: "scheduled-task",
+      installed: true,
+      enabled: true,
+      active: null,
+      state: "starting",
+      checkedAt: "2026-07-12T09:10:02.000Z",
+    }),
+  ]) {
+    const config = makeConfig();
+    const sessionFailed = sharedManagerStatus({
+      active: false,
+      state: "failed",
+      errorCode: "runtime-not-ready",
+      errorMessage: "Session restart budget exhausted.",
+    });
+    const fake = createFakeServiceManager((_definition, request) =>
+      managedResponse(request, {
+        manager: request.mode === "persistent" ? persistentOwner : sessionFailed,
+      }));
+    const service = createOpenClawRecoveryService(config, {
+      daemonServiceManager: fake.manager,
+    });
+
+    const status = await service.getStatus();
+
+    assert.deepEqual(status.service.manager, persistentOwner);
+    assert.deepEqual(fake.calls.map(({ request }) => request.mode), [
+      "session",
+      "persistent",
+      "session",
+    ]);
+  }
+});
+
+test("recovery owner snapshot serializes with a concurrent lifecycle action", async () => {
+  const config = makeConfig();
+  const persistentEntered = createDeferred();
+  const releasePersistent = createDeferred();
+  const sessionStopped = sharedManagerStatus();
+  const sessionRunning = sharedManagerStatus({
+    active: true,
+    state: "running",
+    checkedAt: "2026-07-12T09:20:02.000Z",
+  });
+  const persistentRunning = sharedManagerStatus({
+    mode: "persistent",
+    supervisor: "scheduled-task",
+    installed: true,
+    enabled: true,
+    active: true,
+    state: "running",
+    checkedAt: "2026-07-12T09:20:01.000Z",
+  });
+  let sessionManager = sessionStopped;
+  let lifecycleEntered = false;
+  const fake = createFakeServiceManager(async (_definition, request) => {
+    if (request.mode === "persistent") {
+      persistentEntered.resolve();
+      await releasePersistent.promise;
+      return managedResponse(request, { manager: persistentRunning });
+    }
+    if (request.action === "start") {
+      lifecycleEntered = true;
+      sessionManager = sessionRunning;
+    }
+    return managedResponse(request, { manager: sessionManager });
+  });
+  const service = createOpenClawRecoveryService(config, {
+    daemonServiceManager: fake.manager,
+  });
+
+  const statusPromise = service.getStatus();
+  await persistentEntered.promise;
+  const startPromise = service.applyDaemonServiceAction({
+    action: "start",
+    mode: "session",
+    apply: true,
+  });
+  const lifecycleInterleaved = lifecycleEntered;
+  releasePersistent.resolve();
+  const [status, started] = await Promise.all([statusPromise, startPromise]);
+
+  assert.equal(lifecycleInterleaved, false);
+  assert.deepEqual(status.service.manager, persistentRunning);
+  assert.deepEqual(started.service.manager, sessionRunning);
+  assert.deepEqual(
+    fake.calls.map(({ request }) => `${request.mode}:${request.action}`),
+    [
+      "session:status",
+      "persistent:status",
+      "session:status",
+      "session:start",
+    ],
+  );
+});
+
+test("old Recovery snapshots deep-fill partial and null managers", () => {
+  for (const storedManager of [
+    {
+      mode: "persistent",
+      supervisor: "scheduled-task",
+      installed: true,
+      state: "stale-config",
+      configCurrent: false,
+    },
+    null,
+  ]) {
+    const config = makeConfig();
+    const statePath = path.join(
+      config.openclawRoot,
+      "tracevane",
+      "recovery",
+      "state.json",
+    );
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    fs.writeFileSync(
+      statePath,
+      `${JSON.stringify({
+        service: {
+          manager: storedManager,
+          installed: true,
+          activeState: "active",
+          enabledState: "enabled",
+          lastCheckedAt: "2026-06-05T00:00:00.000Z",
+        },
+      })}\n`,
+      "utf8",
+    );
+
+    const restored = readRecoveryState(config);
+    assert.deepEqual(
+      Object.keys(restored.service.manager).sort(),
+      [
+        "active",
+        "checkedAt",
+        "configCurrent",
+        "enabled",
+        "errorCode",
+        "errorMessage",
+        "installed",
+        "mode",
+        "state",
+        "supervisor",
+      ],
+    );
+    assert.equal(typeof restored.service.manager.checkedAt, "string");
+    assert.equal(
+      ["session", "persistent"].includes(restored.service.manager.mode),
+      true,
+    );
+    if (storedManager) {
+      assert.equal(restored.service.manager.mode, "persistent");
+      assert.equal(restored.service.manager.supervisor, "scheduled-task");
+      assert.equal(restored.service.manager.installed, true);
+      assert.equal(restored.service.manager.state, "stale-config");
+      assert.equal(restored.service.manager.active, null);
+      assert.equal(restored.service.manager.enabled, null);
+      assert.equal(restored.service.manager.errorCode, null);
+      assert.equal(restored.service.manager.errorMessage, null);
+    } else {
+      assert.equal(restored.service.manager.mode, "session");
+      assert.equal(restored.service.manager.state, "stopped");
+    }
+  }
 });
 
 test("system and event hot paths no longer call diagnostics by default", () => {

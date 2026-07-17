@@ -1,18 +1,15 @@
-import { execFile } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 
 import type { TracevaneServerConfig } from "../../../../../types/api.js";
 import type { LspDiagnostic } from "../../../../../types/lsp.js";
+import { runOwnedCommand } from "../../../core/owned-command.js";
 import { createExternalLanguageServerGateway } from "../external/externalLanguageServerGateway.js";
 import type { ExternalLanguageServerProfile } from "../external/externalLanguageServerTypes.js";
 import { findJavaWorkspaceMarker, type JavaWorkspaceMarker } from "./javaWorkspace.js";
 import { toolchainProviderStatusSnapshot } from "./toolchainProviderStatus.js";
-
-const execFileAsync = promisify(execFile);
 
 export interface JavaJdtlsDiagnosticsInput {
   config: TracevaneServerConfig;
@@ -158,34 +155,32 @@ export async function diagnoseWithJavaJdtls(input: JavaJdtlsDiagnosticsInput): P
 }
 
 export async function probeJavaJdtlsVersion(profile: ExternalLanguageServerProfile, cwd: string): Promise<JavaJdtlsProbeResult> {
-  try {
-    const { stdout, stderr } = await execFileAsync(profile.command, ["-version"], {
-      cwd,
-      timeout: 2_000,
-      maxBuffer: 8_192,
-      env: { ...process.env, ...(profile.env ?? {}) },
-    });
-    const output = bounded(`${stdout || ""}${stderr ? `\n${stderr}` : ""}`.trim(), JAVA_VERSION_OUTPUT_LIMIT);
-    const version = javaMajorVersion(output);
-    if (!version) {
-      return { ok: false, status: "unsupportedVersion", versionSummary: output || null, reason: "Java version output did not include a recognizable major version." };
-    }
-    if (version < 21) {
-      return { ok: false, status: "unsupportedVersion", versionSummary: output || null, reason: "Eclipse JDT LS requires Java 21 or newer." };
-    }
-    return { ok: true, status: "configured", versionSummary: output || null, reason: null };
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException | null)?.code;
-    if (code === "ENOENT") {
+  const result = await runOwnedCommand(profile.command, ["-version"], {
+    cwd,
+    timeoutMs: 2_000,
+    maxOutputBytes: 8_192,
+    env: { ...process.env, ...(profile.env ?? {}) },
+  });
+  if (!result.ok) {
+    if (/\bENOENT\b/i.test(result.error)) {
       return { ok: false, status: "missingBinary", versionSummary: null, reason: "Java binary is not available from the server-side allowlisted profile." };
     }
     return {
       ok: false,
       status: "unavailable",
       versionSummary: null,
-      reason: error instanceof Error ? bounded(error.message, JAVA_VERSION_OUTPUT_LIMIT) : String(error),
+      reason: bounded(result.error || result.stderr || "Java version probe failed.", JAVA_VERSION_OUTPUT_LIMIT),
     };
   }
+  const output = bounded(`${result.stdout || ""}${result.stderr ? `\n${result.stderr}` : ""}`.trim(), JAVA_VERSION_OUTPUT_LIMIT);
+  const version = javaMajorVersion(output);
+  if (!version) {
+    return { ok: false, status: "unsupportedVersion", versionSummary: output || null, reason: "Java version output did not include a recognizable major version." };
+  }
+  if (version < 21) {
+    return { ok: false, status: "unsupportedVersion", versionSummary: output || null, reason: "Eclipse JDT LS requires Java 21 or newer." };
+  }
+  return { ok: true, status: "configured", versionSummary: output || null, reason: null };
 }
 
 export function javaExternalDiagnosticToTracevaneDiagnostic(diagnostic: unknown): LspDiagnostic {

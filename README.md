@@ -43,6 +43,7 @@ runtime surface, not the whole workspace model.
 ├── tests/                   # System, terminal and browser smoke tests
 ├── types/                   # Shared TypeScript contracts
 ├── index.ts                 # OpenClaw extension entrypoint
+├── DESIGN.md                # Active product/design source of truth
 └── openclaw.plugin.json     # Extension manifest
 ```
 
@@ -50,14 +51,13 @@ runtime surface, not the whole workspace model.
 
 Start with these documents, in this order:
 
-1. [docs/brand-identity.md](docs/brand-identity.md) — domain recommendation, selected logo route and icon asset inventory.
-2. [docs/界面设计守则.md](docs/界面设计守则.md) — visual and interaction guardrails.
-3. [docs/ide-code-editor-solution/00-README.md](docs/ide-code-editor-solution/00-README.md) — code editor / IDE documentation index.
-4. [apps/api/README.md](apps/api/README.md) — backend foundation notes.
+1. [DESIGN.md](DESIGN.md) — active product/design source of truth.
+2. [docs/brand-identity.md](docs/brand-identity.md) — domain recommendation, selected logo route and icon asset inventory.
+3. [docs/界面设计守则.md](docs/界面设计守则.md) — visual and interaction guardrails.
+4. [docs/ide-code-editor-solution/00-README.md](docs/ide-code-editor-solution/00-README.md) — code editor / IDE documentation index.
+5. [apps/api/README.md](apps/api/README.md) — backend foundation notes.
 
-The previous README referenced several planning documents that are no longer in
-`docs/`. This README now points only to documents that are present in the
-repository.
+This README points only to documents that are present in the repository.
 
 ## Development
 
@@ -83,10 +83,23 @@ Run the development environment:
 npm run dev:restart
 ```
 
-The development launcher is supported on Windows, macOS, and Linux; it starts
-the API and web server in the background, records PID/log files under
-`.tmp/dev-runtime`, and restarts either process if it exits. It requires a
-single native Node/npm environment for the checkout. Do not share a
+The Node-based development launcher is supported on Windows, macOS, and Linux;
+it starts the API and web server in the background, records structured
+ownership metadata and logs under `.tmp/dev-runtime`, and restarts either
+worker if it exits. `dev:restart` requests API port `3761` with a safe upward
+free-port fallback and requires Web port `5176` to be free. It never stops an
+unrelated listener merely because it occupies a requested port.
+
+`npm run dev:fresh` performs a full build, starts the standalone API on
+`3761`, and starts the proxying frontend on `5177`. Both launch modes prove
+the API health endpoint through the frontend proxy before publishing their
+`ports.env` or `runtime.env` file. Stop launcher-owned process trees with:
+
+```bash
+node scripts/dev-runtime.mjs stop
+```
+
+The checkout requires a single native Node/npm environment. Do not share a
 `node_modules` directory between Windows and WSL/Linux because optional native
 dependencies are platform-specific. If you change environments, remove
 `node_modules` and `apps/web/node_modules`, then run `npm ci` in the selected
@@ -103,6 +116,10 @@ $env:TRACEVANE_WEB_PORT = "5180"; npm run dev:restart
 TRACEVANE_WEB_PORT=5180 npm run dev:restart
 ```
 
+Use `TRACEVANE_API_PORT` in the same platform-specific form to request a
+different API port. Invalid or occupied fixed ports fail explicitly; the
+launcher never discovers and kills a port owner.
+
 Useful focused commands:
 
 ```bash
@@ -113,6 +130,24 @@ npm run test:system
 npm run test:web:api
 ```
 
+Browser and service smoke tests use the same Node-owned lifecycle on Windows,
+macOS, and Linux. Install the Playwright-managed browser once for the current
+native environment, then run the public aliases; the runner reports the actual
+ports it selected and cleans up only the process trees it created:
+
+```bash
+npx playwright install chromium
+npm run smoke:file-manager:online-editor
+npm run smoke:ide:workbench-layout
+npm run smoke:gateway:http-foundation
+npm run test:supervisor
+```
+
+Use `TRACEVANE_WEB_PORT` and `TRACEVANE_API_PORT` to isolate a smoke run when
+the defaults are occupied. Missing optional platform tools produce an explicit
+skip; dependency, build, readiness, or product-runtime failures still fail the
+command.
+
 Default local endpoints:
 
 - Web: `http://127.0.0.1:5176`
@@ -120,6 +155,58 @@ Default local endpoints:
 
 These are development endpoints. Customer standalone installs use the packaged
 runtime defaults documented in `DEPLOY.md` (currently port `3760`).
+
+### Daemon supervision
+
+Model Gateway, Channel Connectors, and OpenClaw Recovery share one lifecycle
+contract with two ownership modes:
+
+- **Session** is the development default. The Tracevane API process owns at
+  most one child for each service and may restart an unexpectedly exited child
+  up to three times. The standalone API's normal and handled-fatal shutdown
+  paths stop owned children; an abrupt process kill, host crash, or power loss
+  cannot guarantee that cleanup. Session mode never registers an OS service.
+- **Persistent** is an explicit current-user installation, not a machine-wide
+  service. `status`, `start`, `stop`, and `restart` inspect or control an
+  existing registration; `install` atomically writes the generated template,
+  registers/enables it, starts it, and checks readiness. Explicit `repair` is
+  available for an installed service and rewrites, re-registers, restarts, and
+  checks it; repair is the required recovery path for `stale-config` or a
+  runtime that is not ready. `uninstall` stops and unregisters/disables the
+  service and removes only the generated template—it does not delete business
+  configuration, runtime state, or logs.
+
+Switching ownership first stops and verifies the previous owner, so a session
+child and a persistent service are not intentionally run together. Moving the
+checkout, changing the Node executable, rebuilding to a different entrypoint,
+or moving the config path changes the template fingerprint and reports
+`stale-config`; use repair instead of continuing with the stale registration.
+Generated task/plist/unit templates also contain the native manager's trigger,
+identity, and recovery metadata. Their launch payload references only the fixed
+Node executable, tokenized entry/config arguments, configuration path, and
+working directory. Secrets and proxy credentials stay in the protected
+business configuration and are never copied into the service template or
+command evidence.
+
+Persistent supervision is platform-native and user-scoped:
+
+- Windows registers a current-user Task Scheduler task with a logon trigger,
+  `InteractiveToken`, and `LeastPrivilege`. A Tracevane watchdog performs the
+  one-second inner daemon restart; Task Scheduler retains the outer
+  `RestartOnFailure` recovery policy.
+- macOS writes a plist under `~/Library/LaunchAgents` and controls it in the
+  `gui/$UID` domain with `RunAtLoad` and `KeepAlive`.
+- Linux writes a user unit under `~/.config/systemd/user`, controls it through
+  `systemctl --user`, and uses `Restart=on-failure`. Tracevane does not enable
+  `loginctl enable-linger` automatically.
+
+These modes do not promise survival after user logout. In particular, a macOS
+LaunchAgent belongs to the logged-in GUI session, and a Linux user service
+needs an available user manager (linger remains the user's explicit policy).
+WSL is a separate Linux environment, not a Windows service-management bridge:
+do not share `node_modules`, build output, or supervisor registrations between
+native Windows and WSL/Linux. Install dependencies and build in the environment
+that will own the process.
 
 ## Release and Installation
 
@@ -157,6 +244,34 @@ and `scripts/`. Pick the smallest check that proves the touched surface:
 - Model Gateway: `npm run smoke:model-gateway:cli` or the narrower gateway smoke script
 - Channel Connectors: use the matching `smoke:channel-connectors:*` script
 - File Manager browser flows: use the matching `smoke:file-manager:*` script
+- Shared daemon lifecycle contracts: `npm run test:supervisor`
+
+The real OS lifecycle smokes are opt-in because they briefly create a
+PID-unique current-user task, LaunchAgent, or systemd user unit and then remove
+it. Build the API first, run only the command for the native host, and check the
+reported cleanup result. A non-matching platform, or an unset flag, reports
+`SKIP` rather than a successful live test.
+
+Windows PowerShell:
+
+```powershell
+npm run build:api
+$env:TRACEVANE_WINDOWS_SUPERVISOR_LIVE = "1"; npm run smoke:supervisor:windows
+```
+
+macOS:
+
+```bash
+npm run build:api
+TRACEVANE_MACOS_SUPERVISOR_LIVE=1 npm run smoke:supervisor:macos
+```
+
+Linux:
+
+```bash
+npm run build:api
+TRACEVANE_LINUX_SUPERVISOR_LIVE=1 npm run smoke:supervisor:linux
+```
 
 ## Engineering Rules
 

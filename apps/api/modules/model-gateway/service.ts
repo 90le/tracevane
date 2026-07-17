@@ -1,13 +1,15 @@
 import fs from "node:fs";
 import http from "node:http";
-import os from "node:os";
 import path from "node:path";
-import { execFile, spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { promisify } from "node:util";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { readCodexModelCache } from "./codex-model-cache.js";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
-import { hasConfiguredSecretInput } from "../../core/secret-ref.js";
+import type {
+  TracevaneServiceManagerStatus,
+  TracevaneServiceMode,
+  TracevaneSupervisorErrorCode,
+} from "../../../../types/supervisor.js";
 import {
   MODEL_GATEWAY_ACCOUNT_CREDENTIAL_SOURCES,
   MODEL_GATEWAY_ACCOUNT_PROVIDER_KINDS,
@@ -116,6 +118,8 @@ import {
   type ModelGatewayModelUsageRow,
   type ModelGatewayUsageLedgerResponse,
   type ModelGatewayRouteDecision,
+  type ModelGatewayRouteSmokeRecord,
+  type ModelGatewayRouteSmokeVerification,
   type ModelGatewayRouteId,
   type ModelGatewayRouteMode,
   type ModelGatewaySecretState,
@@ -130,7 +134,14 @@ import {
 } from "../../../../types/model-gateway.js";
 import { sendJson, setCorsHeaders } from "../../core/http.js";
 import { readJsonFile } from "../../core/state.js";
-import { isTracevaneGatewayHttpAuthorized } from "../../gateway-http-auth.js";
+import { isTracevaneTrustedManagementRequest } from "../../gateway-http-auth.js";
+import {
+  createServiceManager,
+  type ManageServiceResponse,
+  type ServiceManager,
+  type SupervisorCommand,
+} from "../supervisor/index.js";
+import type { SupervisorCommandResult } from "../supervisor/command-runner.js";
 import {
   AnthropicMessagesChatAdapterError,
   adaptAnthropicMessagesResponseToChatCompletion,
@@ -172,7 +183,11 @@ import {
 } from "./responses-chat-adapter.js";
 import { applyResponsesReasoningOptions, normalizeAnthropicReasoningOptions } from "./reasoning-options.js";
 import { sanitizeAnthropicMessagesUpstreamBody, sanitizeOpenAIChatUpstreamBody, sanitizeOpenAIResponsesUpstreamBody } from "./openai-chat-compatibility.js";
-import { createModelGatewayDaemonServicePlan } from "./supervisor.js";
+import {
+  createModelGatewayDaemonServicePlan,
+  createModelGatewayServiceDefinition,
+  resolveModelGatewaySupervisorHome,
+} from "./supervisor.js";
 import { MODEL_GATEWAY_UNSUPPORTED_ENDPOINTS } from "./unsupported-endpoints.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -183,6 +198,8 @@ const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS = 60_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
+const MAX_ROUTE_SMOKE_ENTRIES = 64;
+const ROUTE_SMOKE_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_USAGE_LEDGER_READ_ENTRIES = 20_000;
 const MAX_USAGE_LEDGER_READ_BYTES = 16 * 1024 * 1024;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
@@ -211,9 +228,8 @@ const MODEL_GATEWAY_VISION_SMOKE_PROMPT = "Identify the dominant color of the at
 const MODEL_GATEWAY_SMOKE_SENTINEL = "GATEWAY_OK";
 const MODEL_GATEWAY_DIAGNOSTIC_SMOKE_HEADER = "x-tracevane-gateway-smoke";
 const MODEL_GATEWAY_DIAGNOSTIC_ERROR_SMOKE_HEADER = "x-tracevane-gateway-smoke-error";
-const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
-const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start", "stop", "restart", "status"] as const;
+const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start", "stop", "restart", "repair", "uninstall", "status"] as const;
 
 type HeaderMap = http.IncomingHttpHeaders | Record<string, string | string[] | undefined> | Headers;
 type FetchInitWithDispatcher = RequestInit & { dispatcher?: unknown };
@@ -1953,6 +1969,7 @@ function createEmptyRuntime(updatedAt = nowIso()): ModelGatewayRuntimeState {
     version: 1,
     updatedAt,
     requestLog: [],
+    routeSmokes: {},
     accountRouting: {
       codexCursors: {},
       codexAffinities: {},
@@ -1960,28 +1977,55 @@ function createEmptyRuntime(updatedAt = nowIso()): ModelGatewayRuntimeState {
   };
 }
 
-function writeJsonSecureAtomic(filePath: string, value: unknown): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  fs.writeFileSync(tmpPath, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-  fs.renameSync(tmpPath, filePath);
-  try {
-    fs.chmodSync(filePath, 0o600);
-  } catch {
-    // Best effort for filesystems that do not support chmod.
+const ATOMIC_REPLACE_RETRY_DELAYS_MS = [10, 25, 50, 100, 200, 400] as const;
+const ATOMIC_REPLACE_RETRY_CODES = new Set(["EACCES", "EBUSY", "EPERM"]);
+const ATOMIC_REPLACE_WAIT_ARRAY = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+
+function replaceFileAtomic(tmpPath: string, filePath: string): void {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      fs.renameSync(tmpPath, filePath);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code || "";
+      const delayMs = ATOMIC_REPLACE_RETRY_DELAYS_MS[attempt];
+      if (process.platform !== "win32" || !ATOMIC_REPLACE_RETRY_CODES.has(code) || delayMs === undefined) {
+        throw error;
+      }
+      // Windows can briefly deny replacement while another process holds a read
+      // handle (for example an antivirus scanner). Retrying the same rename keeps
+      // the old file intact until the atomic replacement succeeds.
+      Atomics.wait(ATOMIC_REPLACE_WAIT_ARRAY, 0, 0, delayMs);
+    }
   }
 }
 
-function writeTextAtomic(filePath: string, value: string, mode = 0o644): void {
+function writeFileAtomic(filePath: string, value: string, mode: number): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  fs.writeFileSync(tmpPath, value, { mode });
-  fs.renameSync(tmpPath, filePath);
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}.${randomUUID()}`;
+  try {
+    fs.writeFileSync(tmpPath, value, { mode, flag: "wx" });
+    replaceFileAtomic(tmpPath, filePath);
+  } finally {
+    try {
+      fs.rmSync(tmpPath, { force: true });
+    } catch {
+      // Best effort; the original write/replace error remains authoritative.
+    }
+  }
   try {
     fs.chmodSync(filePath, mode);
   } catch {
     // Best effort for filesystems that do not support chmod.
   }
+}
+
+function writeJsonSecureAtomic(filePath: string, value: unknown): void {
+  writeFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`, 0o600);
+}
+
+function writeTextAtomic(filePath: string, value: string, mode = 0o644): void {
+  writeFileAtomic(filePath, value, mode);
 }
 
 function readTextIfExists(filePath: string): string | null {
@@ -1993,51 +2037,10 @@ function readTextIfExists(filePath: string): string | null {
   }
 }
 
-function isDaemonServiceTemplateCurrent(plan: ModelGatewayDaemonServicePlan): boolean {
-  return readTextIfExists(plan.selectedTemplate.configPath) === plan.selectedTemplate.template;
-}
-
-function writeDaemonServiceTemplateIfNeeded(plan: ModelGatewayDaemonServicePlan): boolean {
-  if (isDaemonServiceTemplateCurrent(plan)) return false;
-  writeTextAtomic(plan.selectedTemplate.configPath, plan.selectedTemplate.template);
-  return true;
-}
-
 function normalizeDaemonServiceAction(value: unknown): ModelGatewayDaemonServiceAction {
   return DAEMON_SERVICE_ACTIONS.includes(value as ModelGatewayDaemonServiceAction)
     ? value as ModelGatewayDaemonServiceAction
     : "preview";
-}
-
-async function runDefaultDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
-  try {
-    const result = await execFileAsync(command.command, command.args, {
-      timeout: 30_000,
-      encoding: "utf8",
-    });
-    return {
-      ...command,
-      ok: true,
-      exitCode: 0,
-      stdout: result.stdout || "",
-      stderr: result.stderr || "",
-      error: null,
-    };
-  } catch (error) {
-    const shaped = error as Error & {
-      code?: string | number;
-      stdout?: string;
-      stderr?: string;
-    };
-    return {
-      ...command,
-      ok: false,
-      exitCode: typeof shaped.code === "number" ? shaped.code : null,
-      stdout: shaped.stdout || "",
-      stderr: shaped.stderr || "",
-      error: shaped.message || "Command failed.",
-    };
-  }
 }
 
 export type ModelGatewayDaemonServiceCommandRunner = (
@@ -2068,6 +2071,55 @@ export type ModelGatewayDaemonReadinessChecker = (
   endpoint: string,
 ) => Promise<ModelGatewayDaemonReadinessResult | boolean> | ModelGatewayDaemonReadinessResult | boolean;
 
+export interface ModelGatewayOwnedReadinessProbeOptions {
+  runtimePath: string;
+  readinessChecker: (endpoint: string) => Promise<ModelGatewayDaemonReadinessResult>;
+  processIsAlive?: (pid: number) => boolean;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export function createModelGatewayOwnedReadinessProbe(
+  options: ModelGatewayOwnedReadinessProbeOptions,
+): (endpoint: string, expectedPid?: number | null) => Promise<boolean> {
+  const timeoutMs = Math.max(0, options.timeoutMs ?? 8_000);
+  const pollIntervalMs = Math.max(1, options.pollIntervalMs ?? 75);
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const processIsAlive = options.processIsAlive ?? isPidAlive;
+
+  return async (endpoint, expectedPid) => {
+    const sessionOwned = expectedPid !== undefined && expectedPid !== null;
+    if (sessionOwned && (!Number.isInteger(expectedPid) || expectedPid <= 0)) {
+      return false;
+    }
+
+    const deadline = now() + timeoutMs;
+    while (now() < deadline) {
+      let readiness: ModelGatewayDaemonReadinessResult | null = null;
+      try {
+        readiness = await options.readinessChecker(endpoint);
+      } catch {
+        // The native supervisor may return before the daemon starts listening.
+      }
+      if (now() >= deadline) return false;
+      if (readiness?.ready) {
+        if (!sessionOwned) return true;
+        const runtime = readDaemonRuntimeMetadata(options.runtimePath);
+        if (runtime?.pid === expectedPid && processIsAlive(expectedPid)) return true;
+      }
+
+      const remaining = deadline - now();
+      if (remaining <= 0) break;
+      await sleep(Math.min(pollIntervalMs, remaining));
+    }
+    return false;
+  };
+}
+
 function daemonBootstrapStatus(
   options: Partial<ModelGatewayDaemonBootstrapStatus> = {},
 ): ModelGatewayDaemonBootstrapStatus {
@@ -2084,64 +2136,6 @@ function daemonBootstrapStatus(
   };
 }
 
-function runDefaultDaemonBootstrap(request: ModelGatewayDaemonBootstrapRequest): ModelGatewayDaemonBootstrapStatus {
-  if (!fs.existsSync(request.plan.daemonEntry)) {
-    return daemonBootstrapStatus({
-      mode: "detached",
-      allowed: true,
-      attempted: true,
-      started: false,
-      temporary: true,
-      endpoint: request.endpoint,
-      error: `Model Gateway daemon entry was not found at ${request.plan.daemonEntry}. Run the API build before detached bootstrap.`,
-      notes: [
-        "Detached bootstrap is a temporary fallback and does not replace the OS/user supervisor restart policy.",
-      ],
-    });
-  }
-
-  try {
-    const child = spawn(request.plan.nodePath, [request.plan.daemonEntry], {
-      cwd: request.projectRoot,
-      detached: true,
-      stdio: "ignore",
-      env: {
-        ...process.env,
-        OPENCLAW_STATE_DIR: request.plan.stateDir,
-        MODEL_GATEWAY_HOST: request.host,
-        MODEL_GATEWAY_PORT: String(request.port),
-        MODEL_GATEWAY_SUPERVISOR: "none",
-      },
-    });
-    child.unref();
-    return daemonBootstrapStatus({
-      mode: "detached",
-      allowed: true,
-      attempted: true,
-      started: true,
-      temporary: true,
-      pid: child.pid || null,
-      endpoint: request.endpoint,
-      notes: [
-        "Started a detached daemon because no user-service template is installed.",
-        "Install and enable the OS/user supervisor for crash restart and login startup guarantees.",
-      ],
-    });
-  } catch (error) {
-    return daemonBootstrapStatus({
-      mode: "detached",
-      allowed: true,
-      attempted: true,
-      started: false,
-      temporary: true,
-      endpoint: request.endpoint,
-      error: error instanceof Error ? error.message : "Unable to start detached Model Gateway daemon.",
-      notes: [
-        "Detached bootstrap is a temporary fallback and does not replace the OS/user supervisor restart policy.",
-      ],
-    });
-  }
-}
 
 function normalizeDaemonReadinessResult(
   endpoint: string,
@@ -2200,115 +2194,6 @@ async function runDefaultDaemonReadinessChecker(endpoint: string): Promise<Model
     ready: false,
     statusCode: lastStatusCode,
     error: `Daemon HTTP readiness check failed at ${endpoint}${lastError ? `: ${lastError}` : ""}.`,
-  };
-}
-
-function compactCommandOutput(result: ModelGatewayDaemonServiceCommandResult): string {
-  return [result.stdout, result.stderr, result.error].filter(Boolean).join("\n").trim();
-}
-
-function commandReachedServiceManager(result: ModelGatewayDaemonServiceCommandResult): boolean {
-  if (result.exitCode !== null) return true;
-  if (result.stdout.trim() || result.stderr.trim()) return true;
-  return !/\bENOENT\b|not found|not recognized/i.test(result.error || "");
-}
-
-function firstCommandError(commandsRun: ModelGatewayDaemonServiceCommandResult[]): string | null {
-  const failed = commandsRun.find((result) => !result.ok);
-  if (!failed) return null;
-  const detail = compactCommandOutput(failed) || "Command failed.";
-  return `${failed.label}: ${detail.slice(0, 800)}`;
-}
-
-function serviceManagerText(result: ModelGatewayDaemonServiceCommandResult | undefined): string {
-  return `${result?.stdout || ""}\n${result?.stderr || ""}`.trim().toLowerCase();
-}
-
-function normalizeDaemonServiceCommandResults(
-  action: ModelGatewayDaemonServiceAction,
-  commandsRun: ModelGatewayDaemonServiceCommandResult[],
-): ModelGatewayDaemonServiceCommandResult[] {
-  if (action !== "stop" && action !== "ensure-running") return commandsRun;
-  if (action === "ensure-running") {
-    const finalActiveResult = findLastCommandResult(commandsRun, (result) => result.args.includes("is-active"));
-    const finalActiveState = serviceManagerText(finalActiveResult).split(/\s+/).find(Boolean) || "";
-    if (finalActiveState !== "active" && finalActiveState !== "activating") return commandsRun;
-  }
-  return commandsRun.map((result) => {
-    if (!result.args.includes("is-active")) return result;
-    const activeState = serviceManagerText(result).split(/\s+/).find(Boolean) || "";
-    if (activeState !== "inactive") return result;
-    return {
-      ...result,
-      ok: true,
-      exitCode: 0,
-      error: null,
-    };
-  });
-}
-
-function findLastCommandResult(
-  commandsRun: ModelGatewayDaemonServiceCommandResult[],
-  predicate: (result: ModelGatewayDaemonServiceCommandResult) => boolean,
-): ModelGatewayDaemonServiceCommandResult | undefined {
-  for (let index = commandsRun.length - 1; index >= 0; index -= 1) {
-    const result = commandsRun[index];
-    if (result && predicate(result)) return result;
-  }
-  return undefined;
-}
-
-function isTruthySystemdEnabledState(value: string): boolean {
-  return ["enabled", "static", "linked", "linked-runtime", "alias", "indirect", "generated", "transient"].includes(value);
-}
-
-function summarizeDaemonServiceManager(
-  supervisor: ModelGatewaySupervisorKind,
-  commandsRun: ModelGatewayDaemonServiceCommandResult[],
-): ModelGatewayDaemonServiceManagerStatus {
-  if (!commandsRun.length) {
-    return {
-      checked: false,
-      reachable: null,
-      active: null,
-      enabled: null,
-      lastError: null,
-    };
-  }
-
-  const reachable = commandsRun.every(commandReachedServiceManager);
-  let active: boolean | null = null;
-  let enabled: boolean | null = null;
-
-  if (supervisor === "systemd-user") {
-    const activeResult = findLastCommandResult(commandsRun, (result) => result.args.includes("is-active"));
-    const enabledResult = findLastCommandResult(commandsRun, (result) => result.args.includes("is-enabled"));
-    const activeState = serviceManagerText(activeResult).split(/\s+/).find(Boolean) || "";
-    const enabledState = serviceManagerText(enabledResult).split(/\s+/).find(Boolean) || "";
-    if (activeResult) active = activeState ? activeState === "active" || activeState === "activating" : activeResult.ok;
-    if (enabledResult) enabled = enabledState ? isTruthySystemdEnabledState(enabledState) : enabledResult.ok;
-  } else if (supervisor === "launchd-user") {
-    const printResult = findLastCommandResult(commandsRun, (result) => result.command === "launchctl" && result.args.includes("print"));
-    const text = serviceManagerText(printResult);
-    if (printResult) active = printResult.ok;
-    if (text.includes("disabled = true")) enabled = false;
-    else if (text.includes("disabled = false")) enabled = true;
-  } else if (supervisor === "scheduled-task") {
-    const queryResult = findLastCommandResult(commandsRun, (result) => result.command.toLowerCase().includes("schtasks"));
-    const text = serviceManagerText(queryResult);
-    if (queryResult) {
-      active = text.includes("running") ? true : queryResult.ok ? false : null;
-      enabled = text.includes("disabled") ? false : queryResult.ok ? true : null;
-    }
-  }
-
-  const finalHealthy = reachable && active === true && enabled !== false;
-  return {
-    checked: true,
-    reachable,
-    active,
-    enabled,
-    lastError: finalHealthy ? null : firstCommandError(commandsRun),
   };
 }
 
@@ -2413,6 +2298,56 @@ function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLog
     errorMessage: normalizeString(value.errorMessage) || null,
     usage: normalizeRuntimeUsage(value.usage) || zeroRuntimeUsage(),
   };
+}
+
+function normalizeRouteSmokeRecord(value: unknown): ModelGatewayRouteSmokeRecord | null {
+  if (!isRecord(value)) return null;
+  const signature = normalizeString(value.signature);
+  const scope = normalizeString(value.scope) as ModelGatewayAppScope;
+  const providerId = normalizeString(value.providerId);
+  const model = normalizeString(value.model);
+  const routeId = normalizeString(value.routeId) as ModelGatewayRouteId;
+  const checkedAt = normalizeString(value.checkedAt);
+  const checkedAtMs = Date.parse(checkedAt);
+  const state = value.state === "passed" || value.state === "failed" ? value.state : null;
+  if (
+    !signature
+    || !MODEL_GATEWAY_APP_SCOPES.includes(scope)
+    || !providerId
+    || !model
+    || !MODEL_GATEWAY_ROUTE_IDS.includes(routeId)
+    || !Number.isFinite(checkedAtMs)
+    || !state
+  ) return null;
+  const statusCode = typeof value.statusCode === "number" && Number.isInteger(value.statusCode)
+    ? value.statusCode
+    : null;
+  const latencyMs = typeof value.latencyMs === "number" && Number.isFinite(value.latencyMs)
+    ? Math.max(0, Math.floor(value.latencyMs))
+    : null;
+  return {
+    signature,
+    scope,
+    providerId,
+    model,
+    routeId,
+    state,
+    checkedAt: new Date(checkedAtMs).toISOString(),
+    statusCode,
+    latencyMs,
+    errorCode: normalizeString(value.errorCode) || null,
+    errorMessage: normalizeString(value.errorMessage) || null,
+  };
+}
+
+function normalizeRuntimeRouteSmokes(value: unknown): Record<string, ModelGatewayRouteSmokeRecord> {
+  const source = isRecord(value) ? value : {};
+  return Object.fromEntries(Object.values(source)
+    .map(normalizeRouteSmokeRecord)
+    .filter((record): record is ModelGatewayRouteSmokeRecord => Boolean(record))
+    .sort((left, right) => right.checkedAt.localeCompare(left.checkedAt))
+    .slice(0, MAX_ROUTE_SMOKE_ENTRIES)
+    .map((record) => [record.signature, record]));
 }
 
 function normalizeRuntimeAccountRouting(value: unknown): ModelGatewayRuntimeState["accountRouting"] {
@@ -3923,8 +3858,46 @@ function buildLoopbackHttpEndpoint(host: string, port: number, endpointPath = ""
 
 function expectedDaemonSupervisor(): ModelGatewaySupervisorKind {
   if (process.platform === "darwin") return "launchd-user";
-  if (process.platform === "win32") return "windows-service";
+  if (process.platform === "win32") return "scheduled-task";
   return "systemd-user";
+}
+
+function codexAccountManagedModels(homeDir: string): {
+  catalog: ModelGatewayProviderModelCatalog;
+  metadata: Record<string, unknown>;
+} {
+  const defaults = codexAccountDefaultModels();
+  const cache = readCodexModelCache(homeDir);
+  if (cache.state !== "current" && cache.state !== "stale") {
+    return {
+      catalog: defaults,
+      metadata: { codexModelCatalogSource: `fallback-${cache.state}` },
+    };
+  }
+  const cacheById = new Map(cache.models.map((model) => [normalizeModelLookupKey(model.id), model]));
+  const defaultIds = new Set(defaults.models.map((model) => normalizeModelLookupKey(model.id)));
+  return {
+    catalog: {
+      ...defaults,
+      models: [
+        ...defaults.models.map((model) => ({
+          ...model,
+          ...(cacheById.get(normalizeModelLookupKey(model.id)) || {}),
+          features: model.features,
+          pricing: model.pricing,
+          maxOutputTokens: cacheById.get(normalizeModelLookupKey(model.id))?.maxOutputTokens
+            ?? model.maxOutputTokens,
+        })),
+        ...cache.models.filter((model) => !defaultIds.has(normalizeModelLookupKey(model.id))),
+      ],
+    },
+    metadata: {
+      codexModelCatalogSource: cache.state === "stale" ? "codex-model-cache-stale" : "codex-model-cache",
+      codexModelCatalogFetchedAt: cache.fetchedAt,
+      codexModelCatalogClientVersion: cache.clientVersion,
+      codexModelCatalogEtag: cache.etag,
+    },
+  };
 }
 
 function normalizeSupervisorKind(value: unknown): ModelGatewaySupervisorKind {
@@ -3932,6 +3905,7 @@ function normalizeSupervisorKind(value: unknown): ModelGatewaySupervisorKind {
     || value === "launchd-user"
     || value === "windows-service"
     || value === "scheduled-task"
+    || value === "session"
     || value === "none") {
     return value;
   }
@@ -3966,22 +3940,6 @@ function isPidAlive(pid: number | null): boolean {
   } catch (error) {
     return isRecord(error) && error.code === "EPERM";
   }
-}
-
-function isLoopbackRequest(req?: http.IncomingMessage): boolean {
-  const remoteAddress = req?.socket?.remoteAddress || "";
-  return remoteAddress === "127.0.0.1"
-    || remoteAddress === "::1"
-    || remoteAddress === "::ffff:127.0.0.1"
-    || remoteAddress === "localhost";
-}
-
-function hasConfiguredGatewayAuth(config: TracevaneServerConfig): boolean {
-  const openclaw = readJsonFile<Record<string, any>>(config.openclawConfigFile, {});
-  const auth = isRecord(openclaw.gateway) && isRecord(openclaw.gateway.auth) ? openclaw.gateway.auth : {};
-  const mode = normalizeString(auth.mode);
-  const secrets = [auth.token, auth.password].filter(hasConfiguredSecretInput);
-  return Boolean(mode && mode !== "none" && secrets.length);
 }
 
 function readRequestBody(req: http.IncomingMessage): Promise<Buffer> {
@@ -4047,7 +4005,7 @@ function applyProviderAuth(headers: Headers, provider: ModelGatewayProvider, sec
     const accountId = normalizeString(bundle?.tokens.account_id);
     if (accountId) headers.set("chatgpt-account-id", accountId);
     if (!headers.get("originator")) headers.set("originator", CODEX_ACCOUNT_ORIGINATOR);
-    if (!headers.get("user-agent")) headers.set("user-agent", CODEX_ACCOUNT_USER_AGENT);
+    headers.set("user-agent", CODEX_ACCOUNT_USER_AGENT);
     return;
   }
 
@@ -4104,6 +4062,23 @@ type GatewayProxySelection = {
   source: ModelGatewayProxySource;
 };
 
+function readEnvironmentValueCaseInsensitive(
+  environment: NodeJS.ProcessEnv,
+  names: string[],
+): string {
+  for (const name of names) {
+    const exact = normalizeString(environment[name]);
+    if (exact) return exact;
+    const fallback = Object.entries(environment).find(
+      ([key, value]) =>
+        key.toLowerCase() === name.toLowerCase()
+        && Boolean(value?.trim()),
+    )?.[1];
+    if (fallback) return fallback.trim();
+  }
+  return "";
+}
+
 function modelGatewayEnvProxyUrl(targetUrl: string): string | null {
   let protocol = "";
   try {
@@ -4113,9 +4088,15 @@ function modelGatewayEnvProxyUrl(targetUrl: string): string | null {
   }
   const env = process.env;
   if (protocol === "http:") {
-    return normalizeString(env.HTTP_PROXY || env.http_proxy || env.ALL_PROXY || env.all_proxy) || null;
+    return readEnvironmentValueCaseInsensitive(
+      env,
+      ["HTTP_PROXY", "ALL_PROXY"],
+    ) || null;
   }
-  return normalizeString(env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy || env.ALL_PROXY || env.all_proxy) || null;
+  return readEnvironmentValueCaseInsensitive(
+    env,
+    ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"],
+  ) || null;
 }
 
 function gatewayUpstreamProxySelection(
@@ -6698,6 +6679,8 @@ export interface ModelGatewayServiceOptions {
   daemonServiceCommandRunner?: ModelGatewayDaemonServiceCommandRunner;
   daemonBootstrapRunner?: ModelGatewayDaemonBootstrapRunner;
   daemonReadinessChecker?: ModelGatewayDaemonReadinessChecker;
+  daemonProcessIsAlive?: (pid: number) => boolean;
+  daemonServiceManager?: ServiceManager;
 }
 
 export function createModelGatewayService(
@@ -6707,9 +6690,27 @@ export function createModelGatewayService(
   const paths = resolveModelGatewayPaths(config);
   const codexHistory = new CodexChatHistoryStore(paths.codexHistory);
   const runtimeHost = options.runtimeHost || "tracevane-api";
-  const homeDir = options.homeDir || os.homedir();
+  const homeDir = options.homeDir || resolveModelGatewaySupervisorHome(config);
   const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
   const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
+  const daemonServiceManager = options.daemonServiceManager ?? createServiceManager({
+    homeDir,
+    runner: options.daemonServiceCommandRunner
+      ? runSharedDaemonServiceCommand
+      : undefined,
+    probe: runSharedDaemonReadinessProbe,
+    processIsAlive: options.daemonProcessIsAlive,
+    shutdownProbe: async (endpoint) => {
+      const result = await runDaemonReadinessChecker(endpoint);
+      return result.ready || result.statusCode !== null;
+    },
+    redact: [...new Set(
+      Object.entries(process.env)
+        .filter(([key, value]) =>
+          /^(?:https?|all|no)_proxy$/i.test(key) && Boolean(value?.trim()))
+        .map(([, value]) => value!.trim()),
+    )],
+  });
   const codexDeviceLoginSessions = new Map<string, CodexDeviceLoginSession>();
   const codexDeviceLoginPolls = new Map<string, Promise<ModelGatewayCodexAccountLoginPollResponse>>();
   const codexAccountRefreshes = new Map<string, Promise<string>>();
@@ -6802,16 +6803,27 @@ export function createModelGatewayService(
     if (sessions.delete(loginId)) writePersistedCodexLoginSessions(sessions.values());
   }
 
-  async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
-    return options.daemonServiceCommandRunner
-      ? await options.daemonServiceCommandRunner(command)
-      : await runDefaultDaemonServiceCommand(command);
-  }
-
-  async function runDaemonBootstrap(request: ModelGatewayDaemonBootstrapRequest): Promise<ModelGatewayDaemonBootstrapStatus> {
-    return options.daemonBootstrapRunner
-      ? await options.daemonBootstrapRunner(request)
-      : await runDefaultDaemonBootstrap(request);
+  async function runSharedDaemonServiceCommand(
+    command: SupervisorCommand,
+  ): Promise<SupervisorCommandResult> {
+    const startedAt = Date.now();
+    const result = await options.daemonServiceCommandRunner!(command);
+    const legacyError = result.error || null;
+    const errorCode: TracevaneSupervisorErrorCode | null = result.ok
+      ? null
+      : result.errorCode ?? "unknown";
+    return {
+      label: command.label,
+      command: command.command,
+      args: [...command.args],
+      ok: result.ok,
+      exitCode: result.exitCode,
+      stdout: result.stdout || "",
+      stderr: result.stderr || "",
+      errorCode,
+      errorMessage: result.errorMessage ?? legacyError,
+      durationMs: result.durationMs ?? Date.now() - startedAt,
+    };
   }
 
   async function runDaemonReadinessChecker(endpoint: string): Promise<ModelGatewayDaemonReadinessResult> {
@@ -6819,6 +6831,17 @@ export function createModelGatewayService(
       ? await options.daemonReadinessChecker(endpoint)
       : await runDefaultDaemonReadinessChecker(endpoint);
     return normalizeDaemonReadinessResult(endpoint, result);
+  }
+
+  async function runSharedDaemonReadinessProbe(
+    endpoint: string,
+    expectedPid?: number | null,
+  ): Promise<boolean> {
+    return createModelGatewayOwnedReadinessProbe({
+      runtimePath: paths.daemonRuntime,
+      readinessChecker: runDaemonReadinessChecker,
+      processIsAlive: options.daemonProcessIsAlive,
+    })(endpoint, expectedPid);
   }
 
   function readRegistry(): ModelGatewayRegistryState {
@@ -6865,7 +6888,9 @@ export function createModelGatewayService(
               };
             }
             if (isCodexAccountBackedProvider(normalized)) {
-              normalized.models = mergeManagedModelCatalogWithDefaults(normalized.models, codexAccountDefaultModels());
+              const managed = codexAccountManagedModels(homeDir);
+              normalized.models = mergeManagedModelCatalogWithDefaults(normalized.models, managed.catalog);
+              normalized.metadata = { ...normalized.metadata, ...managed.metadata };
               normalized.endpoints = {
                 ...normalized.endpoints,
                 openai_responses: normalized.endpoints.openai_responses || "/responses",
@@ -6907,7 +6932,7 @@ export function createModelGatewayService(
   function repairManagedCodexAccountProviderCatalogs(): void {
     const raw = readJsonFile<Partial<ModelGatewayRegistryState>>(paths.registry, createEmptyRegistry());
     if (!Array.isArray(raw.providers)) return;
-    const defaults = codexAccountDefaultModels();
+    const managed = codexAccountManagedModels(homeDir);
     let changed = false;
     const providers = raw.providers.map((provider) => {
       if (!isRecord(provider)) return provider;
@@ -6923,7 +6948,7 @@ export function createModelGatewayService(
       if (!codexAccountHint) return provider;
 
       const currentModels = normalizeModelCatalog(provider.models);
-      const managedModels = mergeManagedModelCatalogWithDefaults(currentModels, defaults);
+      const managedModels = mergeManagedModelCatalogWithDefaults(currentModels, managed.catalog);
       const currentEndpoints = normalizeEndpointMap(provider.endpoints);
       const managedEndpoints = {
         ...currentEndpoints,
@@ -6933,6 +6958,7 @@ export function createModelGatewayService(
       if (
         JSON.stringify(provider.models || null) === JSON.stringify(managedModels)
         && JSON.stringify(provider.endpoints || null) === JSON.stringify(managedEndpoints)
+        && JSON.stringify(rawMetadata) === JSON.stringify({ ...rawMetadata, ...managed.metadata })
       ) {
         return provider;
       }
@@ -6941,6 +6967,7 @@ export function createModelGatewayService(
         ...provider,
         models: managedModels,
         endpoints: managedEndpoints,
+        metadata: { ...rawMetadata, ...managed.metadata },
         failover: isRecord(provider.failover)
           ? provider.failover
           : { enabled: true, priority: 20, maxRetries: 1 },
@@ -7000,6 +7027,7 @@ export function createModelGatewayService(
       version: 1,
       updatedAt: normalizeString(raw.updatedAt, nowIso()),
       requestLog,
+      routeSmokes: normalizeRuntimeRouteSmokes(raw.routeSmokes),
       accountRouting: normalizeRuntimeAccountRouting(raw.accountRouting),
     };
   }
@@ -7009,6 +7037,7 @@ export function createModelGatewayService(
       version: 1,
       updatedAt: nowIso(),
       requestLog: runtime.requestLog.slice(-MAX_RUNTIME_REQUEST_LOG_ENTRIES),
+      routeSmokes: normalizeRuntimeRouteSmokes(runtime.routeSmokes),
       accountRouting: normalizeRuntimeAccountRouting(runtime.accountRouting),
     });
   }
@@ -7412,8 +7441,7 @@ export function createModelGatewayService(
 
   function requireManagement(req?: http.IncomingMessage): void {
     if (!req) return;
-    if (isLoopbackRequest(req)) return;
-    if (hasConfiguredGatewayAuth(config) && isTracevaneGatewayHttpAuthorized(config, req)) return;
+    if (isTracevaneTrustedManagementRequest(config, req)) return;
     throw new ModelGatewayServiceError(
       "model_gateway_management_locked",
       "Model Gateway provider and secret changes require a trusted local request or configured Gateway authentication.",
@@ -8519,6 +8547,7 @@ export function createModelGatewayService(
           setSecretValue(account.authRef, serialized);
           const updatedAccount = codexAccountFromTokenBundle(account.id, account.authRef, refreshed, account.credentialSource, account);
           markCodexAccountReady(providerId, accountId, updatedAccount);
+          repairManagedCodexAccountProviderCatalogs();
           return serialized;
         } catch (error) {
           const message = error instanceof Error ? error.message : "Codex account token refresh failed.";
@@ -8707,86 +8736,171 @@ export function createModelGatewayService(
     };
   }
 
-  function daemonServiceResponse(options: {
-    action: ModelGatewayDaemonServiceAction;
-    applied?: boolean;
-    templateWritten?: boolean;
-    commandsRun?: ModelGatewayDaemonServiceCommandResult[];
-    bootstrap?: ModelGatewayDaemonBootstrapStatus;
-  }): ModelGatewayDaemonServiceResponse {
-    const plan = createModelGatewayDaemonServicePlan(config);
-    const commandsRun = options.commandsRun || [];
-    const installed = fs.existsSync(plan.selectedTemplate.configPath);
-    const templateCurrent = installed && isDaemonServiceTemplateCurrent(plan);
+  function normalizeDaemonServiceMode(value: unknown): TracevaneServiceMode {
+    return value === "persistent" ? "persistent" : "session";
+  }
+
+  function normalizeDaemonServiceApply(
+    payload: ModelGatewayDaemonServiceRequest,
+  ): boolean {
+    return payload.runCommands === true
+      || (payload.runCommands !== false && payload.apply === true);
+  }
+
+  function compatibilityCommandResult(
+    result: SupervisorCommandResult,
+  ): ModelGatewayDaemonServiceCommandResult {
     return {
-      ok: true,
-      checkedAt: nowIso(),
-      action: options.action,
-      applied: options.applied === true,
-      templateWritten: options.templateWritten === true,
-      templateCurrent,
-      installed,
-      plan,
-      lifecycle: getLifecycleStatus(),
-      commandsRun,
-      serviceManager: summarizeDaemonServiceManager(plan.supervisor, commandsRun),
-      bootstrap: options.bootstrap || daemonBootstrapStatus(),
+      label: result.label,
+      command: result.command,
+      args: [...result.args],
+      ok: result.ok,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      errorCode: result.errorCode,
+      errorMessage: result.errorMessage,
+      durationMs: result.durationMs,
+      error: result.errorMessage,
     };
   }
 
-  function getDaemonHttpStatusEndpoint(): string {
-    return buildLoopbackHttpEndpoint(listenerHost, listenerPort, "/api/model-gateway/status");
+  function compatibilityServiceManager(
+    manager: TracevaneServiceManagerStatus,
+  ): ModelGatewayDaemonServiceManagerStatus {
+    const unreachable = manager.errorCode === "command-not-found"
+      || manager.errorCode === "command-timeout"
+      || manager.errorCode === "permission-denied"
+      || manager.errorCode === "unsupported-platform";
+    return {
+      ...manager,
+      checked: true,
+      reachable: unreachable ? false : true,
+      lastError: manager.errorMessage,
+    };
   }
 
-  async function waitForDaemonSupervisorReadiness(
-    manager: ModelGatewayDaemonServiceManagerStatus,
-  ): Promise<ModelGatewayDaemonReadinessResult> {
-    const endpoint = getDaemonHttpStatusEndpoint();
-    if (manager.active !== true) {
-      return {
-        endpoint,
-        ready: false,
-        statusCode: null,
-        error: manager.lastError || "Supervisor did not report the daemon as active.",
-      };
-    }
-    return runDaemonReadinessChecker(endpoint);
-  }
-
-  function daemonSupervisorBootstrapStatus(options: {
-    lifecycle: ReturnType<typeof getLifecycleStatus>;
-    manager: ModelGatewayDaemonServiceManagerStatus;
-    readiness: ModelGatewayDaemonReadinessResult;
-    attempted: boolean;
-    notes: string[];
-  }): ModelGatewayDaemonBootstrapStatus {
+  function compatibilityBootstrap(
+    mode: TracevaneServiceMode,
+    manager: TracevaneServiceManagerStatus,
+    action: ModelGatewayDaemonServiceAction,
+    applied: boolean,
+    lifecycle: ReturnType<typeof getLifecycleStatus>,
+    blocked = false,
+  ): ModelGatewayDaemonBootstrapStatus {
+    const session = mode === "session";
     return daemonBootstrapStatus({
-      mode: "supervisor",
-      allowed: true,
-      attempted: options.attempted,
-      started: options.manager.active === true && options.readiness.ready,
-      temporary: false,
-      endpoint: options.lifecycle.localDaemon.endpoint,
-      error: options.manager.lastError || (options.readiness.ready ? null : options.readiness.error),
+      mode: blocked ? "blocked" : session ? "session" : "supervisor",
+      allowed: !blocked,
+      attempted: blocked ? false : applied,
+      started: blocked ? false : manager.active === true,
+      temporary: blocked ? false : session,
+      endpoint: lifecycle.localDaemon.endpoint,
+      error: manager.errorMessage,
       notes: [
-        ...options.notes,
-        options.readiness.ready
-          ? `Daemon HTTP status endpoint is ready: ${options.readiness.endpoint}.`
-          : `Daemon HTTP status endpoint is not ready: ${options.readiness.endpoint}.`,
+        blocked
+          ? "The local daemon cannot create another session owner."
+          : session
+            ? "The Model Gateway daemon is owned by the Tracevane API session."
+            : "The Model Gateway daemon is owned by the current-user OS supervisor.",
+        `${action} was normalized through the shared service manager.`,
       ],
     });
   }
 
-  async function getDaemonService(): Promise<ModelGatewayDaemonServiceResponse> {
-    const plan = createModelGatewayDaemonServicePlan(config);
-    const commands = plan.selectedTemplate.commands.status || [];
-    const commandsRun: ModelGatewayDaemonServiceCommandResult[] = [];
-    for (const item of commands) commandsRun.push(await runDaemonServiceCommand(item));
-    return daemonServiceResponse({
-      action: "status",
-      applied: commandsRun.length > 0,
-      commandsRun: normalizeDaemonServiceCommandResults("status", commandsRun),
+  function daemonServiceResponse(
+    mode: TracevaneServiceMode,
+    apply: boolean,
+    managed: ManageServiceResponse,
+    blocked = false,
+  ): ModelGatewayDaemonServiceResponse {
+    const mutating = managed.action !== "preview" && managed.action !== "status";
+    const applied = mutating && (
+      managed.templateWritten
+      || managed.commands.length > 0
+      || (mode === "session" && apply && managed.ok)
+    );
+    const lifecycle = getLifecycleStatus();
+    const manager = managed.manager;
+    return {
+      ok: managed.ok,
+      checkedAt: manager.checkedAt,
+      action: managed.action,
+      applied,
+      templateWritten: managed.templateWritten,
+      templateCurrent: managed.configCurrent,
+      installed: manager.installed,
+      plan: createModelGatewayDaemonServicePlan(config, {
+        homeDir,
+        host: listenerHost,
+        port: listenerPort,
+      }),
+      lifecycle,
+      manager,
+      commandsRun: managed.commands.map(compatibilityCommandResult),
+      serviceManager: compatibilityServiceManager(manager),
+      bootstrap: compatibilityBootstrap(
+        mode,
+        manager,
+        managed.action,
+        applied,
+        lifecycle,
+        blocked,
+      ),
+    };
+  }
+
+  async function executeDaemonService(
+    payload: ModelGatewayDaemonServiceRequest = {},
+  ): Promise<ModelGatewayDaemonServiceResponse> {
+    const action = normalizeDaemonServiceAction(payload.action);
+    const mode = normalizeDaemonServiceMode(payload.mode);
+    const apply = normalizeDaemonServiceApply(payload);
+    if (
+      runtimeHost === "local-daemon"
+      && mode === "session"
+      && (action === "start"
+        || action === "restart"
+        || action === "ensure-running")
+    ) {
+      const managed: ManageServiceResponse = {
+        ok: false,
+        action,
+        manager: {
+          mode: "session",
+          supervisor: "session",
+          installed: false,
+          enabled: null,
+          active: null,
+          state: "degraded",
+          configCurrent: true,
+          checkedAt: nowIso(),
+          errorCode: "runtime-not-ready",
+          errorMessage:
+            "A local Model Gateway daemon cannot create another session owner.",
+        },
+        commands: [],
+        templateWritten: false,
+        configCurrent: true,
+      };
+      return daemonServiceResponse(mode, false, managed, true);
+    }
+    const definition = createModelGatewayServiceDefinition(config, {
+      mode,
+      platform: process.platform,
+      host: listenerHost,
+      port: listenerPort,
     });
+    const managed = await daemonServiceManager.manage(definition, {
+      action,
+      mode,
+      apply,
+    });
+    return daemonServiceResponse(mode, apply, managed);
+  }
+
+  async function getDaemonService(): Promise<ModelGatewayDaemonServiceResponse> {
+    return executeDaemonService({ action: "status" });
   }
 
   async function manageDaemonService(
@@ -8794,251 +8908,7 @@ export function createModelGatewayService(
     payload: ModelGatewayDaemonServiceRequest = {},
   ): Promise<ModelGatewayDaemonServiceResponse> {
     requireManagement(req);
-    const action = normalizeDaemonServiceAction(payload?.action);
-    if (action === "ensure-running") {
-      return ensureDaemonRunning(payload);
-    }
-    if (action === "preview" || action === "status") {
-      const plan = createModelGatewayDaemonServicePlan(config);
-      const commands = payload.runCommands === true ? plan.selectedTemplate.commands.status || [] : [];
-      const commandsRun = [];
-      for (const item of commands) commandsRun.push(await runDaemonServiceCommand(item));
-      return daemonServiceResponse({
-        action,
-        applied: commandsRun.length > 0,
-        commandsRun,
-      });
-    }
-
-    const plan = createModelGatewayDaemonServicePlan(config);
-    const apply = payload.apply === true;
-    let templateWritten = false;
-    const actionNeedsTemplate = action === "install" || action === "start" || action === "restart";
-    if (actionNeedsTemplate && apply) {
-      if (action === "install") {
-        writeTextAtomic(plan.selectedTemplate.configPath, plan.selectedTemplate.template);
-        templateWritten = true;
-      } else {
-        templateWritten = writeDaemonServiceTemplateIfNeeded(plan);
-      }
-    }
-
-    const lifecycleActions = new Set<ModelGatewayDaemonServiceAction>(["install", "start", "stop", "restart"]);
-    const shouldRunCommands = payload.runCommands === true
-      || (payload.runCommands !== false && apply && lifecycleActions.has(action));
-    const commandsRun = [];
-    if (shouldRunCommands) {
-      if (apply && (action === "start" || action === "restart")) {
-        const installCommands = plan.selectedTemplate.commands.install || [];
-        for (const item of installCommands) commandsRun.push(await runDaemonServiceCommand(item));
-      }
-      const commands = plan.selectedTemplate.commands[action] || [];
-      for (const item of commands) commandsRun.push(await runDaemonServiceCommand(item));
-      if (lifecycleActions.has(action)) {
-        const statusCommands = plan.selectedTemplate.commands.status || [];
-        for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
-      }
-    }
-    const normalizedCommandsRun = normalizeDaemonServiceCommandResults(action, commandsRun);
-    let bootstrap: ModelGatewayDaemonBootstrapStatus | undefined;
-    if ((action === "start" || action === "restart") && normalizedCommandsRun.length > 0) {
-      const lifecycle = getLifecycleStatus();
-      const manager = summarizeDaemonServiceManager(plan.supervisor, normalizedCommandsRun);
-      const readiness = await waitForDaemonSupervisorReadiness(manager);
-      bootstrap = daemonSupervisorBootstrapStatus({
-        lifecycle,
-        manager,
-        readiness,
-        attempted: normalizedCommandsRun.length > 0,
-        notes: [
-          `Supervisor ${action} command path was used.`,
-          "Restart guarantees depend on the selected supervisor remaining enabled.",
-        ],
-      });
-    }
-
-    return daemonServiceResponse({
-      action,
-      applied: templateWritten || commandsRun.length > 0,
-      templateWritten,
-      commandsRun: normalizedCommandsRun,
-      bootstrap,
-    });
-  }
-
-  async function ensureDaemonRunning(
-    payload: ModelGatewayDaemonServiceRequest = {},
-  ): Promise<ModelGatewayDaemonServiceResponse> {
-    const lifecycle = getLifecycleStatus();
-    const plan = createModelGatewayDaemonServicePlan(config);
-    const installed = fs.existsSync(plan.selectedTemplate.configPath);
-    const templateCurrentAtStart = installed && isDaemonServiceTemplateCurrent(plan);
-    if (
-      lifecycle.localDaemon.runtimeMode === "local-daemon"
-      && lifecycle.localDaemon.state === "running"
-      && templateCurrentAtStart
-    ) {
-      return daemonServiceResponse({
-        action: "ensure-running",
-        bootstrap: daemonBootstrapStatus({
-          mode: "not-needed",
-          allowed: true,
-          endpoint: lifecycle.localDaemon.endpoint,
-          pid: lifecycle.localDaemon.pid,
-          notes: [
-            "Local Gateway daemon runtime metadata is already present and alive.",
-          ],
-        }),
-      });
-    }
-
-    const apply = payload.apply === true;
-    let templateWritten = false;
-    const commandsRun: ModelGatewayDaemonServiceCommandResult[] = [];
-
-    if (installed) {
-      if (apply) {
-        templateWritten = writeDaemonServiceTemplateIfNeeded(plan);
-      }
-      if (apply && payload.runCommands !== false) {
-        if (templateWritten) {
-          const installCommands = plan.selectedTemplate.commands.install || [];
-          for (const item of installCommands) commandsRun.push(await runDaemonServiceCommand(item));
-        }
-        const statusCommands = plan.selectedTemplate.commands.status || [];
-        for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
-        let beforeStart = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
-        if (!templateWritten && beforeStart.enabled !== true) {
-          const installCommands = plan.selectedTemplate.commands.install || [];
-          for (const item of installCommands) commandsRun.push(await runDaemonServiceCommand(item));
-          for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
-          beforeStart = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
-        }
-        if (templateWritten && beforeStart.active === true) {
-          const restartCommands = plan.selectedTemplate.commands.restart || plan.selectedTemplate.commands.start || [];
-          for (const item of restartCommands) commandsRun.push(await runDaemonServiceCommand(item));
-          for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
-        } else if (beforeStart.active !== true) {
-          const startCommands = plan.selectedTemplate.commands.start || [];
-          for (const item of startCommands) commandsRun.push(await runDaemonServiceCommand(item));
-          for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
-        }
-      }
-
-      const normalizedCommandsRun = normalizeDaemonServiceCommandResults("ensure-running", commandsRun);
-      const manager = summarizeDaemonServiceManager(plan.supervisor, normalizedCommandsRun);
-      const readiness = await waitForDaemonSupervisorReadiness(manager);
-      return daemonServiceResponse({
-        action: "ensure-running",
-        applied: templateWritten || normalizedCommandsRun.length > 0,
-        templateWritten,
-        commandsRun: normalizedCommandsRun,
-        bootstrap: daemonSupervisorBootstrapStatus({
-          lifecycle,
-          manager,
-          readiness,
-          attempted: normalizedCommandsRun.length > 0,
-          notes: normalizedCommandsRun.length
-            ? [
-              "User-service template is installed; ensure-running used the selected OS/user supervisor.",
-              ...(templateWritten ? ["User-service template was updated before supervisor start."] : []),
-              "Restart guarantees depend on the selected supervisor remaining enabled.",
-            ]
-            : [
-              templateWritten
-                ? "User-service template was updated. Pass runCommands: true to run supervisor status/start commands."
-                : "User-service template is installed. Pass apply: true to run supervisor status/start commands.",
-            ],
-        }),
-      });
-    }
-
-    if (!apply) {
-      return daemonServiceResponse({
-        action: "ensure-running",
-        bootstrap: daemonBootstrapStatus({
-          mode: "blocked",
-          allowed: false,
-          endpoint: lifecycle.localDaemon.endpoint,
-          error: "No user-service template is installed. Pass apply: true to install and start the OS/user supervisor.",
-          notes: [
-            "Install the OS/user supervisor for the formal daemon lifecycle.",
-          ],
-        }),
-      });
-    }
-
-    const canUseSupervisor = Boolean(
-      (plan.selectedTemplate.commands.install || []).length
-      && (plan.selectedTemplate.commands.start || []).length,
-    );
-    if (!canUseSupervisor) {
-      if (payload.allowBootstrap === true) {
-        const bootstrap = await runDaemonBootstrap({
-          plan,
-          paths,
-          projectRoot: config.projectRoot,
-          host: listenerHost,
-          port: listenerPort,
-          endpoint: lifecycle.localDaemon.endpoint,
-        });
-        return daemonServiceResponse({
-          action: "ensure-running",
-          applied: bootstrap.started,
-          bootstrap,
-        });
-      }
-      return daemonServiceResponse({
-        action: "ensure-running",
-        bootstrap: daemonBootstrapStatus({
-          mode: "blocked",
-          allowed: false,
-          endpoint: lifecycle.localDaemon.endpoint,
-          error: "No supported OS/user supervisor commands are available for this platform.",
-          notes: [
-            "Detached bootstrap is only available when explicitly allowed and no supervisor install/start path exists.",
-          ],
-        }),
-      });
-    }
-
-    templateWritten = writeDaemonServiceTemplateIfNeeded(plan);
-    if (payload.runCommands !== false) {
-      const installCommands = plan.selectedTemplate.commands.install || [];
-      for (const item of installCommands) commandsRun.push(await runDaemonServiceCommand(item));
-      const statusCommands = plan.selectedTemplate.commands.status || [];
-      for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
-      const beforeStart = summarizeDaemonServiceManager(plan.supervisor, commandsRun);
-      if (beforeStart.active !== true) {
-        const startCommands = plan.selectedTemplate.commands.start || [];
-        for (const item of startCommands) commandsRun.push(await runDaemonServiceCommand(item));
-        for (const item of statusCommands) commandsRun.push(await runDaemonServiceCommand(item));
-      }
-    }
-
-    const normalizedCommandsRun = normalizeDaemonServiceCommandResults("ensure-running", commandsRun);
-    const manager = summarizeDaemonServiceManager(plan.supervisor, normalizedCommandsRun);
-    const readiness = await waitForDaemonSupervisorReadiness(manager);
-    return daemonServiceResponse({
-      action: "ensure-running",
-      applied: templateWritten || normalizedCommandsRun.length > 0,
-      templateWritten,
-      commandsRun: normalizedCommandsRun,
-      bootstrap: daemonSupervisorBootstrapStatus({
-        lifecycle,
-        manager,
-        readiness,
-        attempted: normalizedCommandsRun.length > 0,
-        notes: normalizedCommandsRun.length
-          ? [
-            "User-service template was installed; ensure-running used the selected OS/user supervisor.",
-            "Restart guarantees depend on the selected supervisor remaining enabled.",
-          ]
-          : [
-            "User-service template was installed. Pass runCommands: true to run supervisor status/start commands.",
-        ],
-      }),
-    });
+    return executeDaemonService(payload);
   }
 
   async function startCodexAccountLogin(
@@ -9209,6 +9079,7 @@ export function createModelGatewayService(
     );
     const existingAccounts = existing?.accountProvider?.accounts.filter((item) => item.id !== account.id) || [];
     const nextAccounts = [...existingAccounts, account];
+    const managed = codexAccountManagedModels(homeDir);
     const provider = normalizeProvider({
       ...(existing || {}),
       id: providerId,
@@ -9221,7 +9092,7 @@ export function createModelGatewayService(
       apiKeyRef: authRef,
       apiFormat: "openai_responses",
       authStrategy: "oauth_proxy",
-      models: mergeManagedModelCatalogWithDefaults(existing?.models, codexAccountDefaultModels()),
+      models: mergeManagedModelCatalogWithDefaults(existing?.models, managed.catalog),
       endpoints: {
         ...(existing?.endpoints || {}),
         openai_responses: "/responses",
@@ -9242,6 +9113,7 @@ export function createModelGatewayService(
       },
       metadata: {
         ...(existing?.metadata || {}),
+        ...managed.metadata,
         importedFrom: "codex-device-login",
         website: "https://chatgpt.com",
         notes: "User-owned Codex/ChatGPT account-backed provider. Credentials stay in the local Tracevane Gateway secret store.",
@@ -9502,6 +9374,81 @@ export function createModelGatewayService(
     return normalizeString(profile.appModels[scope as ModelGatewayAppConnectionId] || profile.model || "") || null;
   }
 
+  function routeSmokeSignature(
+    scope: ModelGatewayAppScope,
+    providerId: string,
+    model: string,
+    routeId: ModelGatewayRouteId,
+    endpointProfileId: string | null,
+  ): string {
+    return sha256Short([scope, providerId, model, routeId, endpointProfileId || ""].join("\n"));
+  }
+
+  function unverifiedRouteSmoke(): ModelGatewayRouteSmokeVerification {
+    return {
+      state: "unverified",
+      checkedAt: null,
+      statusCode: null,
+      latencyMs: null,
+      errorCode: null,
+      errorMessage: null,
+    };
+  }
+
+  function routeSmokeVerification(
+    scope: ModelGatewayAppScope,
+    providerId: string | null,
+    model: string | null,
+    routeId: ModelGatewayRouteId,
+    endpointProfileId: string | null,
+  ): ModelGatewayRouteSmokeVerification {
+    if (!providerId || !model) return unverifiedRouteSmoke();
+    const signature = routeSmokeSignature(scope, providerId, model, routeId, endpointProfileId);
+    const record = readRuntime().routeSmokes[signature];
+    if (!record) return unverifiedRouteSmoke();
+    return {
+      state: Date.now() - Date.parse(record.checkedAt) > ROUTE_SMOKE_TTL_MS ? "expired" : record.state,
+      checkedAt: record.checkedAt,
+      statusCode: record.statusCode,
+      latencyMs: record.latencyMs,
+      errorCode: record.errorCode,
+      errorMessage: record.errorMessage,
+    };
+  }
+
+  function recordRouteSmoke(
+    scope: ModelGatewayAppScope,
+    decision: ModelGatewayRouteDecision,
+    model: string,
+    result: ModelGatewayProviderTestResponse,
+  ): void {
+    const providerId = decision.provider?.id || "";
+    if (!providerId || !model) return;
+    const routeId = decision.routeId || defaultRouteIdForScope(scope);
+    const signature = routeSmokeSignature(
+      scope,
+      providerId,
+      model,
+      routeId,
+      decision.endpointProfile?.id || null,
+    );
+    const runtime = readRuntime();
+    runtime.routeSmokes[signature] = {
+      signature,
+      scope,
+      providerId,
+      model,
+      routeId,
+      state: result.ok ? "passed" : "failed",
+      checkedAt: result.checkedAt,
+      statusCode: result.statusCode,
+      latencyMs: result.latencyMs,
+      errorCode: result.error?.code || null,
+      errorMessage: result.error?.message || null,
+    };
+    writeRuntime(runtime);
+  }
+
   function buildActiveRouteStatuses(registry: ModelGatewayRegistryState): ModelGatewayActiveRouteStatus[] {
     return MODEL_GATEWAY_APP_SCOPES.map((scope) => {
       const selectedProviderId = registry.activeProviders[scope] || null;
@@ -9538,6 +9485,7 @@ export function createModelGatewayService(
           resolvedBaseUrl: null,
           upstreamUrl: null,
           state: "missing",
+          verification: routeSmokeVerification(scope, null, resolvedModel, routeId, null),
           message: `No available Model Gateway provider is available for ${scope}.`,
           warning: `No available Model Gateway provider is available for ${scope}.`,
         };
@@ -9559,6 +9507,7 @@ export function createModelGatewayService(
           resolvedBaseUrl: effectiveProvider?.baseUrl || null,
           upstreamUrl,
           state: "fallback",
+          verification: routeSmokeVerification(scope, resolvedProvider.id, resolvedModel, routeId, endpointProfileId),
           message: warning,
           warning,
         };
@@ -9578,6 +9527,7 @@ export function createModelGatewayService(
           resolvedBaseUrl: effectiveProvider?.baseUrl || null,
           upstreamUrl,
           state: "fixed",
+          verification: routeSmokeVerification(scope, resolvedProvider.id, resolvedModel, routeId, endpointProfileId),
           message: endpointProfileName
             ? `Fixed to '${resolvedProvider.name}' via endpoint '${endpointProfileName}'.`
             : `Fixed to '${resolvedProvider.name}'.`,
@@ -9598,6 +9548,7 @@ export function createModelGatewayService(
         resolvedBaseUrl: effectiveProvider?.baseUrl || null,
         upstreamUrl,
         state: "auto",
+        verification: routeSmokeVerification(scope, resolvedProvider.id, resolvedModel, routeId, endpointProfileId),
         message: endpointProfileName
           ? `Auto resolves to '${resolvedRouteTarget}'.`
           : `Auto resolves to '${resolvedProvider.name}'.`,
@@ -11687,7 +11638,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         : response.status >= 200 && response.status < 300 && (toolSmoke ? toolMatched : contentMatched);
       const responseProviderId = normalizeString(response.headers.get("x-openclaw-model-gateway-provider")) || providerId;
       const responsePreview = previewText(responseText);
-      return {
+      const result: ModelGatewayProviderTestResponse = {
         ok: success,
         providerId: responseProviderId,
         checkedAt: nowIso(),
@@ -11709,10 +11660,12 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           ...(smokeDiagnostics ? { diagnostics: smokeDiagnostics } : {}),
         },
       };
+      recordRouteSmoke(scope, decision, effectiveModel, result);
+      return result;
     } catch (error) {
       const diagnostics = networkErrorDiagnostics(error, { proxyUrl: null, source: "none" });
       const rawMessage = error instanceof Error ? error.message : "Active route smoke request failed.";
-      return {
+      const result: ModelGatewayProviderTestResponse = {
         ok: false,
         providerId,
         checkedAt: nowIso(),
@@ -11726,6 +11679,8 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
           diagnostics,
         },
       };
+      recordRouteSmoke(scope, decision, effectiveModel, result);
+      return result;
     } finally {
       clearTimeout(timeout);
     }
@@ -12846,6 +12801,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
       const firstByteMsForLog = () => firstByteMs ?? responseHeaderMs;
       const latencyMs = responseHeaderMs;
       const healthSuccess = isProviderHealthSuccess(upstream.status, null);
+      const requestSuccess = upstream.status >= 200 && upstream.status < 300;
       const errorMessage = healthSuccess ? null : `Upstream returned HTTP ${upstream.status}.`;
       const upstreamRetryAfterUntil = retryAfterUntilIso(upstream.headers);
       const streamingAdapter = useCodexResponsesStreamingAdapter
@@ -13153,7 +13109,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             route: decision,
             model: requestModelForLog,
             statusCode: upstream.status,
-            outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+            outcome: requestOutcomeFromStatus(upstream.status, null, requestSuccess),
             firstByteMs: firstByteMsForLog(),
             errorCode: String(normalizedError.error.code || "model_gateway_upstream_status"),
             errorMessage: normalizedError.error.message,
@@ -13171,7 +13127,7 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
             route: decision,
             model: requestModelForLog,
             statusCode: upstream.status,
-            outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+            outcome: requestOutcomeFromStatus(upstream.status, null, requestSuccess),
             firstByteMs: firstByteMsForLog(),
             errorCode: String(normalizedError.error.code || "model_gateway_upstream_status"),
             errorMessage: normalizedError.error.message,
@@ -13579,9 +13535,9 @@ Compatibility smoke: preserve the useful intent of any metadata, cache hints, an
         route: decision,
         model: requestModelForLog,
         statusCode: upstream.status,
-        outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+        outcome: requestOutcomeFromStatus(upstream.status, null, requestSuccess),
         firstByteMs: firstByteMsForLog(),
-        errorCode: healthSuccess ? null : String(passthroughUpstreamError?.error.code || "model_gateway_upstream_status"),
+        errorCode: requestSuccess ? null : String(passthroughUpstreamError?.error.code || "model_gateway_upstream_status"),
         errorMessage: passthroughErrorMessage,
         usage: upstream.status >= 200 && upstream.status < 300
           ? runtimeUsageForSuccessfulRequest(decision.routeId, requestBodyTextForUsage, responseText)

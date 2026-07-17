@@ -186,8 +186,8 @@ test("files query cache namespace is shared by file manager workspace and chat",
   const query = fs.readFileSync(new URL("../../apps/web/src/lib/query/files.ts", import.meta.url), "utf-8");
   assert.match(query, /all: \["files"\] as const/);
   assert.match(query, /summary: \(\) => \["files", "summary"\] as const/);
-  assert.match(query, new RegExp('"files",\\n\\s+"browse",'));
-  assert.match(query, new RegExp('"files",\\n\\s+"search",'));
+  assert.match(query, new RegExp('"files",\\r?\\n\\s+"browse",'));
+  assert.match(query, new RegExp('"files",\\r?\\n\\s+"search",'));
   assert.doesNotMatch(query, /\["ide", "files"\]/);
-  assert.doesNotMatch(query, new RegExp('"ide",\\n\\s+"files",'));
+  assert.doesNotMatch(query, new RegExp('"ide",\\r?\\n\\s+"files",'));
 });

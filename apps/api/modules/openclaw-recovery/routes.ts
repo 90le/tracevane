@@ -5,6 +5,36 @@ import type {
   OpenClawRecoveryRestoreBackupRequest,
   OpenClawRecoveryRunRequest,
 } from "../../../../types/openclaw-recovery.js";
+import { isOpenClawRecoveryServiceError } from "./service.js";
+
+function sendOpenClawRecoveryError(
+  res: Parameters<typeof sendJson>[0],
+  error: unknown,
+): void {
+  if (isOpenClawRecoveryServiceError(error)) {
+    sendJson(res, error.statusCode, {
+      error: {
+        code: error.code,
+        message: error.message,
+        retryable: false,
+        source: "tracevane",
+      },
+    });
+    return;
+  }
+  if (error instanceof SyntaxError) {
+    sendJson(res, 400, {
+      error: {
+        code: "invalid_json",
+        message: "Request body must contain valid JSON.",
+        retryable: false,
+        source: "tracevane",
+      },
+    });
+    return;
+  }
+  throw error;
+}
 
 function readLimit(
   req: Parameters<TracevaneRouter["get"]>[1] extends (
@@ -117,13 +147,20 @@ export function registerOpenClawRecoveryRoutes(router: TracevaneRouter): void {
   router.post(
     "/api/openclaw-recovery/daemon-service",
     async (req, res, routeCtx) => {
-      const payload =
-        await parseJsonBody<OpenClawRecoveryDaemonServiceRequest>(req);
-      sendJson(
-        res,
-        200,
-        await routeCtx.services.openclawRecovery.applyDaemonServiceAction(payload),
-      );
+      try {
+        const payload =
+          await parseJsonBody<OpenClawRecoveryDaemonServiceRequest | null>(req);
+        sendJson(
+          res,
+          200,
+          await routeCtx.services.openclawRecovery.applyDaemonServiceAction(
+            payload,
+            req,
+          ),
+        );
+      } catch (error) {
+        sendOpenClawRecoveryError(res, error);
+      }
     },
   );
 }

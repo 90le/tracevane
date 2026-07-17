@@ -1,54 +1,11 @@
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { chromium } from '@playwright/test';
 
-const EXTERNAL_BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL;
-const SMOKE_PORT = Number(process.env.TRACEVANE_WEB_PORT || 5186);
-const BASE_URL = EXTERNAL_BASE_URL || `http://127.0.0.1:${SMOKE_PORT}`;
+const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL;
+if (!BASE_URL) {
+  throw new Error('TRACEVANE_WEB_SMOKE_URL is required; run `npm run smoke:ide:debug-foundation`.');
+}
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
-
-
-async function startDevServerIfNeeded() {
-  if (EXTERNAL_BASE_URL) return null;
-  for (const pid of await pidsForPort(SMOKE_PORT)) {
-    try { process.kill(pid, 'SIGKILL'); } catch { /* ignore stale smoke server */ }
-  }
-  const child = spawn('bash', ['scripts/dev-web-smoke.sh'], {
-    cwd: process.cwd(),
-    env: { ...process.env, TRACEVANE_WEB_PORT: String(SMOKE_PORT) },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const logs = [];
-  child.stdout.on('data', (chunk) => logs.push(String(chunk)));
-  child.stderr.on('data', (chunk) => logs.push(String(chunk)));
-  const deadline = Date.now() + 60_000;
-  let lastError = null;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(`dev server exited ${child.exitCode}: ${logs.join('').slice(-4000)}`);
-    }
-    try {
-      const response = await fetch(`${BASE_URL}/api/debug/status`);
-      if (response.ok) return { child, logs };
-      lastError = new Error(`status ${response.status}: ${await response.text()}`);
-    } catch (error) {
-      lastError = error;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  try { child.kill('SIGTERM'); } catch { /* ignore */ }
-  throw new Error(`Timed out waiting for dev server debug API: ${lastError instanceof Error ? lastError.message : String(lastError)}\nlogs=${logs.join('').slice(-4000)}`);
-}
-
-async function pidsForPort(port) {
-  try {
-    const { execFileSync } = await import('node:child_process');
-    const output = execFileSync('lsof', ['-ti', `tcp:${port}`], { encoding: 'utf8' });
-    return output.split(/\s+/).filter(Boolean).map((value) => Number(value)).filter(Number.isFinite);
-  } catch {
-    return [];
-  }
-}
 
 async function api(pathname, options = {}) {
   const response = await fetch(`${BASE_URL}${pathname}`, {
@@ -133,7 +90,6 @@ function relativePathFromRoot(rootAbsolutePath, targetAbsolutePath) {
 }
 
 async function run() {
-  const devServer = await startDevServerIfNeeded();
   const summary = await waitForApi('/api/files/summary');
   const root = summary.roots?.find((item) => item.id === summary.defaultRootId) ?? summary.roots?.[0];
   const rootId = root?.id;
@@ -198,10 +154,6 @@ async function run() {
     throw new Error(`${error instanceof Error ? error.message : String(error)}\nstate=${JSON.stringify(state)}\nlogs=${logs.slice(-80).join('\n')}`);
   } finally {
     await browser.close().catch(() => undefined);
-    if (devServer) {
-      try { devServer.child.kill('SIGTERM'); } catch { /* ignore */ }
-      setTimeout(() => { try { devServer.child.kill('SIGKILL'); } catch { /* ignore */ } }, 1500).unref?.();
-    }
   }
 }
 

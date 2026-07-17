@@ -8,7 +8,6 @@ import {
 
 import {
   getOpenClawRecoveryBackupsPage,
-  getOpenClawRecoveryDaemonService,
   getOpenClawRecoveryEventsPage,
   getOpenClawRecoveryStatus,
   manageOpenClawRecoveryDaemonService,
@@ -27,6 +26,7 @@ import type {
   OpenClawRecoveryRunResponse,
   OpenClawRecoveryStatusPayload,
 } from "../../features/recovery/types";
+import type { TracevaneServiceMode } from "../../../../../types/supervisor";
 
 /**
  * TanStack Query hooks for the Recovery (System Guard) data layer.
@@ -47,7 +47,9 @@ export const recoveryKeys = {
     ["recovery", "events", page, pageSize] as const,
   backups: (page: number, pageSize: number) =>
     ["recovery", "backups", page, pageSize] as const,
-  daemonService: () => ["recovery", "daemon-service"] as const,
+  daemonServices: () => ["recovery", "daemon-service"] as const,
+  daemonService: (mode: TracevaneServiceMode) =>
+    [...recoveryKeys.daemonServices(), mode] as const,
 };
 
 type QueryOpts<TData> = Omit<
@@ -101,13 +103,20 @@ export function useRecoveryBackupsQuery(
   });
 }
 
-/** Recovery daemon service snapshot (`GET /api/openclaw-recovery/daemon-service`). */
+/** Mode-aware recovery daemon inspection through the read-only lifecycle status action. */
 export function useRecoveryDaemonServiceQuery(
+  mode: TracevaneServiceMode = "session",
   options?: QueryOpts<OpenClawRecoveryDaemonServiceResponse["service"]>,
 ) {
   return useQuery<OpenClawRecoveryDaemonServiceResponse["service"], ApiError>({
-    queryKey: recoveryKeys.daemonService(),
-    queryFn: ({ signal }) => getOpenClawRecoveryDaemonService(signal),
+    queryKey: recoveryKeys.daemonService(mode),
+    queryFn: async ({ signal }) => {
+      const response = await manageOpenClawRecoveryDaemonService(
+        { action: "status", mode, apply: true },
+        signal,
+      );
+      return response.service;
+    },
     ...options,
   });
 }
@@ -195,7 +204,13 @@ export function useManageRecoveryDaemonServiceMutation(
     mutationFn: (payload) => manageOpenClawRecoveryDaemonService(payload ?? {}),
     ...options,
     onSuccess: (...args) => {
-      void queryClient.invalidateQueries({ queryKey: recoveryKeys.daemonService() });
+      const [result, variables] = args;
+      const mode = variables?.mode ?? "session";
+      if (result.service.manager.mode === mode) {
+        queryClient.setQueryData(recoveryKeys.daemonService(mode), result.service);
+      } else {
+        void queryClient.invalidateQueries({ queryKey: recoveryKeys.daemonService(mode) });
+      }
       void queryClient.invalidateQueries({ queryKey: recoveryKeys.status() });
       void queryClient.invalidateQueries({ queryKey: ["dashboard", "recovery-status"] });
       options?.onSuccess?.(...args);

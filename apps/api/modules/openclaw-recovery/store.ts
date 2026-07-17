@@ -10,6 +10,7 @@ import type {
   OpenClawRecoveryPolicy,
   OpenClawRecoveryState,
 } from "../../../../types/openclaw-recovery.js";
+import type { TracevaneServiceManagerStatus } from "../../../../types/supervisor.js";
 import type { SystemPersistedEventRecord } from "../../../../types/system.js";
 import { createSystemEventLogStore } from "../system/event-log-store.js";
 import { resolveOpenClawRecoveryPaths } from "./paths.js";
@@ -36,6 +37,97 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+const SERVICE_MODES = new Set(["session", "persistent"]);
+const SUPERVISORS = new Set([
+  "systemd-user",
+  "launchd-user",
+  "scheduled-task",
+  "session",
+  "none",
+  "unknown",
+]);
+const SERVICE_STATES = new Set([
+  "not-installed",
+  "stopped",
+  "starting",
+  "running",
+  "degraded",
+  "failed",
+  "stale-config",
+  "unknown",
+]);
+const SUPERVISOR_ERRORS = new Set([
+  "task-not-found",
+  "permission-denied",
+  "command-not-found",
+  "command-timeout",
+  "template-invalid",
+  "runtime-not-ready",
+  "stale-config",
+  "unsupported-platform",
+  "unknown",
+]);
+
+function normalizeStoredManager(
+  value: unknown,
+  fallback: TracevaneServiceManagerStatus,
+): TracevaneServiceManagerStatus {
+  if (!isRecord(value)) return { ...fallback };
+  const mode = SERVICE_MODES.has(String(value.mode))
+    ? value.mode as TracevaneServiceManagerStatus["mode"]
+    : fallback.mode;
+  const base: TracevaneServiceManagerStatus = mode === "persistent"
+    ? {
+        ...fallback,
+        mode,
+        supervisor: "unknown",
+        enabled: null,
+        active: null,
+        state: "unknown",
+        configCurrent: false,
+      }
+    : fallback;
+  const nullableBoolean = (
+    candidate: unknown,
+    fallbackValue: boolean | null,
+  ): boolean | null =>
+    typeof candidate === "boolean" || candidate === null
+      ? candidate
+      : fallbackValue;
+  return {
+    mode,
+    supervisor: SUPERVISORS.has(String(value.supervisor))
+      ? value.supervisor as TracevaneServiceManagerStatus["supervisor"]
+      : base.supervisor,
+    installed: typeof value.installed === "boolean"
+      ? value.installed
+      : base.installed,
+    enabled: nullableBoolean(value.enabled, base.enabled),
+    active: nullableBoolean(value.active, base.active),
+    state: SERVICE_STATES.has(String(value.state))
+      ? value.state as TracevaneServiceManagerStatus["state"]
+      : base.state,
+    configCurrent: typeof value.configCurrent === "boolean"
+      ? value.configCurrent
+      : base.configCurrent,
+    checkedAt: typeof value.checkedAt === "string" && value.checkedAt.trim()
+      ? value.checkedAt
+      : base.checkedAt,
+    errorCode: value.errorCode === null
+      || SUPERVISOR_ERRORS.has(String(value.errorCode))
+      ? value.errorCode as TracevaneServiceManagerStatus["errorCode"]
+      : base.errorCode,
+    errorMessage: value.errorMessage === null
+      || typeof value.errorMessage === "string"
+      ? value.errorMessage as string | null
+      : base.errorMessage,
+  };
+}
+
 function safeReadJson<T>(filePath: string, fallback: T): T {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
@@ -53,6 +145,18 @@ function writeJsonAtomic(filePath: string, value: unknown): void {
 
 function defaultServiceSnapshot(): OpenClawRecoveryDaemonServiceSnapshot {
   return {
+    manager: {
+      mode: "session",
+      supervisor: "session",
+      installed: false,
+      enabled: null,
+      active: false,
+      state: "stopped",
+      configCurrent: true,
+      checkedAt: nowIso(),
+      errorCode: null,
+      errorMessage: null,
+    },
     supervisor: "unknown",
     serviceName: "openclaw-recovery-daemon",
     configPath: "",
@@ -96,13 +200,23 @@ export function readRecoveryState(config: TracevaneServerConfig): OpenClawRecove
     paths.statePath,
     fallback,
   );
+  const storedService: Record<string, unknown> = isRecord(stored.service)
+    ? stored.service
+    : {};
   return {
     ...fallback,
     ...stored,
     daemon: { ...fallback.daemon, ...(stored.daemon || {}) },
     probe: { ...fallback.probe, ...(stored.probe || {}) },
     policy: { ...DEFAULT_RECOVERY_POLICY, ...(stored.policy || {}) },
-    service: { ...fallback.service, ...(stored.service || {}) },
+    service: {
+      ...fallback.service,
+      ...storedService,
+      manager: normalizeStoredManager(
+        storedService.manager,
+        fallback.service.manager,
+      ),
+    },
     notes: Array.isArray(stored.notes) ? stored.notes.map(String) : fallback.notes,
   };
 }

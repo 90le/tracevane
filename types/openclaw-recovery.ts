@@ -1,14 +1,16 @@
+import type {
+  TracevaneServiceAction,
+  TracevaneServiceManagerStatus,
+  TracevaneServiceMode,
+  TracevaneSupervisorKind,
+} from "./supervisor.js";
+
 export const OPENCLAW_RECOVERY_DEFAULT_HOST = "127.0.0.1";
-export const OPENCLAW_RECOVERY_DEFAULT_PORT = 18797;
+export const OPENCLAW_RECOVERY_DEFAULT_PORT = 18798;
 export const OPENCLAW_RECOVERY_DAEMON_SERVICE_NAME =
   "tracevane-recovery.service";
 
-export type OpenClawRecoverySupervisorKind =
-  | "systemd-user"
-  | "launchd-user"
-  | "scheduled-task"
-  | "none"
-  | "unknown";
+export type OpenClawRecoverySupervisorKind = TracevaneSupervisorKind;
 
 export type OpenClawRecoveryDaemonState =
   | "not-installed"
@@ -69,13 +71,7 @@ export type OpenClawRecoveryRunAction =
   | "repair"
   | "diagnostics";
 
-export type OpenClawRecoveryDaemonServiceAction =
-  | "preview"
-  | "install"
-  | "start"
-  | "stop"
-  | "restart"
-  | "status";
+export type OpenClawRecoveryDaemonServiceAction = TracevaneServiceAction;
 
 export interface OpenClawRecoveryPolicy {
   enabled: boolean;
@@ -159,6 +155,18 @@ export interface OpenClawRecoveryMonitorSnapshot {
   nextProbeAt: string | null;
   nextRepairAllowedAt: string | null;
   repairRunning: boolean;
+}
+
+export interface OpenClawRecoveryDaemonRuntimeMetadata {
+  version: 1;
+  updatedAt: string;
+  pid: number;
+  startedAt: string;
+  host: typeof OPENCLAW_RECOVERY_DEFAULT_HOST;
+  port: number | null;
+  endpoint: string | null;
+  supervisor: OpenClawRecoverySupervisorKind;
+  serviceName: string;
 }
 
 export interface OpenClawRecoveryRuntimeState {
@@ -256,6 +264,7 @@ export interface OpenClawRecoveryDaemonServicePlan {
 }
 
 export interface OpenClawRecoveryDaemonServiceSnapshot {
+  manager: TracevaneServiceManagerStatus;
   supervisor: OpenClawRecoverySupervisorKind;
   serviceName: string;
   configPath: string;
@@ -268,6 +277,7 @@ export interface OpenClawRecoveryDaemonServiceSnapshot {
 
 export interface OpenClawRecoveryDaemonServiceRequest {
   action?: OpenClawRecoveryDaemonServiceAction;
+  mode?: TracevaneServiceMode;
   apply?: boolean;
   runCommands?: boolean;
 }

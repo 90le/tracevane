@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   ExternalLanguageServerGateway,
@@ -51,6 +51,8 @@ test("external LSP gateway starts mock server, sends requests, records diagnosti
   const echoed = await gateway.request("mock", "echo/request", { text: "hello" });
   assert.deepEqual(echoed, { echoed: { text: "hello" }, count: 1 });
 
+  const initializeParams = await gateway.request("mock", "initializeParams/request");
+
   const uri = "file:///workspace/mock.mocklang";
   gateway.notify("mock", "textDocument/didOpen", { textDocument: { uri, languageId: "mocklang", version: 1, text: "mock" } });
   await waitFor(() => gateway.getDiagnostics("mock", uri).length === 1);
@@ -58,6 +60,7 @@ test("external LSP gateway starts mock server, sends requests, records diagnosti
 
   const stopped = await gateway.stop("mock");
   assert.equal(stopped.status, "stopped");
+  assert.equal(initializeParams.rootUri, pathToFileURL(repoRoot).href);
 });
 
 test("external LSP gateway degrades request timeouts without hanging", async () => {

@@ -168,8 +168,7 @@ async function run() {
 
   const explorerBase = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
   const prefix = `tracevane-ide-explorer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const smokeParent = explorerBase ? `${explorerBase}/tmp` : 'tmp';
-  const smokeDir = `${smokeParent}/.${prefix}`;
+  const smokeDir = explorerBase ? `${explorerBase}/.${prefix}` : `.${prefix}`;
   const copySource = `${smokeDir}/keyboard-copy-source.txt`;
   const copyTargetDir = `${smokeDir}/keyboard-copy-target`;
   const copyTarget = `${copyTargetDir}/keyboard-copy-source.txt`;

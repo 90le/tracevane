@@ -42,13 +42,16 @@ test("local heartbeat smoke script runs the full synthetic heartbeat matrix", as
   const result = JSON.parse(stdout);
 
   assert.equal(result.ok, true);
-  assert.equal(result.total, 19);
-  assert.equal(result.passed, 19);
+  assert.equal(result.total, 25);
+  assert.equal(result.passed, 25);
   assert.equal(result.failed, 0);
   assert.equal(result.results.some((item) => item.name === "codex:stderr-cr-tui-heartbeat"), true);
   assert.equal(result.results.some((item) => item.name === "claude-code:stdout-heartbeat"), true);
   assert.equal(result.results.some((item) => item.name === "claude-code:async-child-task-idle-grace"), true);
   assert.equal(result.results.some((item) => item.name === "opencode:heartbeat-only-stall-diagnostic"), true);
   assert.equal(result.results.some((item) => item.name === "opencode:silent-heartbeat-timeout"), true);
-  assert.equal(result.results.some((item) => item.name === "gemini:fixed-timeout-unchanged"), true);
+  assert.equal(result.results.some((item) => item.name === "gemini:stderr-cr-tui-heartbeat"), true);
+  assert.equal(result.results.some((item) => item.name === "gemini:async-child-task-idle-grace"), true);
+  assert.equal(result.results.some((item) => item.name === "gemini:silent-heartbeat-timeout"), true);
+  assert.equal(result.results.some((item) => item.name === "kimi:fixed-timeout-unchanged"), true);
 });

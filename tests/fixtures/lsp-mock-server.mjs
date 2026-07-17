@@ -2,6 +2,7 @@
 const HEADER_SEPARATOR = "\r\n\r\n";
 let buffer = Buffer.alloc(0);
 let requestCount = 0;
+let initializeParams = null;
 
 function encode(message) {
   const body = JSON.stringify(message);
@@ -38,6 +39,7 @@ function parse() {
 
 function handle(message) {
   if (message.method === "initialize") {
+    initializeParams = message.params ?? null;
     respond(message.id, { capabilities: { textDocumentSync: 1, hoverProvider: true, definitionProvider: true } });
     return;
   }
@@ -52,6 +54,10 @@ function handle(message) {
   }
   if (message.method === "echo/request") {
     respond(message.id, { echoed: message.params, count: ++requestCount });
+    return;
+  }
+  if (message.method === "initializeParams/request") {
+    respond(message.id, initializeParams);
     return;
   }
   if (message.method === "slow/request") return;

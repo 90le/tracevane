@@ -129,9 +129,15 @@ test("Java version probe requires Java 21+ and degrades for missing binaries", a
   assert.equal(missing.ok, false);
   assert.equal(missing.status, "missingBinary");
 
-  const fakeJava = path.join(root, "fake-java");
-  fs.writeFileSync(fakeJava, "#!/usr/bin/env sh\necho 'openjdk version \"17.0.1\"' >&2\n", "utf8");
-  fs.chmodSync(fakeJava, 0o755);
+  const fakeJava = path.join(root, process.platform === "win32" ? "fake-java.cmd" : "fake-java");
+  fs.writeFileSync(
+    fakeJava,
+    process.platform === "win32"
+      ? "@echo off\r\n>&2 echo openjdk version \"17.0.1\"\r\n"
+      : "#!/usr/bin/env sh\necho 'openjdk version \"17.0.1\"' >&2\n",
+    "utf8",
+  );
+  if (process.platform !== "win32") fs.chmodSync(fakeJava, 0o755);
   const unsupported = await probeJavaJdtlsVersion(createJavaJdtlsProfile({ command: fakeJava }), root);
   assert.equal(unsupported.ok, false);
   assert.equal(unsupported.status, "unsupportedVersion");

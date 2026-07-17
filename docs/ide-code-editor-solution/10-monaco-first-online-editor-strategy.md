@@ -318,11 +318,16 @@ npm run smoke:file-manager:file-operations
 npm run smoke:file-manager:mobile-layout
 ```
 
-When port `5176` is occupied by an existing dev runtime, run smokes on an isolated port and pass `TRACEVANE_WEB_SMOKE_URL`, for example:
+When port `5176` is occupied by an existing dev runtime, let the public npm alias own an isolated smoke server on another port. In PowerShell:
+
+```powershell
+$env:TRACEVANE_WEB_PORT = "5177"; npm run smoke:file-manager:online-editor
+```
+
+On macOS or Linux:
 
 ```bash
-TRACEVANE_WEB_PORT=5177 bash scripts/dev-web-smoke.sh
-TRACEVANE_WEB_SMOKE_URL=http://127.0.0.1:5177 node tests/file-manager/file-manager-online-editor.smoke.mjs
+TRACEVANE_WEB_PORT=5177 npm run smoke:file-manager:online-editor
 ```
 
 ## 11. Non-goals

@@ -132,10 +132,20 @@ const ROUTE_STATE_BADGE: Record<
   ModelGatewayActiveRouteStatus["state"],
   { variant: "ok" | "warn" | "bad" | "mute"; label: string }
 > = {
-  fixed: { variant: "ok", label: "正常" },
-  auto: { variant: "ok", label: "自动" },
-  fallback: { variant: "warn", label: "降级" },
-  missing: { variant: "bad", label: "未配置" },
+  fixed: { variant: "ok", label: "已固定" },
+  auto: { variant: "ok", label: "自动选择" },
+  fallback: { variant: "warn", label: "已降级" },
+  missing: { variant: "bad", label: "未解析" },
+};
+
+const ROUTE_SMOKE_BADGE: Record<
+  ModelGatewayActiveRouteStatus["verification"]["state"],
+  { variant: "ok" | "warn" | "bad" | "mute"; label: string }
+> = {
+  unverified: { variant: "mute", label: "未验证" },
+  passed: { variant: "ok", label: "通过" },
+  failed: { variant: "bad", label: "失败" },
+  expired: { variant: "warn", label: "过期" },
 };
 
 /** Map a provider's circuit/health to a status badge built only from live data. */
@@ -225,73 +235,6 @@ function routeForScope(
   return routes.find((route) => route.scope === scope) ?? null;
 }
 
-type RouteSmokeResult = {
-  ok: boolean;
-  checkedAt: string;
-  latencyMs: number | null;
-  providerId: string | null;
-  message: string;
-};
-
-const ROUTE_SMOKE_STORAGE_KEY = "tracevane:model-gateway:overview-route-smoke:v1";
-const ROUTE_SMOKE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-function routeSmokeKey(route: ModelGatewayActiveRouteStatus): string {
-  return [
-    route.scope,
-    route.resolvedProviderId ?? "",
-    route.resolvedModel ?? "",
-    route.resolvedEndpointProfileId ?? "",
-    route.routeId,
-  ].join("::");
-}
-
-function isRouteSmokeResult(value: unknown): value is RouteSmokeResult {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<RouteSmokeResult>;
-  return (
-    typeof item.ok === "boolean" &&
-    typeof item.checkedAt === "string" &&
-    (typeof item.latencyMs === "number" || item.latencyMs === null) &&
-    (typeof item.providerId === "string" || item.providerId === null) &&
-    typeof item.message === "string"
-  );
-}
-
-function readStoredRouteSmokeResults(): Record<string, RouteSmokeResult> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(ROUTE_SMOKE_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    const now = Date.now();
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>).filter(([, value]) => {
-        if (!isRouteSmokeResult(value)) return false;
-        const checkedAtMs = Date.parse(value.checkedAt);
-        return Number.isFinite(checkedAtMs) && now - checkedAtMs <= ROUTE_SMOKE_MAX_AGE_MS;
-      }) as Array<[string, RouteSmokeResult]>,
-    );
-  } catch {
-    return {};
-  }
-}
-
-function writeStoredRouteSmokeResults(
-  results: Record<string, RouteSmokeResult>,
-): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      ROUTE_SMOKE_STORAGE_KEY,
-      JSON.stringify(results),
-    );
-  } catch {
-    // Best-effort UI cache only; route smoke itself has already completed.
-  }
-}
-
 function formatRouteSmokeCheckedAt(checkedAt: string): string {
   const checkedAtMs = Date.parse(checkedAt);
   if (!Number.isFinite(checkedAtMs)) return "上次检查时间未知";
@@ -353,9 +296,6 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const [batchSmoking, setBatchSmoking] = React.useState(false);
   const [diagnosticsEnabled, setDiagnosticsEnabled] = React.useState(false);
   const [serviceEnabled, setServiceEnabled] = React.useState(false);
-  const [routeSmokeResults, setRouteSmokeResults] = React.useState<
-    Record<string, RouteSmokeResult>
-  >(() => readStoredRouteSmokeResults());
 
   const error =
     statusQuery.error && providersQuery.error && connectionsQuery.error
@@ -418,6 +358,10 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const routeTotal = routeSummary?.total ?? activeRoutes.length;
   const routeMissing = routeSummary?.missing ?? activeRoutes.filter((route) => route.state === "missing").length;
   const routeFallback = routeSummary?.fallback ?? activeRoutes.filter((route) => route.state === "fallback").length;
+  const smokePassed = activeRoutes.filter((route) => route.verification.state === "passed").length;
+  const smokeFailed = activeRoutes.filter((route) => route.verification.state === "failed").length;
+  const smokeExpired = activeRoutes.filter((route) => route.verification.state === "expired").length;
+  const smokeUnverified = activeRoutes.filter((route) => route.verification.state === "unverified").length;
   const providerHealthy = providerCounts?.healthy ?? health?.okProviders ?? healthyProviders.length;
   const providerTotal = providerCounts?.total ?? status?.registry.providerCount ?? providerList.length;
   const providerDegraded = providerCounts?.degraded ?? health?.degradedProviders ?? 0;
@@ -428,19 +372,8 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
   const clientConfigured = configuredConnectionCount;
   const clientTotal = appConnections.length;
 
-  const rememberRouteSmokeResult = (
-    route: ModelGatewayActiveRouteStatus,
-    result: RouteSmokeResult,
-  ) => {
-    setRouteSmokeResults((prev) => {
-      const next = {
-        ...prev,
-        [routeSmokeKey(route)]: result,
-      };
-      writeStoredRouteSmokeResults(next);
-      return next;
-    });
-  };
+  const degraded =
+    (health?.degradedProviders ?? 0) + (health?.openCircuits ?? 0);
 
   const smokeActiveRoute = async (route: ModelGatewayActiveRouteStatus) => {
     setSmokingScope(route.scope);
@@ -457,15 +390,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
       const description = [providerDrift, result.responsePreview ?? undefined]
         .filter(Boolean)
         .join(" · ");
-      rememberRouteSmokeResult(route, {
-        ok: result.ok,
-        checkedAt: result.checkedAt,
-        latencyMs: result.latencyMs,
-        providerId: result.providerId || null,
-        message: result.ok
-          ? providerDrift || "路由 smoke 通过"
-          : (result.error?.message ?? providerDrift ?? "路由 smoke 失败"),
-      });
+      await providersQuery.refetch();
       if (result.ok) {
         toast.success(`${route.scope} 路由正常 · ${result.latencyMs}ms`, {
           description: description || undefined,
@@ -478,13 +403,6 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "路由检查请求失败";
-      rememberRouteSmokeResult(route, {
-        ok: false,
-        checkedAt: new Date().toISOString(),
-        latencyMs: null,
-        providerId: route.resolvedProviderId,
-        message,
-      });
       toast.error(`${route.scope} 路由检查失败`, { description: message });
     } finally {
       setSmokingScope(null);
@@ -508,9 +426,13 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
         <div className="grid gap-4 border-b border-line bg-[color-mix(in_srgb,var(--primary)_4%,var(--panel))] p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={routeAlerts.length > 0 ? "warn" : "ok"} className="gap-1.5">
-                {routeAlerts.length > 0 ? <RouteOff className="size-3.5" /> : <Check className="size-3.5" />}
-                {routeAlerts.length > 0 ? `${routeAlerts.length} 条路由告警` : "路由正常"}
+              <Badge variant={routeAlerts.length > 0 || smokeFailed > 0 ? "warn" : "ok"} className="gap-1.5">
+                {routeAlerts.length > 0 || smokeFailed > 0 ? <RouteOff className="size-3.5" /> : <Check className="size-3.5" />}
+                {smokeFailed > 0
+                  ? `${smokeFailed} 条路由验证失败`
+                  : routeAlerts.length > 0
+                    ? `${routeAlerts.length} 条配置告警`
+                    : `已解析 ${routeReady}/${routeTotal}`}
               </Badge>
               <Badge variant={clientAuthConfigured ? "ok" : "mute"} className="gap-1.5">
                 <KeyRound className="size-3.5" />
@@ -550,10 +472,10 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
           <GatewayMetricCard
             icon={<RouteOff />}
             tone="primary"
-            label="路由可用"
+            label="路由已解析"
             value={`${routeReady}/${routeTotal}`}
-            sub={`${routeFallback} 降级 · ${routeMissing} 未配置`}
-            accent={`${routeAlerts.length} 告警`}
+            sub={`${routeFallback} 降级 · ${routeMissing} 未解析`}
+            accent={`${smokePassed} 通过 · ${smokeFailed} 失败 · ${smokeExpired} 过期 · ${smokeUnverified} 未验证`}
             meter={routeTotal > 0 ? routeReady / routeTotal : 0}
             comparison={LIVE_COMPARISON}
           />
@@ -675,9 +597,10 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                   : connectionsQuery.isLoading
                     ? { variant: "mute" as const, label: "检测中" }
                     : { variant: "mute" as const, label: "无客户端" };
-                const lastSmoke = route
-                  ? routeSmokeResults[routeSmokeKey(route)]
-                  : null;
+                const lastSmoke = route?.verification ?? null;
+                const smokeBadge = lastSmoke
+                  ? ROUTE_SMOKE_BADGE[lastSmoke.state]
+                  : ROUTE_SMOKE_BADGE.unverified;
                 const budget = route
                   ? routeBudgetLabel(route, providerList)
                   : null;
@@ -764,16 +687,15 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                             {configBadge.label}
                           </Badge>
                         </button>
-                        {lastSmoke?.message &&
-                          lastSmoke.message !== "路由 smoke 通过" && (
+                        {lastSmoke?.errorMessage && (
                             <div
                               className={cn(
                                 "mt-1 truncate text-xs",
-                                lastSmoke.ok ? "text-muted" : "text-danger",
+                                lastSmoke.state === "passed" ? "text-muted" : "text-danger",
                               )}
-                              title={lastSmoke.message}
+                              title={lastSmoke.errorMessage}
                             >
-                              {lastSmoke.message}
+                              {lastSmoke.errorMessage}
                             </div>
                           )}
                       </div>
@@ -802,17 +724,19 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                     <TableCell className="hidden xl:table-cell">
                       {lastSmoke ? (
                         <div className="grid justify-start gap-1">
-                          <Badge variant={lastSmoke.ok ? "ok" : "bad"}>
-                            {lastSmoke.ok
-                              ? `已验 ${lastSmoke.latencyMs ?? "—"}ms`
-                              : "失败"}
+                          <Badge variant={smokeBadge.variant}>
+                            {lastSmoke.state === "passed"
+                              ? `${smokeBadge.label} ${lastSmoke.latencyMs ?? "—"}ms`
+                              : smokeBadge.label}
                           </Badge>
-                          <span
-                            className="text-xs text-subtle"
-                            title={new Date(lastSmoke.checkedAt).toLocaleString()}
-                          >
-                            {formatRouteSmokeCheckedAt(lastSmoke.checkedAt)}
-                          </span>
+                          {lastSmoke.checkedAt ? (
+                            <span
+                              className="text-xs text-subtle"
+                              title={new Date(lastSmoke.checkedAt).toLocaleString()}
+                            >
+                              {formatRouteSmokeCheckedAt(lastSmoke.checkedAt)}
+                            </span>
+                          ) : null}
                         </div>
                       ) : (
                         <span className="text-sm text-subtle">未检查</span>
@@ -900,7 +824,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
               {healthyProviders.length > 0 && (
                 <Row
                   icon={<Check />}
-                  iconClass="bg-green-soft text-success"
+                  iconClass="bg-success-soft text-success"
                   title={`${healthyProviders.length} 个 Provider 正常`}
                   subtitle={healthyProviders.map((p) => p.name).join(" · ")}
                   trailing={<Badge variant="ok">在线</Badge>}
@@ -992,9 +916,6 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
       <DaemonServicePanel
         enabled={serviceEnabled}
         onEnable={() => setServiceEnabled(true)}
-        onMutated={() => {
-          void statusQuery.refetch();
-        }}
       />
 
       <GatewayKeyDialog

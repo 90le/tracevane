@@ -15,7 +15,6 @@ import {
   getAppConnectionBackup,
   getAppConnectionBackups,
   getModelGatewayClientAuth,
-  getModelGatewayDaemonService,
   getModelGatewayModels,
   getModelGatewayProviderSecret,
   getModelGatewayRuntime,
@@ -76,6 +75,7 @@ import type {
   ModelGatewayUpsertProviderResponse,
   ModelGatewayUsageLedgerResponse,
 } from "../../features/model-gateway/types";
+import type { TracevaneServiceMode } from "../../../../../types/supervisor";
 
 /**
  * TanStack Query hooks for the Model Gateway data layer.
@@ -104,7 +104,9 @@ export const modelGatewayKeys = {
   appConnections: () => ["model-gateway", "app-connections"] as const,
   appConnectionBackups: (appId: string) =>
     ["model-gateway", "app-connections", appId, "backups"] as const,
-  daemonService: () => ["model-gateway", "daemon-service"] as const,
+  daemonServices: () => ["model-gateway", "daemon-service"] as const,
+  daemonService: (mode: TracevaneServiceMode) =>
+    [...modelGatewayKeys.daemonServices(), mode] as const,
 };
 
 type QueryOpts<TData> = Omit<
@@ -229,11 +231,15 @@ export function useAppConnectionBackupsQuery(
 export { getAppConnectionBackup };
 
 export function useModelGatewayDaemonServiceQuery(
+  mode: TracevaneServiceMode = "session",
   options?: QueryOpts<ModelGatewayDaemonServiceResponse>,
 ) {
   return useQuery<ModelGatewayDaemonServiceResponse, ApiError>({
-    queryKey: modelGatewayKeys.daemonService(),
-    queryFn: ({ signal }) => getModelGatewayDaemonService(signal),
+    queryKey: modelGatewayKeys.daemonService(mode),
+    queryFn: ({ signal }) => manageModelGatewayDaemonService(
+      { action: "status", mode, apply: true },
+      signal,
+    ),
     ...options,
   });
 }
@@ -599,7 +605,13 @@ export function useManageModelGatewayDaemonServiceMutation(
     mutationFn: (payload) => manageModelGatewayDaemonService(payload ?? {}),
     ...options,
     onSuccess: (...args) => {
-      void queryClient.invalidateQueries({ queryKey: modelGatewayKeys.daemonService() });
+      const [result, variables] = args;
+      const mode = variables?.mode ?? "session";
+      if (result.manager.mode === mode) {
+        queryClient.setQueryData(modelGatewayKeys.daemonService(mode), result);
+      } else {
+        void queryClient.invalidateQueries({ queryKey: modelGatewayKeys.daemonService(mode) });
+      }
       void queryClient.invalidateQueries({ queryKey: modelGatewayKeys.status() });
       options?.onSuccess?.(...args);
     },

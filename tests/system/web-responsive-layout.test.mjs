@@ -42,7 +42,7 @@ test("shared data tables stack on phones and keep desktop table scrolling only f
   assert.match(theme, /justify-content: flex-start/);
 });
 
-test("core feature viewbars use mobile selectors and desktop tabs", () => {
+test("multi-view features use responsive selectors while CLI Agents stays single-purpose", () => {
   const modelGateway = read(
     "apps/web/src/features/model-gateway/ModelGatewayPage.tsx",
   );
@@ -61,20 +61,25 @@ test("core feature viewbars use mobile selectors and desktop tabs", () => {
 
   assert.match(modelGateway, /model-gateway-mobile-view/);
   assert.match(channels, /channel-connectors-mobile-view/);
+  assert.match(cliAgents, /return <CliRuntimeView \/>/);
+  assert.doesNotMatch(cliAgents, /cli-agents-mobile-view|<select|sm:hidden/);
 });
 
-test("CLI operational queues can shrink on phones without forcing page-wide drag", () => {
+test("CLI runtime controls can shrink on phones without forcing page-wide drag", () => {
   const runtime = read(
     "apps/web/src/features/cli-agents/views/CliRuntimeView.tsx",
   );
 
-  assert.ok(
-    (runtime.match(/min-w-0 flex-1 basis-\[180px\]/g) || []).length >= 1,
+  assert.equal(
+    (runtime.match(/min-w-0 flex-1 basis-\[180px\]/g) || []).length,
+    1,
   );
+  assert.match(runtime, /grid border-t border-line sm:grid-cols-4/);
+  assert.match(runtime, /lg:grid-cols-\[minmax\(220px,0\.8fr\)_minmax\(0,1fr\)_auto\]/);
   assert.doesNotMatch(runtime, /min-w-\[220px\] flex-1/);
 });
 
-test("overview surfaces use metric rails and route tables instead of card walls", () => {
+test("overview surfaces use responsive metrics and route tables", () => {
   const gatewayOverview = read(
     "apps/web/src/features/model-gateway/views/OverviewView.tsx",
   );
@@ -87,12 +92,8 @@ test("overview surfaces use metric rails and route tables instead of card walls"
     gatewayOverview,
     /grid grid-cols-1 gap-3 p-4 min-\[620px\]:grid-cols-2 xl:grid-cols-4/,
   );
+  assert.equal((gatewayOverview.match(/<GatewayMetricCard/g) || []).length, 4);
   assert.match(gatewayOverview, /<Table className="table-fixed">/);
-  assert.doesNotMatch(gatewayOverview, /md:grid-cols-2 xl:grid-cols-4/);
-  assert.doesNotMatch(
-    gatewayOverview,
-    /grid min-w-0 gap-3 rounded-md border border-line bg-panel p-3 shadow-sm/,
-  );
   assert.match(
     channelOverview,
     /<div className="mt-4 grid grid-cols-2 overflow-hidden rounded-sm border border-line bg-panel sm:grid-cols-5">/,

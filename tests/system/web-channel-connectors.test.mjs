@@ -14,10 +14,12 @@ function read(relativePath) {
 
 test("Channel Connectors daemon panel refreshes real supervisor status", () => {
   const panel = read(`${VIEWS_DIR}/DaemonServicePanel.tsx`);
-  assert.match(panel, /runCommands: true/);
+  assert.match(panel, /const manager = data\?\.serviceManager/);
+  assert.match(panel, /\{ action, mode, apply: true \}/);
+  assert.doesNotMatch(panel, /runCommands/);
   assert.match(panel, /激活/);
   assert.match(panel, /开机自启/);
-  assert.match(panel, /停止守护服务会让所有 IM 渠道下线/);
+  assert.match(panel, /IM 接收与回复会暂时不可用/);
 });
 
 test("Channel Connectors page exposes only the v3 object model", () => {
@@ -56,6 +58,11 @@ test("Channel Connectors browser data layer uses v3 plan and apply APIs", () => 
   assert.match(query, /useApplyChannelConnectorsV3ConfigMutation/);
   assert.match(query, /useChannelConnectorAccountSecretsQuery/);
   assert.match(query, /usePreviewChannelConnectorV3RoutingMutation/);
+  const applyMutation = query.slice(
+    query.indexOf("export function useApplyChannelConnectorsV3ConfigMutation"),
+    query.indexOf("export function usePreviewChannelConnectorV3RoutingMutation"),
+  );
+  assert.match(applyMutation, /channelConnectorsKeys\.agentSessions\(\)/);
 });
 
 test("v3 overview separates saved, connected, and real-ingress readiness", () => {
@@ -70,6 +77,7 @@ test("v3 overview separates saved, connected, and real-ingress readiness", () =>
   assert.match(overview, /goToView\("accounts"/);
   assert.match(overview, /goToView\("sessions"/);
   assert.match(overview, /goToView\("runtime"/);
+  assert.match(overview, /会话运行态暂不可用/);
 });
 
 test("Agent workspaces are reusable targets with explicit execution boundaries", () => {
@@ -107,6 +115,38 @@ test("channel account editor owns credentials, default target, exceptions, and a
   assert.match(accounts, /默认拒绝内网地址以防 SSRF/);
   assert.match(accounts, /高级平台 JSON/);
   assert.match(accounts, /未界面化扩展字段/);
+});
+
+test("channel account plan opens only after planning succeeds", () => {
+  const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
+  assert.doesNotMatch(accounts, /setPlanOpen\(true\);\s*planMutation\.mutate/);
+  assert.match(accounts, /onSuccess: \(nextPlan\) => \{\s*setPlan\(nextPlan\);\s*setPlanOpen\(true\);\s*\}/);
+  assert.match(accounts, /onError: \(error\) => \{\s*setPendingCandidate\(null\);/);
+});
+
+test("channel account plan guards editor and delete interactions while pending", () => {
+  const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
+  const editor = accounts.slice(
+    accounts.indexOf("function AccountEditor"),
+    accounts.indexOf("export function V3AccountsView"),
+  );
+  const deleteDialog = accounts.slice(
+    accounts.indexOf("<Dialog open={deleteAccount != null}"),
+    accounts.indexOf("<V3PlanDialog"),
+  );
+
+  assert.match(editor, /if \(planning && !nextOpen\) return;\s*onOpenChange\(nextOpen\);/);
+  assert.match(editor, /<Dialog open=\{open\} onOpenChange=\{handleOpenChange\}>/);
+  assert.match(editor, /<DialogContent[^>]*showClose=\{!planning\}/);
+  assert.match(editor, /<Button variant="ghost" disabled=\{planning\} onClick=\{\(\) => handleOpenChange\(false\)\}>取消<\/Button>/);
+
+  assert.match(accounts, /const requestPlan = \(candidate: ChannelConnectorsV3Config\) => \{\s*if \(planMutation\.isPending\) return;/);
+  assert.match(accounts, /if \(open \|\| planMutation\.isPending\) return;\s*setDeleteAccount\(null\);/);
+  assert.match(deleteDialog, /<DialogContent showClose=\{!planMutation\.isPending\}>/);
+  assert.match(deleteDialog, /variant="ghost" disabled=\{planMutation\.isPending\}/);
+  assert.match(deleteDialog, /variant="danger" disabled=\{planMutation\.isPending\}/);
+  assert.match(deleteDialog, /planMutation\.isPending \? <Loader2 className="animate-spin" \/> : <Trash2 \/>/);
+  assert.match(deleteDialog, /planMutation\.isPending \? "正在检查…" : "检查并删除"/);
 });
 
 test("Feishu account creation renders a real local QR code and keeps manual fields editable", () => {
@@ -176,6 +216,8 @@ test("sessions save global policy through v3 plan/apply and retain guarded contr
   assert.match(sessions, /reset-conversation/);
   assert.match(sessions, /需要关注的会话事件/);
   assert.match(sessions, /parseImSessionIdentity/);
+  assert.match(sessions, /守护离线，会话运行态暂不可用/);
+  assert.match(sessions, /disabled=\{pending \|\| !runtimeReachable\}/);
   assert.doesNotMatch(sessions, /useApplyChannelConnectorsConfigMutation/);
 });
 

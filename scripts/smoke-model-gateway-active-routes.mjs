@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { installActiveRouteSmokeStopControl } from "./lib/active-route-smoke-process.mjs";
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:18796";
 const DEFAULT_SCOPES = ["codex", "claude-code", "opencode"];
@@ -949,23 +950,26 @@ async function restoreActiveRouteSmokeState(options, key, result, originalActive
 function installSignalCleanup(cleanup) {
   let cleanupStarted = false;
   const handlers = new Map();
+  const requestCleanup = (signal) => {
+    if (cleanupStarted) return;
+    cleanupStarted = true;
+    cleanup(signal)
+      .catch((error) => {
+        console.error(`Model Gateway active-route smoke ${signal} cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => {
+        process.exit(SIGNAL_EXIT_CODES[signal] || 1);
+      });
+  };
   for (const signal of Object.keys(SIGNAL_EXIT_CODES)) {
-    const handler = () => {
-      if (cleanupStarted) return;
-      cleanupStarted = true;
-      cleanup(signal)
-        .catch((error) => {
-          console.error(`Model Gateway active-route smoke ${signal} cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
-        })
-        .finally(() => {
-          process.exit(SIGNAL_EXIT_CODES[signal] || 1);
-        });
-    };
+    const handler = () => requestCleanup(signal);
     handlers.set(signal, handler);
     process.once(signal, handler);
   }
+  const removeStopControl = installActiveRouteSmokeStopControl(requestCleanup);
   return () => {
     for (const [signal, handler] of handlers) process.off(signal, handler);
+    removeStopControl();
   };
 }
 

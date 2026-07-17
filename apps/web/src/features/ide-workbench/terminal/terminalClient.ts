@@ -38,6 +38,7 @@ export interface CreateWorkbenchTerminalOptions {
 export function createWorkbenchTerminalSession(
   options: CreateWorkbenchTerminalOptions,
 ): Promise<TerminalSessionDescriptor> {
+  const shell = normalizeShellName(options.shell);
   const payload: TerminalGatewayAttachPayload = {
     sid: normalizeTerminalSessionId(options.sessionId) || `ide-terminal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     rootId: options.rootId,
@@ -45,7 +46,7 @@ export function createWorkbenchTerminalSession(
     title: normalizeTerminalTitle(options.title),
     cwd: normalizeRelativeCwd(options.cwd),
     profileId: normalizeProfileId(options.profileId),
-    shell: normalizeShellName(options.shell),
+    ...(shell ? { shell } : {}),
     targetKind: "local",
     cols: options.cols ?? 80,
     rows: options.rows ?? 24,
@@ -319,11 +320,12 @@ export function createTerminalWebSocketUrl(
     workspaceId: options.rootId,
     cwd: normalizeRelativeCwd(options.cwd),
     profileId: normalizeProfileId(options.profileId),
-    shell: normalizeShellName(options.shell),
     targetKind: "local",
     resume: "1",
     pinned: "1",
   });
+  const shell = normalizeShellName(options.shell);
+  if (shell) params.set("shell", shell);
   return resolveWebSocketUrl(`/ws/terminal?${params.toString()}`);
 }
 
@@ -355,9 +357,9 @@ export function normalizeProfileId(value: string | null | undefined): string {
   return raw || "local-shell";
 }
 
-export function normalizeShellName(value: string | null | undefined): string {
+export function normalizeShellName(value: string | null | undefined): string | null {
   const raw = String(value || "").trim();
-  return raw || "bash";
+  return raw || null;
 }
 
 function normalizeTerminalSessionId(value: string | null | undefined): string {

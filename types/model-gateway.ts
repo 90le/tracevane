@@ -1,3 +1,9 @@
+import type {
+  TracevaneServiceMode,
+  TracevaneServiceManagerStatus,
+  TracevaneSupervisorKind,
+} from "./supervisor.js";
+
 export const MODEL_GATEWAY_DEFAULT_HOST = "127.0.0.1";
 export const MODEL_GATEWAY_DEFAULT_PORT = 18796;
 export const MODEL_GATEWAY_DAEMON_SERVICE_NAME = "tracevane-model-gateway.service";
@@ -577,6 +583,7 @@ export interface ModelGatewayRuntimeState {
   version: 1;
   updatedAt: string;
   requestLog: ModelGatewayRuntimeRequestLogEntry[];
+  routeSmokes: Record<string, ModelGatewayRouteSmokeRecord>;
   accountRouting: {
     codexCursors: Record<string, number>;
     codexAffinities: Record<string, string>;
@@ -584,12 +591,8 @@ export interface ModelGatewayRuntimeState {
 }
 
 export type ModelGatewaySupervisorKind =
-  | "systemd-user"
-  | "launchd-user"
-  | "windows-service"
-  | "scheduled-task"
-  | "none"
-  | "unknown";
+  | TracevaneSupervisorKind
+  | "windows-service";
 
 export type ModelGatewayLocalDaemonState =
   | "not-installed"
@@ -608,6 +611,8 @@ export type ModelGatewayDaemonServiceAction =
   | "start"
   | "stop"
   | "restart"
+  | "repair"
+  | "uninstall"
   | "status";
 
 export interface ModelGatewayDaemonServiceCommand {
@@ -621,19 +626,43 @@ export interface ModelGatewayDaemonServiceCommandResult extends ModelGatewayDaem
   exitCode: number | null;
   stdout: string;
   stderr: string;
+  errorCode: TracevaneServiceManagerStatus["errorCode"];
+  errorMessage: string | null;
+  durationMs: number;
   error: string | null;
 }
 
-export interface ModelGatewayDaemonServiceManagerStatus {
+export type ModelGatewayRouteSmokeState = "unverified" | "passed" | "failed" | "expired";
+
+export interface ModelGatewayRouteSmokeVerification {
+  state: ModelGatewayRouteSmokeState;
+  checkedAt: string | null;
+  statusCode: number | null;
+  latencyMs: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+export interface ModelGatewayRouteSmokeRecord extends Omit<ModelGatewayRouteSmokeVerification, "state" | "checkedAt"> {
+  signature: string;
+  scope: ModelGatewayAppScope;
+  providerId: string;
+  model: string;
+  routeId: ModelGatewayRouteId;
+  state: "passed" | "failed";
+  checkedAt: string;
+}
+
+export interface ModelGatewayDaemonServiceManagerStatus
+  extends TracevaneServiceManagerStatus {
   checked: boolean;
   reachable: boolean | null;
-  active: boolean | null;
-  enabled: boolean | null;
   lastError: string | null;
 }
 
 export type ModelGatewayDaemonBootstrapMode =
   | "not-needed"
+  | "session"
   | "supervisor"
   | "detached"
   | "blocked";
@@ -677,10 +706,11 @@ export interface ModelGatewayDaemonServiceRequest {
   apply?: boolean;
   runCommands?: boolean;
   allowBootstrap?: boolean;
+  mode?: TracevaneServiceMode;
 }
 
 export interface ModelGatewayDaemonServiceResponse {
-  ok: true;
+  ok: boolean;
   checkedAt: string;
   action: ModelGatewayDaemonServiceAction;
   applied: boolean;
@@ -689,6 +719,7 @@ export interface ModelGatewayDaemonServiceResponse {
   installed: boolean;
   plan: ModelGatewayDaemonServicePlan;
   lifecycle: ModelGatewayLifecycleStatus;
+  manager: TracevaneServiceManagerStatus;
   commandsRun: ModelGatewayDaemonServiceCommandResult[];
   serviceManager: ModelGatewayDaemonServiceManagerStatus;
   bootstrap: ModelGatewayDaemonBootstrapStatus;
@@ -1125,6 +1156,7 @@ export interface ModelGatewayActiveRouteStatus {
   resolvedBaseUrl: string | null;
   upstreamUrl: string | null;
   state: ModelGatewayActiveRouteState;
+  verification: ModelGatewayRouteSmokeVerification;
   message: string;
   warning: string | null;
 }

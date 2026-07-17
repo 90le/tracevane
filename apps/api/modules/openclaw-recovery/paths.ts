@@ -7,6 +7,8 @@ export const OPENCLAW_RECOVERY_EVENTS_FILE = "events.jsonl";
 export const OPENCLAW_RECOVERY_TOKEN_FILE = "token";
 export const OPENCLAW_RECOVERY_LOCK_FILE = "repair.lock";
 export const OPENCLAW_RECOVERY_INSTALL_MANIFEST_FILE = "install-manifest.json";
+export const OPENCLAW_RECOVERY_RUNTIME_FILE = "daemon-runtime.json";
+export const OPENCLAW_RECOVERY_LOG_FILE = "daemon.log";
 
 export interface OpenClawRecoveryPaths {
   rootDir: string;
@@ -18,6 +20,8 @@ export interface OpenClawRecoveryPaths {
   tokenPath: string;
   lockPath: string;
   installManifestPath: string;
+  runtimePath: string;
+  logPath: string;
 }
 
 export function resolveOpenClawRecoveryPaths(
@@ -36,6 +40,8 @@ export function resolveOpenClawRecoveryPaths(
     tokenPath: path.join(rootDir, OPENCLAW_RECOVERY_TOKEN_FILE),
     lockPath: path.join(rootDir, OPENCLAW_RECOVERY_LOCK_FILE),
     installManifestPath: path.join(rootDir, OPENCLAW_RECOVERY_INSTALL_MANIFEST_FILE),
+    runtimePath: path.join(rootDir, OPENCLAW_RECOVERY_RUNTIME_FILE),
+    logPath: path.join(rootDir, OPENCLAW_RECOVERY_LOG_FILE),
   };
 }
 

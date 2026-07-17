@@ -13,7 +13,6 @@ import {
   getChannelConnectorsAgentSessions,
   getChannelConnectorsDaemonConfig,
   getChannelConnectorsDaemonLogs,
-  getChannelConnectorsDaemonService,
   getChannelConnectorsStatus,
   getChannelConnectorsV3Config,
   getFeishuAppRegistration,
@@ -52,6 +51,7 @@ import type {
   ChannelConnectorV3RoutingPreviewResponse,
   ChannelConnectorsStatusResponse,
 } from "../../features/channel-connectors/types";
+import type { TracevaneServiceMode } from "../../../../../types/supervisor";
 
 /**
  * TanStack Query hooks for the Channel Connectors data layer.
@@ -70,7 +70,9 @@ export const channelConnectorsKeys = {
   feishuRegistration: (sessionId: string) =>
     ["channel-connectors", "feishu-registration", sessionId] as const,
   daemonConfig: () => ["channel-connectors", "daemon-config"] as const,
-  daemonService: () => ["channel-connectors", "daemon-service"] as const,
+  daemonServices: () => ["channel-connectors", "daemon-service"] as const,
+  daemonService: (mode: TracevaneServiceMode) =>
+    [...channelConnectorsKeys.daemonServices(), mode] as const,
   daemonLogs: () => ["channel-connectors", "daemon-logs"] as const,
   agentSessions: () => ["channel-connectors", "agent-sessions"] as const,
 };
@@ -144,11 +146,15 @@ export function useChannelConnectorsDaemonConfigQuery(
 }
 
 export function useChannelConnectorsDaemonServiceQuery(
+  mode: TracevaneServiceMode = "session",
   options?: QueryOpts<ChannelConnectorsDaemonResponse>,
 ) {
   return useQuery<ChannelConnectorsDaemonResponse, ApiError>({
-    queryKey: channelConnectorsKeys.daemonService(),
-    queryFn: ({ signal }) => getChannelConnectorsDaemonService(signal),
+    queryKey: channelConnectorsKeys.daemonService(mode),
+    queryFn: ({ signal }) => manageChannelConnectorsDaemonService(
+      { action: "status", mode, apply: true },
+      signal,
+    ),
     ...options,
   });
 }
@@ -211,7 +217,8 @@ export function useApplyChannelConnectorsV3ConfigMutation(
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.v3Config() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.status() });
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonConfig() });
-      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonService() });
+      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonServices() });
+      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.agentSessions() });
       options?.onSuccess?.(...args);
     },
   });
@@ -274,8 +281,15 @@ export function useManageChannelConnectorsDaemonServiceMutation(
     mutationFn: (payload) => manageChannelConnectorsDaemonService(payload ?? {}),
     ...options,
     onSuccess: (...args) => {
-      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonService() });
+      const [result, variables] = args;
+      const mode = variables?.mode ?? "session";
+      if (result.serviceManager.mode === mode) {
+        queryClient.setQueryData(channelConnectorsKeys.daemonService(mode), result);
+      } else {
+        void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonService(mode) });
+      }
       void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.status() });
+      void queryClient.invalidateQueries({ queryKey: channelConnectorsKeys.daemonConfig() });
       options?.onSuccess?.(...args);
     },
   });

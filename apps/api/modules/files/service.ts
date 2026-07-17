@@ -1,9 +1,10 @@
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import crossSpawn from "cross-spawn";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   FilesArchivePayload,
@@ -64,6 +65,22 @@ import type {
   FilesWritePayload,
 } from "../../../../types/files.js";
 
+const require = createRequire(import.meta.url);
+
+interface WhichModule {
+  sync(
+    command: string,
+    options?: {
+      all?: boolean;
+      nothrow?: boolean;
+      path?: string;
+      pathExt?: string;
+    },
+  ): string | string[] | null;
+}
+
+const whichModule = require("which") as WhichModule;
+
 const MAX_TEXT_FILE_BYTES = 1024 * 1024;
 const MAX_SEARCH_TEXT_BYTES = 256 * 1024;
 const FILE_NAME_COLLATOR = new Intl.Collator(undefined, { numeric: true });
@@ -78,6 +95,81 @@ const CONTENT_INDEX_REBUILD_SKIP_DIRS = new Set([".git", "node_modules", ".trace
 const DEFAULT_SEARCH_LIMIT = 250;
 const MAX_SEARCH_LIMIT = 500;
 const MAX_CHMOD_DRY_RUN_ENTRIES = 5000;
+
+interface PythonInvocation {
+  command: string;
+  prefixArgs: string[];
+}
+
+interface PythonCommandOptions {
+  captureOutput?: boolean;
+  maxBuffer?: number;
+}
+
+function resolvePythonInvocation(): PythonInvocation {
+  for (const candidate of ["python3", "python"]) {
+    const resolved = whichModule.sync(candidate, {
+      nothrow: true,
+      path: process.env.PATH,
+      pathExt: process.env.PATHEXT,
+    });
+    if (typeof resolved === "string") {
+      return { command: resolved, prefixArgs: [] };
+    }
+  }
+  if (process.platform === "win32") {
+    const resolved = whichModule.sync("py", {
+      nothrow: true,
+      path: process.env.PATH,
+      pathExt: process.env.PATHEXT,
+    });
+    if (typeof resolved === "string") {
+      return { command: resolved, prefixArgs: ["-3"] };
+    }
+  }
+  throw new Error("Python 3 was not found. Install python3, python, or the Windows py launcher to use archive features.");
+}
+
+function pythonCommandOutput(value: unknown): string {
+  if (typeof value === "string") return value;
+  return Buffer.isBuffer(value) ? value.toString("utf8") : "";
+}
+
+function runPythonCommandSync(args: string[], options: PythonCommandOptions = {}): string {
+  const invocation = resolvePythonInvocation();
+  let temporaryScriptDirectory = "";
+  let commandArgs = [...invocation.prefixArgs, ...args];
+  if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(invocation.command) && args[0] === "-c") {
+    temporaryScriptDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-files-python-"));
+    const scriptPath = path.join(temporaryScriptDirectory, "archive-command.py");
+    fs.writeFileSync(scriptPath, args[1] || "", "utf8");
+    commandArgs = [...invocation.prefixArgs, scriptPath, ...args.slice(2)];
+  }
+  try {
+    const result = crossSpawn.sync(invocation.command, commandArgs, {
+      encoding: "utf8",
+      maxBuffer: options.maxBuffer,
+      shell: false,
+      stdio: options.captureOutput ? "pipe" : "ignore",
+      windowsHide: true,
+    });
+    const stdout = pythonCommandOutput(result.stdout);
+    const stderr = pythonCommandOutput(result.stderr);
+    if (result.error) {
+      throw new Error(`Failed to start Python: ${result.error.message}`, { cause: result.error });
+    }
+    if (result.status !== 0) {
+      const error = new Error(stderr.trim() || `Python exited with status ${result.status ?? "unknown"}`);
+      Object.assign(error, { stdout, stderr, status: result.status });
+      throw error;
+    }
+    return stdout;
+  } finally {
+    if (temporaryScriptDirectory) {
+      fs.rmSync(temporaryScriptDirectory, { recursive: true, force: true });
+    }
+  }
+}
 
 export class FilesWriteConflictError extends Error {
   readonly code = "file_write_conflict";
@@ -530,7 +622,11 @@ function resolveRoot(config: TracevaneServerConfig, rootId: string | undefined):
   }
   const preferred = roots.find((root) => root.preferred) || roots[0];
   if (!rootId) return preferred;
-  return roots.find((root) => root.id === rootId) || preferred;
+  const selected = roots.find((root) => root.id === rootId);
+  if (!selected) {
+    throw new Error("Unknown file root");
+  }
+  return selected;
 }
 
 function resolveExistingPath(
@@ -992,11 +1088,6 @@ function fileManagerDb(config: TracevaneServerConfig): FileManagerSqliteDatabase
       newest_indexed_at TEXT,
       updated_at TEXT NOT NULL
     ) STRICT;
-    CREATE VIRTUAL TABLE IF NOT EXISTS content_index_fts USING fts5(
-      root_id UNINDEXED,
-      path,
-      sha256 UNINDEXED
-    );
     CREATE TABLE IF NOT EXISTS favorite_bookmarks (
       id TEXT PRIMARY KEY,
       parent_id TEXT REFERENCES favorite_bookmarks(id) ON DELETE CASCADE,
@@ -1465,11 +1556,6 @@ function upsertContentIndexRecordSql(db: FileManagerSqliteDatabase, record: Cont
       mtime_ms = excluded.mtime_ms,
       indexed_at = excluded.indexed_at
   `).run(record.rootId, record.path, record.sha256, record.size, record.mtimeMs, record.indexedAt);
-  const row = db.prepare("SELECT rowid FROM content_index_records WHERE root_id = ? AND path = ?").get(record.rootId, record.path) as { rowid?: number } | undefined;
-  if (row?.rowid != null) {
-    db.prepare("DELETE FROM content_index_fts WHERE rowid = ?").run(row.rowid);
-    db.prepare("INSERT INTO content_index_fts(rowid, root_id, path, sha256) VALUES (?, ?, ?, ?)").run(row.rowid, record.rootId, record.path, record.sha256);
-  }
 }
 
 function refreshContentIndexStatsSql(db: FileManagerSqliteDatabase, rootId: string): void {
@@ -2738,8 +2824,7 @@ function runPythonZipArchive(
   baseDir: string,
   sourcePaths: string[],
 ): void {
-  execFileSync(
-    "python3",
+  runPythonCommandSync(
     [
       "-c",
       `
@@ -2774,9 +2859,6 @@ with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
       baseDir,
       ...sourcePaths,
     ],
-    {
-      stdio: "ignore",
-    },
   );
 }
 
@@ -2786,8 +2868,7 @@ function runPythonTarArchive(
   sourcePaths: string[],
   format: Exclude<ArchiveFormat, "zip">,
 ): void {
-  execFileSync(
-    "python3",
+  runPythonCommandSync(
     [
       "-c",
       `
@@ -2821,9 +2902,6 @@ with tarfile.open(archive, mode) as tf:
       format,
       ...sourcePaths,
     ],
-    {
-      stdio: "ignore",
-    },
   );
 }
 
@@ -2847,8 +2925,7 @@ function normalizeExtractConflictPolicy(value: unknown): ExtractConflictPolicy {
 }
 
 function runPythonZipExtract(archivePath: string, destinationDir: string, conflictPolicy: ExtractConflictPolicy): void {
-  execFileSync(
-    "python3",
+  runPythonCommandSync(
     [
       "-c",
       `
@@ -2901,9 +2978,6 @@ with zipfile.ZipFile(archive, "r") as zf:
       destinationDir,
       conflictPolicy,
     ],
-    {
-      stdio: "ignore",
-    },
   );
 }
 
@@ -2913,8 +2987,7 @@ function runPythonTarExtract(
   format: Exclude<ArchiveFormat, "zip">,
   conflictPolicy: ExtractConflictPolicy,
 ): void {
-  execFileSync(
-    "python3",
+  runPythonCommandSync(
     [
       "-c",
       `
@@ -2982,9 +3055,6 @@ with tarfile.open(archive, mode) as tf:
       format,
       conflictPolicy,
     ],
-    {
-      stdio: "ignore",
-    },
   );
 }
 
@@ -3044,7 +3114,7 @@ print(json.dumps(entries))
     ];
   let output = "";
   try {
-    output = execFileSync("python3", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
+    output = runPythonCommandSync(args, { captureOutput: true, maxBuffer: 10 * 1024 * 1024 });
   } catch (error) {
     const maybeOutput = typeof (error as { stdout?: unknown }).stdout === "string"
       ? (error as { stdout: string }).stdout

@@ -151,8 +151,7 @@ async function run() {
 
   const prefix = `tracevane-ide-watcher-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const repoParentRelativePath = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
-  const smokeParent = repoParentRelativePath ? `${repoParentRelativePath}/tmp` : 'tmp';
-  const smokeDir = `${smokeParent}/.${prefix}`;
+  const smokeDir = repoParentRelativePath ? `${repoParentRelativePath}/.${prefix}` : `.${prefix}`;
   const cleanPath = `${smokeDir}/clean.ts`;
   const dirtyPath = `${smokeDir}/dirty.ts`;
   const cleanAbsolutePath = absolutePathFromRoot(root.absolutePath, cleanPath);

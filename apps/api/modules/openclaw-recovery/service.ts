@@ -1,18 +1,26 @@
 import fs from "node:fs";
+import type http from "node:http";
 import path from "node:path";
 import type { TracevaneServerConfig } from "../../../../types/api.js";
-import type {
-  OpenClawRecoveryBackupSummary,
-  OpenClawRecoveryDaemonServiceSnapshot,
-  OpenClawRecoveryDaemonServiceRequest,
-  OpenClawRecoveryDaemonServiceResponse,
-  OpenClawRecoveryEvent,
-  OpenClawRecoveryRestoreBackupRequest,
-  OpenClawRecoveryRestoreBackupResponse,
-  OpenClawRecoveryRunRequest,
-  OpenClawRecoveryRunResponse,
-  OpenClawRecoveryState,
+import {
+  OPENCLAW_RECOVERY_DEFAULT_PORT,
+  type OpenClawRecoveryBackupSummary,
+  type OpenClawRecoveryCommandSnapshot,
+  type OpenClawRecoveryDaemonServiceSnapshot,
+  type OpenClawRecoveryDaemonServiceRequest,
+  type OpenClawRecoveryDaemonServiceResponse,
+  type OpenClawRecoveryEvent,
+  type OpenClawRecoveryRestoreBackupRequest,
+  type OpenClawRecoveryRestoreBackupResponse,
+  type OpenClawRecoveryRunRequest,
+  type OpenClawRecoveryRunResponse,
+  type OpenClawRecoveryState,
 } from "../../../../types/openclaw-recovery.js";
+import type {
+  TracevaneServiceAction,
+  TracevaneServiceManagerStatus,
+  TracevaneServiceMode,
+} from "../../../../types/supervisor.js";
 import {
   appendRecoveryEvent,
   createRecoveryEvent,
@@ -29,10 +37,39 @@ import {
   runOpenClawRecoveryRepair,
 } from "./repair.js";
 import {
-  applyRecoveryDaemonServiceAction,
-  getRecoveryDaemonServiceSnapshot,
+  createOpenClawRecoveryDaemonServicePlan,
+  createOpenClawRecoveryServiceDefinition,
 } from "./supervisor.js";
+import { captureOpenClawRecoveryInstallManifest } from "./cli-bootstrap.js";
+import {
+  resolveOpenClawRecoveryPaths,
+  resolveRecoveryHome,
+} from "./paths.js";
 import { probeOpenClawGateway } from "./probe.js";
+import {
+  createServiceManager,
+  type ManageServiceResponse,
+  type ServiceManager,
+} from "../supervisor/index.js";
+import type { SupervisorCommandResult } from "../supervisor/command-runner.js";
+import { isTracevaneTrustedManagementRequest } from "../../gateway-http-auth.js";
+
+export class OpenClawRecoveryServiceError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = "OpenClawRecoveryServiceError";
+  }
+}
+
+export function isOpenClawRecoveryServiceError(
+  error: unknown,
+): error is OpenClawRecoveryServiceError {
+  return error instanceof OpenClawRecoveryServiceError;
+}
 
 export interface OpenClawRecoveryService {
   getStatus(): Promise<OpenClawRecoveryState>;
@@ -53,7 +90,87 @@ export interface OpenClawRecoveryService {
   runRecovery(payload?: OpenClawRecoveryRunRequest): Promise<OpenClawRecoveryRunResponse>;
   restoreBackup(payload: OpenClawRecoveryRestoreBackupRequest): Promise<OpenClawRecoveryRestoreBackupResponse>;
   getDaemonService(): Promise<OpenClawRecoveryState["service"]>;
-  applyDaemonServiceAction(payload: OpenClawRecoveryDaemonServiceRequest): Promise<OpenClawRecoveryDaemonServiceResponse>;
+  applyDaemonServiceAction(
+    payload?: OpenClawRecoveryDaemonServiceRequest | null,
+    req?: http.IncomingMessage,
+  ): Promise<OpenClawRecoveryDaemonServiceResponse>;
+}
+
+export interface OpenClawRecoveryServiceOptions {
+  runtimeHost?: "tracevane-api" | "local-daemon";
+  homeDir?: string;
+  controlPort?: number;
+  daemonServiceManager?: ServiceManager;
+}
+
+export interface OpenClawRecoveryReadinessProbeOptions {
+  fetchImpl?: typeof fetch;
+  runtimePath?: string;
+  timeoutMs?: number;
+  requestTimeoutMs?: number;
+  pollIntervalMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export function createOpenClawRecoveryReadinessProbe(
+  options: OpenClawRecoveryReadinessProbeOptions = {},
+): (url: string, expectedPid?: number | null) => Promise<boolean> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = Math.max(0, options.timeoutMs ?? 8_000);
+  const requestTimeoutMs = Math.max(1, options.requestTimeoutMs ?? 1_000);
+  const pollIntervalMs = Math.max(1, options.pollIntervalMs ?? 75);
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  const runtimeMatches = (expectedPid: number): boolean => {
+    if (!options.runtimePath) return false;
+    try {
+      const value = JSON.parse(fs.readFileSync(options.runtimePath, "utf8")) as {
+        version?: unknown;
+        pid?: unknown;
+      };
+      return value.version === 1 && value.pid === expectedPid;
+    } catch {
+      return false;
+    }
+  };
+
+  return async (url, expectedPid) => {
+    const sessionOwned = expectedPid !== undefined && expectedPid !== null;
+    if (sessionOwned && (!Number.isInteger(expectedPid) || expectedPid <= 0)) {
+      return false;
+    }
+    const deadline = now() + timeoutMs;
+    while (now() < deadline) {
+      const remaining = deadline - now();
+      try {
+        const response = await fetchImpl(url, {
+          signal: AbortSignal.timeout(Math.min(requestTimeoutMs, remaining)),
+        });
+        try {
+          if (
+            response.ok &&
+            (!sessionOwned || runtimeMatches(expectedPid))
+          ) return true;
+        } finally {
+          try {
+            await response.body?.cancel();
+          } catch {
+            // Readiness needs only the status; cancellation is best-effort.
+          }
+        }
+      } catch {
+        // A native supervisor may return before the daemon starts listening.
+      }
+
+      const retryRemaining = deadline - now();
+      if (retryRemaining <= 0) break;
+      await sleep(Math.min(pollIntervalMs, retryRemaining));
+    }
+    return false;
+  };
 }
 
 function findBackupPath(
@@ -85,32 +202,93 @@ function msSince(value: string | null): number {
   return Number.isNaN(parsed) ? 0 : Math.max(0, Date.now() - parsed);
 }
 
-function preferKnownState(liveValue: string, storedValue: string): string {
-  const live = String(liveValue || "").trim();
-  const storedText = String(storedValue || "").trim();
-  if (live && live !== "unknown") return live;
-  if (storedText && storedText !== "unknown") return storedText;
-  return live || storedText || "unknown";
+const DAEMON_SERVICE_ACTIONS = new Set<TracevaneServiceAction>([
+  "preview",
+  "install",
+  "ensure-running",
+  "start",
+  "stop",
+  "restart",
+  "repair",
+  "uninstall",
+  "status",
+]);
+
+function normalizeDaemonServiceAction(
+  value: unknown,
+): TracevaneServiceAction | null {
+  return DAEMON_SERVICE_ACTIONS.has(value as TracevaneServiceAction)
+    ? value as TracevaneServiceAction
+    : value === undefined
+      ? "status"
+      : null;
 }
 
-function mergeStoredServiceSnapshot(
-  snapshot: OpenClawRecoveryDaemonServiceSnapshot,
-  stored: OpenClawRecoveryDaemonServiceSnapshot,
-): OpenClawRecoveryDaemonServiceSnapshot {
-  const sameSupervisor = stored.supervisor === snapshot.supervisor;
-  const sameService = stored.serviceName === snapshot.serviceName;
-  const sameConfig = !stored.configPath || stored.configPath === snapshot.configPath;
-  const hasStoredState = Boolean(stored.lastCheckedAt);
+function normalizeDaemonServiceMode(value: unknown): TracevaneServiceMode {
+  return value === "persistent" ? "persistent" : "session";
+}
 
-  if (!sameSupervisor || !sameService || !sameConfig || !hasStoredState) {
-    return snapshot;
-  }
+function normalizeDaemonServiceApply(
+  payload: OpenClawRecoveryDaemonServiceRequest,
+): boolean {
+  return payload.apply === true || payload.runCommands === true;
+}
 
+function normalizeDaemonServicePayload(
+  value: unknown,
+): OpenClawRecoveryDaemonServiceRequest {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as OpenClawRecoveryDaemonServiceRequest
+    : {};
+}
+
+function legacyActiveState(manager: TracevaneServiceManagerStatus): string {
+  if (manager.active === true) return "active";
+  if (manager.active === false) return "inactive";
+  return manager.state === "unknown" ? "unknown" : manager.state;
+}
+
+function legacyEnabledState(manager: TracevaneServiceManagerStatus): string {
+  if (manager.enabled === true) return "enabled";
+  if (manager.enabled === false) return "disabled";
+  return "unknown";
+}
+
+function isCleanlyStoppedOwner(
+  manager: TracevaneServiceManagerStatus,
+): boolean {
+  return manager.active === false &&
+    manager.state === "stopped" &&
+    manager.errorCode === null;
+}
+
+function isInactiveFailedOwner(
+  manager: TracevaneServiceManagerStatus,
+): boolean {
+  return manager.active === false && manager.state === "failed";
+}
+
+function isLiveOrTransitionalOwner(
+  manager: TracevaneServiceManagerStatus,
+): boolean {
+  return manager.active === true ||
+    (manager.active === null &&
+      (manager.state === "starting" || manager.state === "running"));
+}
+
+function compatibilityCommandResult(
+  result: SupervisorCommandResult,
+): OpenClawRecoveryCommandSnapshot {
   return {
-    ...snapshot,
-    activeState: preferKnownState(snapshot.activeState, stored.activeState),
-    enabledState: preferKnownState(snapshot.enabledState, stored.enabledState),
-    lastCheckedAt: stored.lastCheckedAt || snapshot.lastCheckedAt,
+    label: result.label,
+    command: result.command,
+    args: [...result.args],
+    ok: result.ok,
+    status: result.exitCode,
+    durationMs: result.durationMs,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    error: result.errorMessage || "",
   };
 }
 
@@ -171,18 +349,209 @@ async function runManualProbe(
 
 export function createOpenClawRecoveryService(
   config: TracevaneServerConfig,
+  options: OpenClawRecoveryServiceOptions = {},
 ): OpenClawRecoveryService {
+  const runtimeHost = options.runtimeHost ?? "tracevane-api";
+  const homeDir = options.homeDir ?? resolveRecoveryHome(config);
+  const controlPort = options.controlPort ?? OPENCLAW_RECOVERY_DEFAULT_PORT;
+  const daemonServiceManager = options.daemonServiceManager
+    ?? createServiceManager({
+      homeDir,
+      probe: createOpenClawRecoveryReadinessProbe({
+        runtimePath: resolveOpenClawRecoveryPaths(config).runtimePath,
+      }),
+      redact: [...new Set(
+        Object.entries(process.env)
+          .filter(([key, value]) =>
+            /^(?:https?|all|no)_proxy$/i.test(key) && Boolean(value?.trim()))
+          .map(([, value]) => value!.trim()),
+      )],
+    });
+  const daemonServicePlan = createOpenClawRecoveryDaemonServicePlan(config, {
+    homeDir,
+    port: controlPort,
+  });
+  let daemonServiceOperationQueue: Promise<void> = Promise.resolve();
+
+  function runDaemonServiceOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = daemonServiceOperationQueue.then(operation);
+    daemonServiceOperationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  function serviceSnapshot(
+    manager: TracevaneServiceManagerStatus,
+  ): OpenClawRecoveryDaemonServiceSnapshot {
+    return {
+      manager,
+      supervisor: daemonServicePlan.supervisor,
+      serviceName: daemonServicePlan.serviceName,
+      configPath: daemonServicePlan.selectedTemplate.configPath,
+      installed: manager.installed,
+      activeState: legacyActiveState(manager),
+      enabledState: legacyEnabledState(manager),
+      lastCheckedAt: manager.checkedAt,
+      template: daemonServicePlan.selectedTemplate,
+    };
+  }
+
+  async function daemonServiceResponse(
+    mode: TracevaneServiceMode,
+    apply: boolean,
+    managed: ManageServiceResponse,
+  ): Promise<OpenClawRecoveryDaemonServiceResponse> {
+    const commands = managed.commands.map(compatibilityCommandResult);
+    if (
+      mode === "persistent"
+      && apply
+      && managed.templateWritten
+      && (managed.action === "install" || managed.action === "ensure-running")
+    ) {
+      try {
+        await captureOpenClawRecoveryInstallManifest(config, commands);
+      } catch (error) {
+        commands.push({
+          label: "Capture OpenClaw install manifest",
+          command: "openclaw",
+          args: ["--version"],
+          ok: false,
+          status: null,
+          durationMs: 0,
+          stdout: "",
+          stderr: "",
+          error: error instanceof Error
+            ? error.message.slice(0, 800)
+            : "OpenClaw install manifest capture failed.",
+        });
+      }
+    }
+    const failedCommand = managed.commands.find((command) => !command.ok);
+    return {
+      ok: managed.ok,
+      service: serviceSnapshot(managed.manager),
+      commands,
+      error: managed.manager.errorMessage
+        || failedCommand?.errorMessage
+        || "",
+    };
+  }
+
+  async function executeDaemonService(
+    value: unknown = {},
+  ): Promise<OpenClawRecoveryDaemonServiceResponse> {
+    const payload = normalizeDaemonServicePayload(value);
+    const action = normalizeDaemonServiceAction(payload.action);
+    const mode = normalizeDaemonServiceMode(payload.mode);
+    const apply = normalizeDaemonServiceApply(payload);
+    if (action === null) {
+      const definition = createOpenClawRecoveryServiceDefinition(config, {
+        mode: "session",
+        port: controlPort,
+      });
+      const status = await daemonServiceManager.manage(definition, {
+        action: "status",
+        mode: "session",
+        apply: false,
+      });
+      const response = await daemonServiceResponse("session", false, status);
+      return {
+        ...response,
+        ok: false,
+        error: "Unsupported daemon service action",
+      };
+    }
+    if (
+      runtimeHost === "local-daemon"
+      && mode === "session"
+      && (action === "start"
+        || action === "restart"
+        || action === "ensure-running")
+    ) {
+      return daemonServiceResponse(mode, false, {
+        ok: false,
+        action,
+        manager: {
+          mode: "session",
+          supervisor: "session",
+          installed: false,
+          enabled: null,
+          active: null,
+          state: "degraded",
+          configCurrent: true,
+          checkedAt: new Date().toISOString(),
+          errorCode: "runtime-not-ready",
+          errorMessage:
+            "A local Recovery daemon cannot create another session owner.",
+        },
+        commands: [],
+        templateWritten: false,
+        configCurrent: true,
+      });
+    }
+    const definition = createOpenClawRecoveryServiceDefinition(config, {
+      mode,
+      port: controlPort,
+    });
+    const managed = await daemonServiceManager.manage(definition, {
+      action,
+      mode,
+      apply,
+    });
+    return daemonServiceResponse(mode, apply, managed);
+  }
+
   return {
     async getStatus(): Promise<OpenClawRecoveryState> {
-      const state = readRecoveryState(config);
-      const service = await getRecoveryDaemonServiceSnapshot(config, {
-        includeTemplate: true,
-        probe: true,
+      return runDaemonServiceOperation(async () => {
+        const state = readRecoveryState(config);
+        const sessionService = await executeDaemonService({
+          action: "status",
+          mode: "session",
+          apply: false,
+        });
+        let service = sessionService;
+        const sessionManager = sessionService.service.manager;
+        if (
+          isCleanlyStoppedOwner(sessionManager) ||
+          isInactiveFailedOwner(sessionManager)
+        ) {
+          const persistentService = await executeDaemonService({
+            action: "status",
+            mode: "persistent",
+            apply: true,
+          });
+          const persistentManager = persistentService.service.manager;
+          const persistentObserved = persistentManager.mode === "persistent" && (
+            persistentManager.installed ||
+            persistentManager.state !== "not-installed" ||
+            persistentManager.errorCode !== "task-not-found"
+          );
+          const confirmedSession = await executeDaemonService({
+            action: "status",
+            mode: "session",
+            apply: false,
+          });
+          const confirmedManager = confirmedSession.service.manager;
+          if (isLiveOrTransitionalOwner(confirmedManager)) {
+            service = confirmedSession;
+          } else if (isLiveOrTransitionalOwner(persistentManager)) {
+            service = persistentService;
+          } else if (
+            persistentObserved && isCleanlyStoppedOwner(confirmedManager)
+          ) {
+            service = persistentService;
+          } else {
+            service = confirmedSession;
+          }
+        }
+        return {
+          ...state,
+          service: service.service,
+        };
       });
-      return {
-        ...state,
-        service: mergeStoredServiceSnapshot(service, state.service),
-      };
     },
 
     async listEvents(limit = 100): Promise<OpenClawRecoveryEvent[]> {
@@ -284,39 +653,35 @@ export function createOpenClawRecoveryService(
     },
 
     async getDaemonService() {
-      return getRecoveryDaemonServiceSnapshot(config, {
-        includeTemplate: true,
-        probe: true,
-      });
+      return runDaemonServiceOperation(async () =>
+        (await executeDaemonService({
+          action: "status",
+          mode: "session",
+          apply: false,
+        })).service
+      );
     },
 
     async applyDaemonServiceAction(
-      payload: OpenClawRecoveryDaemonServiceRequest,
+      payload: OpenClawRecoveryDaemonServiceRequest | null = {},
+      req?: http.IncomingMessage,
     ): Promise<OpenClawRecoveryDaemonServiceResponse> {
-      const action = payload?.action || "status";
-      if (!["install", "start", "stop", "restart", "status"].includes(action)) {
-        return {
-          ok: false,
-          service: await getRecoveryDaemonServiceSnapshot(config, {
-            includeTemplate: true,
-            probe: false,
-          }),
-          commands: [],
-          error: "Unsupported daemon service action",
-        };
+      if (req && !isTracevaneTrustedManagementRequest(config, req)) {
+        throw new OpenClawRecoveryServiceError(
+          "openclaw_recovery_management_locked",
+          "Recovery service management requires a trusted local request or configured Gateway authentication.",
+          403,
+        );
       }
-      const result = await applyRecoveryDaemonServiceAction(config, action);
-      const state = readRecoveryState(config);
-      writeRecoveryState(config, {
-        ...state,
-        service: result.service,
+      return runDaemonServiceOperation(async () => {
+        const result = await executeDaemonService(payload);
+        const state = readRecoveryState(config);
+        writeRecoveryState(config, {
+          ...state,
+          service: result.service,
+        });
+        return result;
       });
-      return {
-        ok: !result.error,
-        service: result.service,
-        commands: result.commands,
-        error: result.error,
-      };
     },
   };
 }

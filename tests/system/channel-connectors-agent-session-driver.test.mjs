@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,12 +25,21 @@ const baseKey = {
 };
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-driver-"));
+  const parent = path.join(os.tmpdir(), "tracevane CLI 会话测试");
+  fs.mkdirSync(parent, { recursive: true });
+  return fs.mkdtempSync(path.join(parent, "driver-"));
 }
 
 function writeExecutable(filePath, lines) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${lines.join("\n")}\n`, { mode: 0o755 });
+  const source = `${lines.join("\n")}\n`;
+  if (process.platform === "win32") {
+    const scriptFile = `${filePath}.cjs`;
+    fs.writeFileSync(scriptFile, source, "utf8");
+    fs.writeFileSync(`${filePath}.cmd`, `@echo off\r\n"${process.execPath}" "${scriptFile}" %*\r\n`, "utf8");
+    return;
+  }
+  fs.writeFileSync(filePath, source, { encoding: "utf8", mode: 0o755 });
 }
 
 async function waitForFilePattern(filePath, pattern, timeoutMs = 5000) {
@@ -39,6 +49,40 @@ async function waitForFilePattern(filePath, pattern, timeoutMs = 5000) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   throw new Error(`Timed out waiting for ${pattern} in ${filePath}`);
+}
+
+function processIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+async function waitForProcessExit(pid, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    if (!processIsAlive(pid)) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for fixture process ${pid} to exit`);
+}
+
+function stopFixtureProcess(pid) {
+  if (!Number.isInteger(pid) || pid <= 0 || !processIsAlive(pid)) return;
+  if (process.platform === "win32") {
+    spawnSync("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    return;
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // best-effort fixture cleanup
+  }
 }
 
 function baseTurnRequest(root, agent, nativeCommand = null, extra = {}) {
@@ -615,8 +659,9 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
   writeExecutable(path.join(fakeBin, "sqlite3"), [
     "#!/usr/bin/env node",
     "const dbPath = process.argv.includes('-json') ? process.argv[process.argv.indexOf('-json') + 1] : (process.argv[2] || '');",
+    "const normalizedDbPath = dbPath.replace(/\\\\/g, '/');",
     "const query = process.argv[process.argv.length - 1] || '';",
-    "if (dbPath.endsWith('/opencode-data/opencode/opencode.db') && query.includes(\"id = 'opencode-session-created'\")) {",
+    "if (normalizedDbPath.endsWith('/opencode-data/opencode/opencode.db') && query.includes(\"id = 'opencode-session-created'\")) {",
     "  process.stdout.write(JSON.stringify([{ id: 'opencode-session-created' }]));",
     "} else {",
     "  process.stdout.write('[]');",
@@ -624,7 +669,7 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.TRACEVANE_TEST_CAPTURE = capturePath;
   try {
     const factory = createNativeCliSessionDriverFactory({
@@ -719,7 +764,7 @@ test("Channel Connectors native CLI session driver recovers OpenCode output from
   const originalPath = process.env.PATH || "";
   const originalHome = process.env.HOME;
   const originalDataHome = process.env.XDG_DATA_HOME;
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.HOME = root;
   process.env.XDG_DATA_HOME = dataHome;
   try {
@@ -799,7 +844,7 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.TRACEVANE_TEST_CAPTURE = capturePath;
   try {
     const factory = createNativeCliSessionDriverFactory({
@@ -867,6 +912,84 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
   }
 });
 
+test("Channel Connectors Claude persistent session dispose removes its descendant tree", async (t) => {
+  const root = makeTempRoot();
+  const fakeBin = path.join(root, "持久 Claude bin");
+  const leaderPidPath = path.join(root, "claude-leader.pid");
+  const descendantPidPath = path.join(root, "claude-descendant.pid");
+  const descendantPath = path.join(root, "claude-descendant.cjs");
+  let leaderPid = 0;
+  let descendantPid = 0;
+  t.after(() => {
+    stopFixtureProcess(leaderPid);
+    stopFixtureProcess(descendantPid);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  fs.writeFileSync(
+    descendantPath,
+    "process.on('SIGTERM', () => {});\nsetInterval(() => {}, 1000);\n",
+    "utf8",
+  );
+  writeExecutable(path.join(fakeBin, "claude"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const { spawn } = require('node:child_process');",
+    "fs.writeFileSync(process.env.TRACEVANE_TEST_CLAUDE_LEADER_PID, String(process.pid));",
+    "const descendant = spawn(process.execPath, [process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PATH], { stdio: 'ignore' });",
+    "fs.writeFileSync(process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PID, String(descendant.pid));",
+    "process.stdout.write(JSON.stringify({ type: 'system', session_id: 'claude-tree-session' }) + '\\n');",
+    "process.stdin.resume();",
+    "setInterval(() => {}, 1000);",
+  ]);
+
+  const originalPath = process.env.PATH || "";
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
+  process.env.TRACEVANE_TEST_CLAUDE_LEADER_PID = leaderPidPath;
+  process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PID = descendantPidPath;
+  process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PATH = descendantPath;
+  try {
+    const factory = createNativeCliSessionDriverFactory({
+      codexFactory: {
+        create: () => {
+          throw new Error("codex factory should not be used");
+        },
+      },
+    });
+    const key = { ...baseKey, agent: "claude-code", model: "sonnet", workDir: root };
+    const session = await factory.create({
+      key,
+      poolKey: channelConnectorAgentSessionDriverPoolKey(key),
+      turnInput: {
+        mode: "persistent",
+        key,
+        messageId: "claude-tree-message",
+        agentTurnRequest: baseTurnRequest(root, "claude-code"),
+        runOneShot: async () => completedResult("unused"),
+      },
+    });
+    await waitForFilePattern(leaderPidPath, /^\d+$/);
+    await waitForFilePattern(descendantPidPath, /^\d+$/);
+    leaderPid = Number(fs.readFileSync(leaderPidPath, "utf8"));
+    descendantPid = Number(fs.readFileSync(descendantPidPath, "utf8"));
+    assert.equal(processIsAlive(leaderPid), true);
+    assert.equal(processIsAlive(descendantPid), true);
+
+    session.dispose("test-complete");
+    await Promise.all([
+      waitForProcessExit(leaderPid),
+      waitForProcessExit(descendantPid),
+    ]);
+
+    assert.equal(processIsAlive(leaderPid), false);
+    assert.equal(processIsAlive(descendantPid), false);
+  } finally {
+    process.env.PATH = originalPath;
+    delete process.env.TRACEVANE_TEST_CLAUDE_LEADER_PID;
+    delete process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PID;
+    delete process.env.TRACEVANE_TEST_CLAUDE_DESCENDANT_PATH;
+  }
+});
+
 test("Channel Connectors Claude persistent session treats error subtypes as failed", async () => {
   const root = makeTempRoot();
   const fakeBin = path.join(root, "bin");
@@ -884,7 +1007,7 @@ test("Channel Connectors Claude persistent session treats error subtypes as fail
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   try {
     const factory = createNativeCliSessionDriverFactory({
       codexFactory: {
@@ -943,7 +1066,7 @@ test("Channel Connectors Claude persistent session reports unknown structured ev
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   try {
     const factory = createNativeCliSessionDriverFactory({
       codexFactory: {
@@ -1009,7 +1132,7 @@ test("Channel Connectors Claude persistent session stop resolves the active turn
   ]);
 
   const originalPath = process.env.PATH || "";
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.TRACEVANE_TEST_CAPTURE = capturePath;
   try {
     const factory = createNativeCliSessionDriverFactory({
@@ -1080,7 +1203,7 @@ test("Channel Connectors OpenCode persistent session stop aborts active process 
   const originalHome = process.env.HOME;
   const originalDataHome = process.env.XDG_DATA_HOME;
   const originalMarker = process.env.TRACEVANE_SQLITE_MARKER;
-  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.PATH = `${fakeBin}${path.delimiter}${originalPath}`;
   process.env.HOME = root;
   process.env.XDG_DATA_HOME = dataHome;
   process.env.TRACEVANE_SQLITE_MARKER = sqliteMarker;

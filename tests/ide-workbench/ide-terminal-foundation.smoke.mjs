@@ -1,5 +1,6 @@
 import { chromium } from '@playwright/test';
 import WebSocket from 'ws';
+import path from 'node:path';
 
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
@@ -189,7 +190,7 @@ function toWsUrl(pathname) {
 }
 
 function repoRelativeCwd() {
-  return process.cwd().replace(/^\/+/, '');
+  return path.relative(path.parse(process.cwd()).root, process.cwd()).split(path.sep).join('/');
 }
 
 async function expectApiFailure(pathname, body, expectedMessagePart) {
@@ -215,9 +216,10 @@ async function runBackendTerminalRoundtrip(rootId) {
   const profiles = Array.isArray(catalog.profiles) ? catalog.profiles : [];
   const localShell = profiles.find((profile) => profile.id === 'local-shell');
   const bashProfile = profiles.find((profile) => profile.id === 'shell-bash');
+  const explicitShellProfile = profiles.find((profile) => profile.kind === 'shell' && profile.id !== 'local-shell' && profile.launchable);
   if (!localShell?.launchable) throw new Error(`local-shell profile is not launchable: ${JSON.stringify(localShell)}`);
-  if (!bashProfile?.launchable || bashProfile.command !== 'bash') {
-    throw new Error(`shell-bash profile is not launchable: ${JSON.stringify(bashProfile)}`);
+  if (bashProfile?.launchable && !/bash(?:\.exe)?$/i.test(String(bashProfile.command || ''))) {
+    throw new Error(`shell-bash profile has an invalid command: ${JSON.stringify(bashProfile)}`);
   }
   if (profiles.some((profile) => /tmux/i.test(`${profile.id} ${profile.command || ''}`) && profile.kind === 'shell')) {
     throw new Error('tmux must not be exposed as a shell profile');
@@ -237,7 +239,7 @@ async function runBackendTerminalRoundtrip(rootId) {
     rootId,
     workspaceId: rootId,
     cwd,
-    profileId: 'local-shell',
+    profileId: explicitShellProfile?.id || 'shell-bash',
     shell: 'definitely-not-allowed-shell',
   }, 'terminal_shell_not_allowed');
 
@@ -268,14 +270,14 @@ async function runBackendTerminalRoundtrip(rootId) {
       workspaceId: rootId,
       cwd,
       profileId: 'local-shell',
-      shell: 'bash',
+      shell: null,
       cols: 80,
       rows: 24,
       skipReplay: true,
     }),
   });
   if (descriptor.sessionId !== sid) throw new Error(`Unexpected session id ${descriptor.sessionId}`);
-  if (descriptor.shell !== 'bash') throw new Error(`Expected descriptor.shell=bash, got ${descriptor.shell}`);
+  if (!descriptor.shell) throw new Error(`Expected a resolved descriptor.shell, got ${descriptor.shell}`);
   if (!String(descriptor.cwd || '').endsWith(process.cwd())) {
     throw new Error(`Terminal cwd was not resolved to repo root: ${descriptor.cwd}`);
   }
@@ -287,7 +289,7 @@ async function runBackendTerminalRoundtrip(rootId) {
       workspaceId: rootId,
       cwd,
       profileId: 'local-shell',
-      shell: 'bash',
+      shell: null,
       resume: '1',
       skipReplay: '1',
     }).toString()}`));
@@ -298,7 +300,7 @@ async function runBackendTerminalRoundtrip(rootId) {
     }, 30_000);
     ws.on('open', () => {
       ws.send(JSON.stringify({ type: 'resize', cols: 100, rows: 30 }));
-      ws.send(`printf '${token}\\n'\r`);
+      ws.send(`echo ${token}\r`);
     });
     ws.on('message', (message) => {
       const event = JSON.parse(message.toString());
@@ -491,7 +493,7 @@ async function runUiSmoke(rootId, otherRootId = null) {
     }
     await page.locator('[data-ide-terminal-xterm]').first().click();
     await page.getByLabel('新建文件').click({ timeout: 30_000 });
-    const explorerInput = page.locator('[data-ide-explorer-name-input]');
+    const explorerInput = page.locator('[data-action-dialog-input="explorer-name"]');
     await explorerInput.waitFor({ state: 'visible', timeout: 30_000 });
     await explorerInput.fill('');
     await page.keyboard.type('terminal-focus-explorer-input.txt');
@@ -523,15 +525,17 @@ async function runUiSmoke(rootId, otherRootId = null) {
     if (!menuBox || menuBox.x < 0 || menuBox.x + menuBox.width > page.viewportSize().width) {
       throw new Error(`New Terminal profile menu is clipped or offscreen: ${JSON.stringify(menuBox)}`);
     }
-    const setShDefault = page.locator('[data-ide-terminal-set-default-profile="shell-sh"]');
-    await setShDefault.waitFor({ state: 'visible', timeout: 30_000 });
-    await setShDefault.click();
-    await page.locator('[data-ide-terminal-set-default-profile="shell-sh"][data-ide-terminal-default-profile="true"]').waitFor({ state: 'visible', timeout: 30_000 });
+    const setShellDefault = page.locator('[data-ide-terminal-set-default-profile]:not([disabled])').first();
+    await setShellDefault.waitFor({ state: 'visible', timeout: 30_000 });
+    const selectedProfileId = await setShellDefault.getAttribute('data-ide-terminal-set-default-profile');
+    const selectedShell = await page.locator(`[data-ide-terminal-new-profile="${selectedProfileId}"]`).getAttribute('data-terminal-shell');
+    await setShellDefault.click();
+    await page.locator(`[data-ide-terminal-set-default-profile="${selectedProfileId}"][data-ide-terminal-default-profile="true"]`).waitFor({ state: 'visible', timeout: 30_000 });
     await page.keyboard.press('Escape');
     await page.locator('[data-ide-terminal-new-profile-menu]').waitFor({ state: 'hidden', timeout: 30_000 });
     await page.locator('[data-ide-terminal-new]').click();
     await page.waitForFunction(() => Number(document.querySelector('[data-ide-terminal-layout]')?.getAttribute('data-terminal-tab-count') || '0') >= 2, { timeout: 45_000 });
-    await page.locator('[data-ide-terminal-tab][data-terminal-shell="sh"]').last().waitFor({ state: 'visible', timeout: 30_000 });
+    await page.locator(`[data-ide-terminal-tab][data-terminal-shell="${cssAttr(selectedShell)}"]`).last().waitFor({ state: 'visible', timeout: 30_000 });
 
     await page.locator('[data-ide-terminal-pane]').first().evaluate((node) => {
       const file = new File(['terminal clipboard paste smoke\n'], 'terminal-clipboard-paste.txt', { type: 'text/plain' });

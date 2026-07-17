@@ -172,7 +172,7 @@ async function renameViaExplorer(page, path, nextName, nextPath, basePath = '') 
   await page.getByRole('menuitem', { name: '重命名' }).click();
   const dialog = page.getByRole('dialog', { name: '重命名' });
   await dialog.waitFor({ state: 'visible', timeout: 10_000 });
-  await dialog.locator('[data-ide-explorer-name-input]').fill(nextName);
+  await dialog.locator('[data-action-dialog-input="explorer-name"]').fill(nextName);
   await dialog.getByRole('button', { name: '重命名' }).click();
   await page.locator(tabSelector(nextPath)).first().waitFor({ state: 'visible', timeout: 30_000 });
   await waitForNode(page, nextPath);
@@ -232,8 +232,7 @@ async function run() {
   const explorerDirectoryPath = relativePathFromRoot(root.absolutePath, path.dirname(process.cwd()));
 
   const prefix = `tracevane-ide-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const smokeParent = explorerDirectoryPath ? `${explorerDirectoryPath}/tmp` : 'tmp';
-  const smokeDir = `${smokeParent}/.${prefix}`;
+  const smokeDir = explorerDirectoryPath ? `${explorerDirectoryPath}/.${prefix}` : `.${prefix}`;
   const firstPath = `${smokeDir}/${prefix}-a.txt`;
   const renamedPath = `${smokeDir}/${prefix}-a-renamed.txt`;
   const secondPath = `${smokeDir}/${prefix}-b.txt`;

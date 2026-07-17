@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { execFile } from 'node:child_process';
 import type {
   ChannelAccessUpdatePayload,
   ChannelAccountAccessPayload,
@@ -22,11 +21,13 @@ import type {
   ChannelThreadBindingSummary,
 } from '../../../../types/channels.js';
 import type { TracevaneServerConfig } from '../../../../types/api.js';
+import { runOwnedCommand } from '../../core/owned-command.js';
 import { ensureDir, readJsonFile, readOpenClawConfig, writeJsonFile } from '../../core/state.js';
 import { buildChannelCatalog, getChannelCatalogEntry } from './catalog.js';
 
 const RESERVED_CHANNEL_KEYS = new Set(['defaults', 'modelByChannel']);
 const PAIRING_TIMEOUT_MS = 10_000;
+const PAIRING_OUTPUT_LIMIT = 1024 * 1024;
 
 class ChannelServiceError extends Error {
   constructor(
@@ -1182,6 +1183,17 @@ function buildBindingRaw(input: ChannelBindingInput): Record<string, any> {
   return binding;
 }
 
+async function runOpenClawPairingCommand(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const result = await runOwnedCommand('openclaw', args, {
+    timeoutMs: PAIRING_TIMEOUT_MS,
+    maxOutputBytes: PAIRING_OUTPUT_LIMIT,
+  });
+  if (!result.ok) {
+    throw new Error(result.stderr.trim() || result.error || 'OpenClaw pairing command failed');
+  }
+  return { stdout: result.stdout, stderr: result.stderr };
+}
+
 async function execPairingList(channelType: string, accountId: string | null): Promise<ChannelPairingPayload> {
   const args = ['pairing', 'list'];
   if (accountId && accountId !== 'default') {
@@ -1191,20 +1203,7 @@ async function execPairingList(channelType: string, accountId: string | null): P
   }
 
   return new Promise((resolve) => {
-    execFile('openclaw', args, { timeout: PAIRING_TIMEOUT_MS }, (error, stdout) => {
-      if (error) {
-        resolve({
-          checkedAt: new Date().toISOString(),
-          channelType,
-          accountId,
-          supported: true,
-          source: 'file',
-          requests: [],
-          error: error.message,
-        });
-        return;
-      }
-
+    runOpenClawPairingCommand(args).then(({ stdout }) => {
       try {
         const parsed = JSON.parse(extractJsonObject(stdout || '')) as Record<string, unknown>;
         const requests = Array.isArray(parsed.requests)
@@ -1230,6 +1229,16 @@ async function execPairingList(channelType: string, accountId: string | null): P
           error: parseError instanceof Error ? parseError.message : 'pairing_parse_failed',
         });
       }
+    }).catch((error) => {
+      resolve({
+        checkedAt: new Date().toISOString(),
+        channelType,
+        accountId,
+        supported: true,
+        source: 'file',
+        requests: [],
+        error: error instanceof Error ? error.message : 'pairing_command_failed',
+      });
     });
   });
 }
@@ -1243,14 +1252,12 @@ async function execPairingApprove(channelType: string, accountId: string | null,
   }
   if (notify) args.push('--notify');
 
-  await new Promise<void>((resolve, reject) => {
-    execFile('openclaw', args, { timeout: PAIRING_TIMEOUT_MS }, (error, _stdout, stderr) => {
-      if (error) {
-        reject(new ChannelServiceError(400, 'pairing_approve_failed', (stderr || error.message || 'approve failed').trim()));
-        return;
-      }
-      resolve();
-    });
+  await runOpenClawPairingCommand(args).catch((error) => {
+    throw new ChannelServiceError(
+      400,
+      'pairing_approve_failed',
+      error instanceof Error ? error.message : 'approve failed',
+    );
   });
 }
 

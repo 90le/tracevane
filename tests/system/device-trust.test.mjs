@@ -4,7 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { getDeviceTrustSnapshot } from '../../dist/apps/api/modules/system/device-trust.js';
+import {
+  approveDeviceTrustRequest,
+  getDeviceTrustSnapshot,
+  maybeAutoApproveTracevaneHelperPairing,
+  repairTracevaneHelperDeviceTrust,
+} from '../../dist/apps/api/modules/system/device-trust.js';
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-device-trust-'));
@@ -35,6 +40,87 @@ function createConfig(root) {
     },
   };
 }
+
+function writeFakeOpenClawCommand(binDir) {
+  fs.mkdirSync(binDir, { recursive: true });
+  const runnerPath = path.join(binDir, 'fake-openclaw.cjs');
+  fs.writeFileSync(
+    runnerPath,
+    `const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.TRACEVANE_FAKE_OPENCLAW_LOG, JSON.stringify(args) + '\\n', 'utf8');
+if (args[0] === 'devices' && args[1] === 'approve' && args[2]) {
+  process.stdout.write(JSON.stringify({ approved: args[2] }));
+  process.exit(0);
+}
+process.stderr.write('unexpected args: ' + JSON.stringify(args));
+process.exit(2);
+`,
+    'utf8',
+  );
+  if (process.platform === 'win32') {
+    fs.writeFileSync(
+      path.join(binDir, 'openclaw.cmd'),
+      `@echo off\r\n"${process.execPath}" "%~dp0fake-openclaw.cjs" %*\r\n`,
+      'utf8',
+    );
+    return;
+  }
+  const commandPath = path.join(binDir, 'openclaw');
+  fs.writeFileSync(
+    commandPath,
+    `#!/usr/bin/env node\n${fs.readFileSync(runnerPath, 'utf8')}`,
+    { encoding: 'utf8', mode: 0o755 },
+  );
+  fs.chmodSync(commandPath, 0o755);
+}
+
+test('device trust approval launches the platform-native OpenClaw command', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane device trust 测试 '));
+  const binDir = path.join(root, 'OpenClaw CLI bin');
+  const logPath = path.join(root, 'openclaw-calls.jsonl');
+  const previousPath = process.env.PATH;
+  const previousLog = process.env.TRACEVANE_FAKE_OPENCLAW_LOG;
+  writeFakeOpenClawCommand(binDir);
+  process.env.PATH = [binDir, previousPath || ''].filter(Boolean).join(path.delimiter);
+  process.env.TRACEVANE_FAKE_OPENCLAW_LOG = logPath;
+
+  try {
+    const config = createConfig(root);
+    writeJson(path.join(root, 'identity', 'device-auth.json'), {
+      version: 1,
+      deviceId: 'device-platform-cli',
+      tokens: {},
+    });
+    writeJson(path.join(root, 'devices', 'pending.json'), {
+      pending: {
+        requestId: 'request-auto',
+        deviceId: 'device-platform-cli',
+        role: 'operator',
+        clientId: 'cli',
+        clientMode: 'backend',
+        ts: Date.now(),
+      },
+    });
+
+    const manual = await approveDeviceTrustRequest(config, { requestId: 'request-manual' });
+    assert.equal(manual.ok, true);
+    assert.equal(await maybeAutoApproveTracevaneHelperPairing(config), true);
+    const repair = await repairTracevaneHelperDeviceTrust(config);
+    assert.equal(repair.ok, true);
+    assert.equal(repair.approvedRequestId, 'request-auto');
+
+    const calls = fs.readFileSync(logPath, 'utf8').trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    assert.ok(calls.some((args) => args.join(' ') === 'devices approve request-manual'));
+    assert.equal(calls.filter((args) => args.join(' ') === 'devices approve request-auto').length, 2);
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    if (previousLog === undefined) delete process.env.TRACEVANE_FAKE_OPENCLAW_LOG;
+    else process.env.TRACEVANE_FAKE_OPENCLAW_LOG = previousLog;
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
 
 test('device trust snapshot detects metadata repair drift for local helper', () => {
   const root = makeTempRoot();

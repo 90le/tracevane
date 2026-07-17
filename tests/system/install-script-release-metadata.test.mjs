@@ -171,16 +171,17 @@ test('release surfaces use the current OpenClaw minimum host version', () => {
 });
 
 function extractConfigWriterScript(installerSource) {
+  const normalizedSource = installerSource.replace(/\r\n/g, '\n');
   const marker = 'log "写入 OpenClaw 配置"';
-  const markerIndex = installerSource.indexOf(marker);
+  const markerIndex = normalizedSource.indexOf(marker);
   assert.notEqual(markerIndex, -1);
 
-  const start = installerSource.indexOf("const fs = require('node:fs');", markerIndex);
+  const start = normalizedSource.indexOf("const fs = require('node:fs');", markerIndex);
   assert.notEqual(start, -1);
 
-  const end = installerSource.indexOf('\nNODE\nfi\n\nif [[ "${DRY_RUN}" -eq 0 ]]; then\n  log "校验 OpenClaw 配置"', start);
+  const end = normalizedSource.indexOf('\nNODE\nfi\n\nif [[ "${DRY_RUN}" -eq 0 ]]; then\n  log "校验 OpenClaw 配置"', start);
   assert.notEqual(end, -1);
-  return installerSource.slice(start, end);
+  return normalizedSource.slice(start, end);
 }
 
 test('installer config writer prunes retired product residue instead of preserving compatibility', () => {
@@ -275,9 +276,12 @@ test('installer config writer prunes retired product residue instead of preservi
   assert.deepEqual(nextConfig.plugins.installs.keep, {
     installPath: path.join(tmpRoot, 'extensions', 'keep'),
   });
-  assert.deepEqual(nextConfig.plugins.load.paths, [
-    path.join(tmpRoot, 'extensions', 'keep'),
-    installDir,
+  const normalizedLoadPaths = nextConfig.plugins.load.paths.map((value) =>
+    path.resolve(value).replace(/\\/g, '/'),
+  );
+  assert.deepEqual(normalizedLoadPaths, [
+    path.join(tmpRoot, 'extensions', 'keep').replace(/\\/g, '/'),
+    installDir.replace(/\\/g, '/'),
   ]);
   assert.equal(nextConfig.gateway.bind, 'lan');
   assert.equal(nextConfig.gateway.controlUi.enabled, true);

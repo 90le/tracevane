@@ -1,7 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type {
   SystemDeviceTrustApproveRequest,
   SystemDeviceTrustApproveResponse,
@@ -15,8 +13,11 @@ import type {
 } from '../../../../types/system.js';
 import type { TracevaneServerConfig } from '../../../../types/api.js';
 import { readJsonFile } from '../../core/state.js';
+import {
+  runSystemOpenClawCommand,
+  systemOpenClawCommandError,
+} from './openclaw-command.js';
 
-const execFileAsync = promisify(execFile);
 const DEVICE_TRUST_SETTINGS_FILE = path.join('tracevane', 'device-trust.json');
 const DEFAULT_DEVICE_TRUST_SETTINGS: SystemDeviceTrustSettings = {
   autoApproveLocalHelper: true,
@@ -183,6 +184,16 @@ export function getDeviceTrustSnapshot(config: TracevaneServerConfig): SystemDev
   };
 }
 
+async function approveOpenClawDeviceRequest(requestId: string): Promise<void> {
+  const result = await runSystemOpenClawCommand(
+    ['devices', 'approve', requestId],
+    { timeoutMs: 12_000, maxOutputBytes: 4 * 1024 * 1024 },
+  );
+  if (!result.ok) {
+    throw new Error(systemOpenClawCommandError(result, `Failed to approve device request '${requestId}'`));
+  }
+}
+
 export async function approveDeviceTrustRequest(
   config: TracevaneServerConfig,
   payload: SystemDeviceTrustApproveRequest,
@@ -191,10 +202,7 @@ export async function approveDeviceTrustRequest(
   if (!requestId) {
     throw new Error('requestId is required');
   }
-  await execFileAsync('openclaw', ['devices', 'approve', requestId], {
-    timeout: 12_000,
-    maxBuffer: 4 * 1024 * 1024,
-  });
+  await approveOpenClawDeviceRequest(requestId);
   return {
     ok: true,
     requestId,
@@ -265,10 +273,7 @@ export async function maybeAutoApproveTracevaneHelperPairing(config: TracevaneSe
   if (!requestId) {
     return false;
   }
-  await execFileAsync('openclaw', ['devices', 'approve', requestId], {
-    timeout: 12_000,
-    maxBuffer: 4 * 1024 * 1024,
-  });
+  await approveOpenClawDeviceRequest(requestId);
   return true;
 }
 
@@ -278,10 +283,7 @@ export async function repairTracevaneHelperDeviceTrust(config: TracevaneServerCo
   let synchronizedToken = false;
 
   if (before.helper.pendingRequestId) {
-    await execFileAsync('openclaw', ['devices', 'approve', before.helper.pendingRequestId], {
-      timeout: 12_000,
-      maxBuffer: 4 * 1024 * 1024,
-    });
+    await approveOpenClawDeviceRequest(before.helper.pendingRequestId);
     approvedRequestId = before.helper.pendingRequestId;
   }
 

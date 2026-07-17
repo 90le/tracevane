@@ -33,6 +33,22 @@ export interface OpenClawGatewayTakeoverResult {
   error: string;
 }
 
+export interface OpenClawGatewayTakeoverDependencies {
+  discoverRuntime?: (
+    port: number,
+    commands: OpenClawRecoveryCommandSnapshot[],
+  ) => Promise<OpenClawGatewayRuntimeSnapshot>;
+  readProcessInfo?: (
+    pid: number,
+    commands: OpenClawRecoveryCommandSnapshot[],
+  ) => Promise<OpenClawGatewayProcessInfo | null>;
+  terminatePid?: (
+    pid: number,
+    timeoutMs: number,
+    commands: OpenClawRecoveryCommandSnapshot[],
+  ) => Promise<{ ok: boolean; error: string }>;
+}
+
 function firstLine(value: string): string {
   return value.split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "";
 }
@@ -81,6 +97,63 @@ export function parseSsListeners(stdout: string, port: number): Array<{ pid: num
     .filter((listener) => listener.pid > 0);
 }
 
+function parseJsonRecords(stdout: string): Record<string, unknown>[] {
+  const text = stdout.trim().replace(/^\uFEFF/, "");
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((entry): entry is Record<string, unknown> => (
+        Boolean(entry) && typeof entry === "object" && !Array.isArray(entry)
+      ));
+    }
+    return parsed && typeof parsed === "object"
+      ? [parsed as Record<string, unknown>]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function parseWindowsListeners(
+  stdout: string,
+  port: number,
+): Array<{ pid: number; command: string; address: string }> {
+  const listeners = parseJsonRecords(stdout)
+    .map((entry) => ({
+      pid: Number(entry.pid),
+      command: typeof entry.command === "string" ? entry.command : "",
+      address: typeof entry.address === "string" ? entry.address : "",
+      port: Number(entry.port),
+    }))
+    .filter((entry) => (
+      Number.isInteger(entry.pid)
+      && entry.pid > 0
+      && (entry.port === port || entry.address.endsWith(`:${port}`))
+    ));
+  const seen = new Set<string>();
+  return listeners.filter((listener) => {
+    const key = `${listener.pid}:${listener.address}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map(({ pid, command, address }) => ({ pid, command, address }));
+}
+
+export function parseWindowsProcessInfo(stdout: string): OpenClawGatewayProcessInfo | null {
+  const [entry] = parseJsonRecords(stdout);
+  if (!entry) return null;
+  const pid = Number(entry.pid);
+  const ppid = Number(entry.ppid);
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  return {
+    pid,
+    ppid: Number.isInteger(ppid) && ppid > 0 ? ppid : null,
+    command: typeof entry.command === "string" ? entry.command : "",
+    args: typeof entry.args === "string" ? entry.args : "",
+  };
+}
+
 function parseProcessInfo(stdout: string): OpenClawGatewayProcessInfo | null {
   const line = firstLine(stdout);
   if (!line) return null;
@@ -122,6 +195,21 @@ async function readProcessInfo(
   pid: number,
   commands: OpenClawRecoveryCommandSnapshot[],
 ): Promise<OpenClawGatewayProcessInfo | null> {
+  if (process.platform === "win32") {
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      `$item = Get-CimInstance Win32_Process -Filter \"ProcessId = ${pid}\" -ErrorAction SilentlyContinue`,
+      "if ($null -eq $item) { Write-Output 'null' } else { [pscustomobject]@{ pid = [int]$item.ProcessId; ppid = [int]$item.ParentProcessId; command = [string]$(if ($item.ExecutablePath) { $item.ExecutablePath } else { $item.Name }); args = [string]$item.CommandLine } | ConvertTo-Json -Compress }",
+    ].join("; ");
+    const query = await runOpenClawCliBootstrapCommand(
+      "powershell.exe",
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+      5_000,
+    );
+    commands.push(query);
+    return query.ok ? parseWindowsProcessInfo(query.stdout) : null;
+  }
+
   const ps = await runOpenClawCliBootstrapCommand(
     "ps",
     ["-p", String(pid), "-o", "pid=", "-o", "ppid=", "-o", "comm=", "-o", "args="],
@@ -135,6 +223,21 @@ async function discoverRawListeners(
   port: number,
   commands: OpenClawRecoveryCommandSnapshot[],
 ): Promise<Array<{ pid: number; command: string; address: string }>> {
+  if (process.platform === "win32") {
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      `$rows = @(Get-NetTCPConnection -State Listen -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ pid = [int]$_.OwningProcess; command = ''; address = ('{0}:{1}' -f $_.LocalAddress, $_.LocalPort); port = [int]$_.LocalPort } })`,
+      "ConvertTo-Json -InputObject $rows -Compress",
+    ].join("; ");
+    const query = await runOpenClawCliBootstrapCommand(
+      "powershell.exe",
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+      5_000,
+    );
+    commands.push(query);
+    return query.ok ? parseWindowsListeners(query.stdout, port) : [];
+  }
+
   const lsof = await runOpenClawCliBootstrapCommand(
     "lsof",
     ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"],
@@ -200,8 +303,8 @@ function processExists(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 
@@ -214,7 +317,27 @@ async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
   return !processExists(pid);
 }
 
-async function terminatePid(pid: number, timeoutMs: number): Promise<{ ok: boolean; error: string }> {
+async function terminatePid(
+  pid: number,
+  timeoutMs: number,
+  commands: OpenClawRecoveryCommandSnapshot[],
+): Promise<{ ok: boolean; error: string }> {
+  if (process.platform === "win32") {
+    const taskkill = await runOpenClawCliBootstrapCommand(
+      "taskkill.exe",
+      ["/PID", String(pid), "/T", "/F"],
+      Math.max(1_000, timeoutMs),
+    );
+    commands.push(taskkill);
+    if (await waitForExit(pid, Math.max(500, timeoutMs))) {
+      return { ok: true, error: "" };
+    }
+    return {
+      ok: false,
+      error: firstLine(taskkill.stderr) || taskkill.error || "taskkill did not terminate the process tree",
+    };
+  }
+
   try {
     process.kill(pid, "SIGTERM");
   } catch (error) {
@@ -244,8 +367,12 @@ export async function takeoverOpenClawGatewayListeners(
     timeoutMs: number;
   },
   commands: OpenClawRecoveryCommandSnapshot[] = [],
+  dependencies: OpenClawGatewayTakeoverDependencies = {},
 ): Promise<OpenClawGatewayTakeoverResult> {
-  const snapshot = await discoverOpenClawGatewayRuntime(port, commands);
+  const discoverRuntime = dependencies.discoverRuntime ?? discoverOpenClawGatewayRuntime;
+  const readCurrentProcess = dependencies.readProcessInfo ?? readProcessInfo;
+  const terminateCurrentPid = dependencies.terminatePid ?? terminatePid;
+  const snapshot = await discoverRuntime(port, commands);
   if (!options.allow || snapshot.safeListenerPids.length === 0) {
     return {
       attempted: false,
@@ -257,9 +384,28 @@ export async function takeoverOpenClawGatewayListeners(
   }
 
   const terminatedPids: number[] = [];
+  const ownershipChangedPids: number[] = [];
   const errors: string[] = [];
   for (const pid of snapshot.safeListenerPids) {
-    const result = await terminatePid(pid, options.timeoutMs);
+    const latestProcess = await readCurrentProcess(pid, commands);
+    const latestSafety = !latestProcess
+      ? { safe: false, reason: "current process details are unavailable" }
+      : latestProcess.pid !== pid
+        ? {
+            safe: false,
+            reason: `process identity changed (expected ${pid}, received ${latestProcess.pid})`,
+          }
+        : isOpenClawGatewayProcess({
+            pid,
+            command: "",
+            process: latestProcess,
+          });
+    if (!latestSafety.safe) {
+      ownershipChangedPids.push(pid);
+      errors.push(`${pid}: process ownership changed before takeover (${latestSafety.reason})`);
+      continue;
+    }
+    const result = await terminateCurrentPid(pid, options.timeoutMs, commands);
     if (result.ok) {
       terminatedPids.push(pid);
     } else {
@@ -270,7 +416,10 @@ export async function takeoverOpenClawGatewayListeners(
   return {
     attempted: true,
     terminatedPids,
-    skippedPids: snapshot.unsafeListenerPids,
+    skippedPids: uniqueNumbers([
+      ...snapshot.unsafeListenerPids,
+      ...ownershipChangedPids,
+    ]),
     snapshot,
     error: errors.join("\n"),
   };
