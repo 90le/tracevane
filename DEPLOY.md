@@ -39,7 +39,7 @@ openclaw gateway restart
 ### 2. 下载安装脚本
 
 ```bash
-curl -fsSL https://tracevane.90le.cn/install-tracevane.sh -o /tmp/install-tracevane.sh
+curl -fsSL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
 chmod +x /tmp/install-tracevane.sh
 ```
 
@@ -116,7 +116,7 @@ http://<host>:<gateway_port>/tracevane/?token=<token>
 重新执行一键安装即可，安装器幂等：保留既有配置，旧安装目录自动备份到 `~/.openclaw/backups/tracevane/`。
 
 ```bash
-curl -fsSL https://tracevane.90le.cn/install-tracevane.sh -o /tmp/install-tracevane.sh
+curl -fsSL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
 /tmp/install-tracevane.sh --mode gateway
 ```
 
@@ -179,7 +179,7 @@ curl -fsSL http://127.0.0.1:3760/api/system/health
 
 ```bash
 cd ~/.openclaw/extensions
-curl -fsSL https://tracevane.90le.cn/tracevane-latest.json -o /tmp/tracevane-latest.json
+curl -fsSL https://github.com/90le/tracevane/releases/latest/download/tracevane-latest.json -o /tmp/tracevane-latest.json
 PACKAGE_URL="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.packageUrl)")"
 VERSION="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.version || m.latestVersion)")"
 SHA256="$(node -e "const fs=require('node:fs'); const m=JSON.parse(fs.readFileSync('/tmp/tracevane-latest.json','utf8')); console.log(m.sha256 || m.packageSha256 || m.checksum?.sha256 || '')")"
@@ -286,7 +286,7 @@ npm rebuild @homebridge/node-pty-prebuilt-multiarch
 
 ## 发布包内容
 
-`./pack.sh` 生成的发布目录包含：
+`./pack.sh` 生成的发布目录包含（维护者发布到 GitHub Releases）：
 
 ```txt
 tracevane-<version>/
@@ -352,3 +352,26 @@ node --test tests/system/install-script-release-metadata.test.mjs tests/system/d
 ```
 
 如变更了前端、API、终端或 Gateway 行为，再按对应范围补充 typecheck、build 和 smoke。
+
+## Maintainer-only GitHub Release publication
+
+以下步骤仅供仓库维护者使用，不是终端用户安装流程。先确认版本、测试和工作树，再生成确定性 Release 资产：
+
+```bash
+VERSION=0.1.72
+bash pack.sh --no-source-sync --output-dir ".tmp/release-${VERSION}" "${VERSION}"
+test -s ".tmp/release-${VERSION}/tracevane-${VERSION}.tar.gz"
+test -s ".tmp/release-${VERSION}/install-tracevane.sh"
+test -s ".tmp/release-${VERSION}/SHA256SUMS"
+git tag "v${VERSION}"
+git push origin "v${VERSION}"
+gh release create "v${VERSION}" \
+  ".tmp/release-${VERSION}/tracevane-${VERSION}.tar.gz" \
+  ".tmp/release-${VERSION}/install-tracevane.sh" \
+  ".tmp/release-${VERSION}/SHA256SUMS" \
+  ".tmp/release-${VERSION}/tracevane-latest.json" \
+  ".tmp/release-${VERSION}/tracevane-version.json" \
+  --title "Tracevane v${VERSION}" --generate-notes
+```
+
+检查 Release 必须同时包含 tarball、Bash 安装器、`SHA256SUMS` 和两个 metadata JSON；发布前核对 SHA-256 与 metadata 中的 `packageUrl`、`sha256` 一致。

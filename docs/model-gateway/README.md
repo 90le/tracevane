@@ -2,8 +2,6 @@
 
 本文定义 Tracevane Model Gateway 的“100%支持”含义。这里的 100% 不是承诺每个上游模型都原生支持所有能力，而是要求每个入口、协议、工具流、附件流都有明确状态、自动化证据和失败边界。
 
-当前签收记录：[`release-signoff-2026-07-09.md`](./release-signoff-2026-07-09.md)。
-
 ## 外部合同来源
 
 - OpenAI Responses API：`POST /responses` 支持文本、图片输入、JSON 输出、自定义代码和 web/file search 等内置工具。参考：https://developers.openai.com/api/reference/resources/responses/methods/create

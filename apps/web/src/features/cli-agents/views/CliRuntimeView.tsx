@@ -279,7 +279,7 @@ export function CliRuntimeView() {
             </Button>
           </div>
         </div>
-        <div className="grid divide-y divide-line border-t border-line sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+        <div className="grid border-t border-line sm:grid-cols-4 divide-y divide-line sm:divide-x sm:divide-y-0">
           <Fact label="已安装 Agent CLI">
             {statusPending
               ? "检测中"

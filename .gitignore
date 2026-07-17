@@ -53,3 +53,6 @@ release/
 *.timestamp-*.mjs
 vite.config.ts.timestamp-*
 apps/web-vue/vite.config.ts.timestamp-*
+
+# GitHub Pages assembly output
+dist/pages/

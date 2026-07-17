@@ -49,6 +49,7 @@ test("multi-view features use responsive selectors while CLI Agents stays single
   const channels = read(
     "apps/web/src/features/channel-connectors/ChannelConnectorsPage.tsx",
   );
+  const cliAgents = read("apps/web/src/features/cli-agents/CliAgentsPage.tsx");
 
   for (const source of [modelGateway, channels]) {
     assert.match(source, /sm:hidden/);

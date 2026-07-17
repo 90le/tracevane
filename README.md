@@ -1,315 +1,141 @@
 # Tracevane
 
-> Compatibility repository path: `tracevane`  
-> Product direction: local-first AI Agent Workspace and connectivity control layer  
-> OpenClaw status: supported host/runtime, but not the full product boundary
+<p align="center">
+  <img src="assets/brand/tracevane-lockup.svg" alt="Tracevane" width="440">
+</p>
 
-Tracevane is a local-first control workbench for running, connecting, observing,
-recovering and verifying AI Agent workflows across local projects, Model Gateway,
-IM channels, CLI Agent runtimes and platform substrates.
+<p align="center">
+  <strong>本地优先的 OpenClaw AI Agent 控制工作台</strong><br>
+  在一个界面中管理工作区、模型网关、消息渠道、CLI Agent 与运行状态。
+</p>
 
-The project currently ships as an OpenClaw UI extension while keeping Tracevane's
-product boundary broader than OpenClaw: OpenClaw is one supported host and
-runtime surface, not the whole workspace model.
+<p align="center">
+  <a href="README_EN.md">English</a> ·
+  <a href="https://90le.github.io/tracevane/">官网</a> ·
+  <a href="https://github.com/90le/tracevane/releases/latest">下载</a> ·
+  <a href="https://github.com/90le/tracevane/issues">问题反馈</a>
+</p>
 
-## What Tracevane Covers
+<p align="center">
+  <a href="https://github.com/90le/tracevane/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/90le/tracevane?display_name=tag&style=flat-square"></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-35e69a?style=flat-square"></a>
+  <a href="https://github.com/90le/tracevane/actions"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/90le/tracevane/pages.yml?style=flat-square&label=pages"></a>
+</p>
 
-| Domain | Current responsibility |
-|---|---|
-| Workspace / Files | File operations, online editing, preview, terminal handoff, Git/evidence oriented workspace flows. |
-| File Manager Online Editor | Lightweight Monaco-based multi-tab text editing launched from the file manager. |
-| Standalone IDE Workbench | Project-level IDE direction with explorer, editor groups, panels, terminal, problems/output, layout persistence and future LSP/Git/tasks/debug. |
-| Model Gateway | Provider routing, protocol adapters, endpoint profiles, account/media support, active routes and usage surfaces. |
-| Channel Connectors | Feishu/Octo private chat integration to Agent workflows, files, progress, permissions and delivery evidence. |
-| CLI Agents | Codex, Claude Code and OpenCode runtime readiness plus Agent Runs. CLI Agents are not treated as terminal management. |
-| Platform / System Guard | OpenClaw config compatibility, service repair, daemon health, device trust, runtime summaries and event/audit support. |
+> Tracevane 当前以 OpenClaw UI 扩展形式发布，项目处于维护模式。现有功能会继续维护，但不承诺固定的新功能节奏。
 
-## Repository Layout
+## 能做什么
 
-```txt
-.
-├── apps/
-│   ├── api/                 # Tracevane backend service, routes, modules and daemons
-│   └── web/                 # React/Vite frontend workbench
-├── docs/
-│   ├── brand-identity.md     # Domain recommendation, logo direction and browser icon inventory
-│   ├── ide-code-editor-solution/
-│   │   ├── 00-README.md     # IDE / online editor planning index
-│   │   └── 01..15-*.md      # Product, architecture, frontend/backend and rollout notes
-│   └── 界面设计守则.md        # UI/design guardrails
-├── assets/brand/             # Source SVG/browser icon brand pack
-├── lib/                     # OpenClaw/plugin host compatibility and delivery helpers
-├── scripts/                 # Build, dev, release and smoke-test scripts
-├── tests/                   # System, terminal and browser smoke tests
-├── types/                   # Shared TypeScript contracts
-├── index.ts                 # OpenClaw extension entrypoint
-├── DESIGN.md                # Active product/design source of truth
-└── openclaw.plugin.json     # Extension manifest
-```
+| 能力 | 说明 |
+| --- | --- |
+| 工作区与文件 | 文件管理、在线编辑、预览、终端与 Git 工作流。 |
+| Model Gateway | 管理 Provider、模型、路由、账号池、协议适配与用量。 |
+| Channel Connectors | 将飞书、Octo 等消息入口连接到 Agent 工作流。 |
+| CLI Agents | 检查并运行 Codex、Claude Code、OpenCode 等本地 Agent。 |
+| 运行健康 | 查看服务、配置、设备信任和运行时状态，辅助诊断与恢复。 |
 
-## Main Documentation
+## 快速安装
 
-Start with these documents, in this order:
+支持 Linux、macOS，以及使用 Linux 文件系统的 WSL。需要 Bash、Node.js 和已经完成初始化的 OpenClaw。
 
-1. [DESIGN.md](DESIGN.md) — active product/design source of truth.
-2. [docs/brand-identity.md](docs/brand-identity.md) — domain recommendation, selected logo route and icon asset inventory.
-3. [docs/界面设计守则.md](docs/界面设计守则.md) — visual and interaction guardrails.
-4. [docs/ide-code-editor-solution/00-README.md](docs/ide-code-editor-solution/00-README.md) — code editor / IDE documentation index.
-5. [apps/api/README.md](apps/api/README.md) — backend foundation notes.
+> **全新机器注意：** Tracevane 安装器不会安装完全缺失的 OpenClaw；它只会升级已经存在但版本过旧的 OpenClaw。没有 OpenClaw 时，请先执行下面的“从零安装 OpenClaw”，完成模型账号配置和 Gateway 验证后再继续。
 
-This README points only to documents that are present in the repository.
+### 1. 从零安装 OpenClaw（仅首次需要）
 
-## Development
-
-Install dependencies:
+如果 `openclaw --version` 提示命令不存在：
 
 ```bash
-npm install
+# 先确认 Node.js 满足 OpenClaw 当前要求
+node --version
+npm --version
+
+# 使用 OpenClaw 官方 npm 包安装
+npm install -g openclaw@latest
+openclaw --version
+
+# 交互式配置模型账号并安装 Gateway 服务
+openclaw onboard --install-daemon
+
+# 验证 OpenClaw
+openclaw doctor
+openclaw gateway status
 ```
 
-Common verification and build commands:
+Onboarding 会要求选择模型 Provider 并完成密钥或账号授权。不要把密钥粘贴到 Issue、日志或 Agent 对话中。OpenClaw 最新环境要求与其他安装方式以 [OpenClaw 官方安装文档](https://docs.openclaw.ai/install) 为准。
+
+### 2. 安装 Tracevane
+
+请先下载并检查脚本，不要使用 `curl | bash`。
 
 ```bash
-npm run typecheck:api
-npm run typecheck:web
-npm run build:api
-npm run build:web
-npm run build
+curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
+sed -n '1,220p' /tmp/install-tracevane.sh
+chmod +x /tmp/install-tracevane.sh
+/tmp/install-tracevane.sh --check-release
+/tmp/install-tracevane.sh --mode standalone --json
 ```
 
-Run the development environment:
+接入现有 OpenClaw Gateway 时，只需把最后一行改为：
 
 ```bash
+/tmp/install-tracevane.sh --mode gateway --json
+```
+
+安装器会验证 Release 元数据和 SHA-256，并返回安装目录、配置路径、访问地址与健康检查结果。详细参数见 [安装文档](docs/installation.md)，让 Agent 执行安装时可直接使用 [Agent 安装提示词](docs/agent-installation.md)。
+
+### 交给 Agent 从零安装
+
+把下面整段复制给 Codex、Claude Code 或 OpenCode：
+
+```text
+请在这台机器上从零安装 OpenClaw 和 Tracevane。先只检查环境并报告操作系统、是否处于 WSL2、node/npm/openclaw 版本；不要立即修改系统。如果 OpenClaw 缺失，按 https://docs.openclaw.ai/install 的官方 npm 方式安装 openclaw@latest，然后运行 openclaw onboard --install-daemon。Onboarding 涉及模型账号或密钥时暂停，让我在本机交互完成，禁止读取、回显或上传密钥。随后运行 openclaw --version、openclaw doctor、openclaw gateway status；验证成功后，从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载 Tracevane 安装器到本地，先审阅脚本并运行 --check-release，再以 --mode standalone --json 安装。禁止 curl | bash，禁止绕过 TLS、SHA-256、配置校验或健康检查。最后返回 OpenClaw 版本、Tracevane JSON 中的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，所有 token/credential 必须脱敏。
+```
+
+Gateway 模式只需把 Prompt 中的 `--mode standalone --json` 改为 `--mode gateway --json`。更短和审计版 Prompt 见 [Agent 安装提示词](docs/agent-installation.md)。
+
+## 本地开发
+
+```bash
+npm ci
 npm run dev:restart
 ```
 
-The Node-based development launcher is supported on Windows, macOS, and Linux;
-it starts the API and web server in the background, records structured
-ownership metadata and logs under `.tmp/dev-runtime`, and restarts either
-worker if it exits. `dev:restart` requests API port `3761` with a safe upward
-free-port fallback and requires Web port `5176` to be free. It never stops an
-unrelated listener merely because it occupies a requested port.
+默认开发地址：Web `http://127.0.0.1:5176`，API `http://127.0.0.1:3761`。
 
-`npm run dev:fresh` performs a full build, starts the standalone API on
-`3761`, and starts the proxying frontend on `5177`. Both launch modes prove
-the API health endpoint through the frontend proxy before publishing their
-`ports.env` or `runtime.env` file. Stop launcher-owned process trees with:
+常用检查：
 
 ```bash
-node scripts/dev-runtime.mjs stop
-```
-
-The checkout requires a single native Node/npm environment. Do not share a
-`node_modules` directory between Windows and WSL/Linux because optional native
-dependencies are platform-specific. If you change environments, remove
-`node_modules` and `apps/web/node_modules`, then run `npm ci` in the selected
-environment.
-
-If the default web port is occupied, select another port without stopping an
-unrelated process:
-
-```powershell
-$env:TRACEVANE_WEB_PORT = "5180"; npm run dev:restart
-```
-
-```bash
-TRACEVANE_WEB_PORT=5180 npm run dev:restart
-```
-
-Use `TRACEVANE_API_PORT` in the same platform-specific form to request a
-different API port. Invalid or occupied fixed ports fail explicitly; the
-launcher never discovers and kills a port owner.
-
-Useful focused commands:
-
-```bash
-npm run dev:web
-npm run dev:api
-npm run dev:fresh
+npm run typecheck
+npm run typecheck:web
+npm run build
 npm run test:system
-npm run test:web:api
 ```
 
-Browser and service smoke tests use the same Node-owned lifecycle on Windows,
-macOS, and Linux. Install the Playwright-managed browser once for the current
-native environment, then run the public aliases; the runner reports the actual
-ports it selected and cleans up only the process trees it created:
+Windows、macOS 和 Linux 均可进行开发。不要在 Windows 与 WSL 之间共用同一份 `node_modules`；切换环境后请重新执行 `npm ci`。
 
-```bash
-npx playwright install chromium
-npm run smoke:file-manager:online-editor
-npm run smoke:ide:workbench-layout
-npm run smoke:gateway:http-foundation
-npm run test:supervisor
+## 文档
+
+- [安装与卸载](docs/installation.md)
+- [故障排查](docs/troubleshooting.md)
+- [Model Gateway 验收边界](docs/model-gateway/README.md)
+- [IDE / 在线编辑器设计](docs/ide-code-editor-solution/00-README.md)
+- [贡献指南](CONTRIBUTING.md)
+- [安全策略](SECURITY.md)
+
+## 项目结构
+
+```text
+apps/api       后端服务与运行时模块
+apps/web       React / Vite 前端
+lib            OpenClaw 兼容与交付工具
+types          前后端共享类型
+scripts        构建、发布和 smoke 脚本
+tests          系统测试与浏览器 smoke
+index.ts       OpenClaw 扩展入口
 ```
 
-Use `TRACEVANE_WEB_PORT` and `TRACEVANE_API_PORT` to isolate a smoke run when
-the defaults are occupied. Missing optional platform tools produce an explicit
-skip; dependency, build, readiness, or product-runtime failures still fail the
-command.
+## 参与与许可
 
-Default local endpoints:
+提交问题前请先搜索现有 Issues；安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。贡献代码前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-- Web: `http://127.0.0.1:5176`
-- API: `http://127.0.0.1:3761`
-
-These are development endpoints. Customer standalone installs use the packaged
-runtime defaults documented in `DEPLOY.md` (currently port `3760`).
-
-### Daemon supervision
-
-Model Gateway, Channel Connectors, and OpenClaw Recovery share one lifecycle
-contract with two ownership modes:
-
-- **Session** is the development default. The Tracevane API process owns at
-  most one child for each service and may restart an unexpectedly exited child
-  up to three times. The standalone API's normal and handled-fatal shutdown
-  paths stop owned children; an abrupt process kill, host crash, or power loss
-  cannot guarantee that cleanup. Session mode never registers an OS service.
-- **Persistent** is an explicit current-user installation, not a machine-wide
-  service. `status`, `start`, `stop`, and `restart` inspect or control an
-  existing registration; `install` atomically writes the generated template,
-  registers/enables it, starts it, and checks readiness. Explicit `repair` is
-  available for an installed service and rewrites, re-registers, restarts, and
-  checks it; repair is the required recovery path for `stale-config` or a
-  runtime that is not ready. `uninstall` stops and unregisters/disables the
-  service and removes only the generated template—it does not delete business
-  configuration, runtime state, or logs.
-
-Switching ownership first stops and verifies the previous owner, so a session
-child and a persistent service are not intentionally run together. Moving the
-checkout, changing the Node executable, rebuilding to a different entrypoint,
-or moving the config path changes the template fingerprint and reports
-`stale-config`; use repair instead of continuing with the stale registration.
-Generated task/plist/unit templates also contain the native manager's trigger,
-identity, and recovery metadata. Their launch payload references only the fixed
-Node executable, tokenized entry/config arguments, configuration path, and
-working directory. Secrets and proxy credentials stay in the protected
-business configuration and are never copied into the service template or
-command evidence.
-
-Persistent supervision is platform-native and user-scoped:
-
-- Windows registers a current-user Task Scheduler task with a logon trigger,
-  `InteractiveToken`, and `LeastPrivilege`. A Tracevane watchdog performs the
-  one-second inner daemon restart; Task Scheduler retains the outer
-  `RestartOnFailure` recovery policy.
-- macOS writes a plist under `~/Library/LaunchAgents` and controls it in the
-  `gui/$UID` domain with `RunAtLoad` and `KeepAlive`.
-- Linux writes a user unit under `~/.config/systemd/user`, controls it through
-  `systemctl --user`, and uses `Restart=on-failure`. Tracevane does not enable
-  `loginctl enable-linger` automatically.
-
-These modes do not promise survival after user logout. In particular, a macOS
-LaunchAgent belongs to the logged-in GUI session, and a Linux user service
-needs an available user manager (linger remains the user's explicit policy).
-WSL is a separate Linux environment, not a Windows service-management bridge:
-do not share `node_modules`, build output, or supervisor registrations between
-native Windows and WSL/Linux. Install dependencies and build in the environment
-that will own the process.
-
-## Release and Installation
-
-Tracevane is released as an OpenClaw UI extension. New customer installs should
-use OpenClaw `>= 2026.5.28`. The release pipeline does not require manual
-Tracevane version editing: `./pack.sh` auto-increments the patch version from
-`package.json`, synchronizes the installer and landing page, builds API/Web
-artifacts, and emits site metadata plus the release tarball SHA-256 consumed by
-the installer and upgrade checks.
-
-Common release commands:
-
-```bash
-./pack.sh
-./pack.sh 1.2.3
-./pack.sh --print-version
-./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test
-bash install-tracevane.sh --check-release
-```
-
-Customer-facing deployment details live in [DEPLOY.md](DEPLOY.md). The public
-landing page is [index.html](index.html), and the self-contained installer is
-[install-tracevane.sh](install-tracevane.sh). The installer defaults to the
-latest site metadata; offline or private-mirror installs should pass
-`--version` or `--package-url` explicitly, and should also provide
-`--package-sha256` when metadata is unavailable.
-
-## Testing and Smoke Checks
-
-The repository includes targeted system tests and smoke scripts under `tests/`
-and `scripts/`. Pick the smallest check that proves the touched surface:
-
-- API/backend contracts: `npm run typecheck:api`, `npm run test:system`
-- Web contracts: `npm run typecheck:web`, `npm run build:web`
-- Model Gateway: `npm run smoke:model-gateway:cli` or the narrower gateway smoke script
-- Channel Connectors: use the matching `smoke:channel-connectors:*` script
-- File Manager browser flows: use the matching `smoke:file-manager:*` script
-- Shared daemon lifecycle contracts: `npm run test:supervisor`
-
-The real OS lifecycle smokes are opt-in because they briefly create a
-PID-unique current-user task, LaunchAgent, or systemd user unit and then remove
-it. Build the API first, run only the command for the native host, and check the
-reported cleanup result. A non-matching platform, or an unset flag, reports
-`SKIP` rather than a successful live test.
-
-Windows PowerShell:
-
-```powershell
-npm run build:api
-$env:TRACEVANE_WINDOWS_SUPERVISOR_LIVE = "1"; npm run smoke:supervisor:windows
-```
-
-macOS:
-
-```bash
-npm run build:api
-TRACEVANE_MACOS_SUPERVISOR_LIVE=1 npm run smoke:supervisor:macos
-```
-
-Linux:
-
-```bash
-npm run build:api
-TRACEVANE_LINUX_SUPERVISOR_LIVE=1 npm run smoke:supervisor:linux
-```
-
-## Engineering Rules
-
-Tracevane follows a reuse-first engineering posture:
-
-1. Prefer native browser/Node/TypeScript APIs, existing project utilities and
-   already-installed dependencies before custom code.
-2. Keep diffs small, reviewable and reversible.
-3. Prefer deletion and consolidation over new wrapper layers.
-4. Do not introduce new dependencies without a clear, verified reason.
-5. Preserve user-visible behavior unless the task explicitly changes it.
-
-## Research-First Gate
-
-Before changing external contracts or user-visible behavior in Gateway, Channel
-Connectors, CLI Agent runners, providers, SDK/API integrations, protocols,
-IDE/editor runtime, terminal runtime, file-management workflows or platform
-substrates:
-
-1. Check current official docs/specs/API references/SDK docs/changelogs first.
-2. Use active GitHub repositories/issues/discussions second.
-3. Treat community reports/examples only as operational failure-mode evidence.
-4. If a contract cannot be verified, keep the feature explicitly unsupported
-   instead of silently half-working.
-5. Record the research in the relevant implementation, design, checklist or
-   progress document before or with the code change.
-
-For purely local refactors, documentation cleanup or tests that do not change
-contracts, keep the change small and verify locally.
-
-## OpenClaw Extension Notes
-
-- Extension entrypoint: `index.ts`
-- Runtime build output: `dist/index.js`
-- Manifest: `openclaw.plugin.json`
-- Package metadata: `package.json` field `openclaw`
-- Default transport modes: standalone API and OpenClaw gateway route
-
-Tracevane should remain usable through OpenClaw while keeping internal modules,
-shared types and frontend surfaces independent enough to support future local
-workspace runtimes.
+Tracevane 使用 [MIT License](LICENSE)。

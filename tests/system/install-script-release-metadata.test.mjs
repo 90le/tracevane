@@ -12,19 +12,19 @@ import {
   parseReleaseMetadata,
 } from '../../scripts/tracevane-release-installer-utils.mjs';
 
-test('parseReleaseMetadata extracts version, package URL, and min host version from site metadata', () => {
-  const metadata = parseReleaseMetadata(`
-    {
-      "version": "0.1.21",
-      "packageUrl": "https://tracevane.90le.cn/tracevane-0.1.21.tar.gz",
-      "minOpenClawVersion": "2026.5.28"
-    }
-  `);
+test('parseReleaseMetadata extracts version, package URL, min host version, and checksum from release metadata', () => {
+  const metadata = parseReleaseMetadata(`{
+    "version": "0.1.72",
+    "packageUrl": "https://github.com/90le/tracevane/releases/download/v0.1.72/tracevane-0.1.72.tar.gz",
+    "minOpenClawVersion": "2026.5.28",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }`);
 
   assert.deepEqual(metadata, {
-    version: '0.1.21',
-    packageUrl: 'https://tracevane.90le.cn/tracevane-0.1.21.tar.gz',
+    version: '0.1.72',
+    packageUrl: 'https://github.com/90le/tracevane/releases/download/v0.1.72/tracevane-0.1.72.tar.gz',
     minVersion: '2026.5.28',
+    sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   });
 });
 
@@ -41,7 +41,49 @@ test('parseReleaseMetadata accepts alternate min host version shapes', () => {
     version: '0.1.22',
     packageUrl: '/tracevane-0.1.22.tar.gz',
     minVersion: '2026.5.29',
+    sha256: '',
   });
+});
+
+test('parseReleaseMetadata normalizes alternate checksum shapes', () => {
+  assert.equal(parseReleaseMetadata(`{
+    "version": "0.1.23",
+    "packageSha256": " BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB "
+  }`).sha256, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+
+  assert.equal(parseReleaseMetadata(`{
+    "version": "0.1.24",
+    "checksum": {
+      "sha256": " CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC "
+    }
+  }`).sha256, 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc');
+});
+
+test('parse-metadata CLI emits four tab-separated fields', () => {
+  const result = childProcess.spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('../../scripts/tracevane-release-installer-utils.mjs', import.meta.url)), 'parse-metadata'],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        TRACEVANE_RELEASE_METADATA: JSON.stringify({
+          version: '0.1.72',
+          packageUrl: 'https://github.com/90le/tracevane/releases/download/v0.1.72/tracevane-0.1.72.tar.gz',
+          minOpenClawVersion: '2026.5.28',
+          sha256: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        }),
+      },
+    },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.stdout, [
+    '0.1.72',
+    'https://github.com/90le/tracevane/releases/download/v0.1.72/tracevane-0.1.72.tar.gz',
+    '2026.5.28',
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  ].join('\t'));
 });
 
 test('injectInstallerDefaultVersion updates installer fallback version to current release', () => {
@@ -74,9 +116,39 @@ test('installer remains self-contained for remote metadata and gateway keeps 376
   const installer = fs.readFileSync(new URL('../../install-tracevane.sh', import.meta.url), 'utf8');
 
   assert.doesNotMatch(installer, /scripts\/tracevane-release-installer-utils\.mjs/);
+  assert.match(installer, /TRACEVANE_RELEASE_BASE="\$\{TRACEVANE_RELEASE_BASE:-https:\/\/github\.com\/90le\/tracevane\/releases\/latest\/download\}"/);
+  assert.match(installer, /--release-base/);
+  assert.match(installer, /Linux\|Darwin/);
+  assert.match(installer, /MINGW\*\|MSYS\*\|CYGWIN\*/);
+  assert.match(installer, /缺少有效的安装包 SHA-256/);
+  assert.doesNotMatch(installer, /跳过完整性校验/);
   assert.match(installer, /tracevaneConfig\.transport\.preferredMode = mode;/);
   assert.match(installer, /tracevaneConfig\.transport\.standalone = \{\s*enabled: true,\s*port: apiPort,\s*\};/);
   assert.match(installer, /STANDALONE_HEALTH_URL="http:\/\/127\.0\.0\.1:\$\{TRACEVANE_API_PORT\}\/api\/system\/health"/);
+  assert.match(installer, /--json/);
+  assert.match(installer, /--uninstall/);
+  assert.match(installer, /emit_result_json\(\)/);
+  assert.match(installer, /uninstall_tracevane\(\)/);
+  assert.match(installer, /degradedFeatures/);
+});
+
+test('installer locates the extracted package without GNU-only find depth flags', () => {
+  const installer = fs.readFileSync(new URL('../../install-tracevane.sh', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(installer, /\bfind\b[^\n]*(?:-maxdepth|-mindepth)/);
+  assert.match(
+    installer,
+    /for package_candidate in "\$\{TMP_DIR\}"\/tracevane-\*; do\s+\[\[ -d "\$\{package_candidate\}" \]\] \|\| continue\s+PACKAGE_DIR="\$\{package_candidate\}"\s+break\s+done/,
+  );
+});
+
+test('installer result and human output paths do not expose credential-bearing URLs', () => {
+  const installer = fs.readFileSync(new URL('../../install-tracevane.sh', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(installer, /log "下载安装包: \$\{TRACEVANE_PACKAGE_URL\}"/);
+  assert.doesNotMatch(installer, /ACCESS_URL="\$\{ACCESS_URL\}\?token=/);
+  assert.match(installer, /log "下载安装包: \$\{PACKAGE_URL_DISPLAY\}"/);
+  assert.match(installer, /HEALTH_REQUEST_URL="\$\{HEALTH_URL\}\?token=\$\{GATEWAY_TOKEN\}"/);
 });
 
 test('pack script syncs landing page versions and includes the current React app source snapshot', () => {
@@ -113,6 +185,14 @@ test('pack script provides a non-mutating test mode for release smoke checks', (
   assert.match(packScript, /rewrite-landing-version[\s\S]*"\$\{ROOT_LANDING_PATH\}"/);
   assert.match(viteConfig, /TRACEVANE_BUILD_VERSION/);
   assert.match(viteConfig, /if \(tracevanePackageVersionOverride\) return tracevanePackageVersionOverride;/);
+});
+
+test('pack script emits GitHub release URLs and SHA256SUMS', () => {
+  const packScript = fs.readFileSync(new URL('../../pack.sh', import.meta.url), 'utf8');
+  assert.match(packScript, /GITHUB_REPOSITORY="\$\{TRACEVANE_GITHUB_REPOSITORY:-90le\/tracevane\}"/);
+  assert.match(packScript, /releases\/download\/v\$\{version\}\/tracevane-\$\{version\}\.tar\.gz/);
+  assert.match(packScript, /SHA256SUMS/);
+  assert.doesNotMatch(packScript, /https:\/\/tracevane\.90le\.cn\/tracevane-/);
 });
 
 test('build scripts clean generated output before compiling fresh artifacts', () => {
@@ -170,18 +250,32 @@ test('release surfaces use the current OpenClaw minimum host version', () => {
   assert.doesNotMatch(packScript, /2026\.4\.8/);
 });
 
+test('public install docs and landing prompts use GitHub release assets and stable prompt contracts', () => {
+  const files = ['../../DEPLOY.md', '../../docs/installation.md', '../../docs/agent-installation.md', '../../docs/troubleshooting.md', '../../index.html'];
+  const text = files.map((file) => fs.readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
+  assert.match(text, /github\.com\/90le\/tracevane\/releases\/latest\/download\/install-tracevane\.sh/);
+  assert.doesNotMatch(text, /tracevane\.90le\.cn\/install-tracevane\.sh/);
+  for (const id of ['promptStandaloneShort', 'promptGatewayShort', 'promptStandaloneAudit', 'promptGatewayAudit']) assert.match(text, new RegExp(`id=["']${id}["']`));
+  for (const token of ['--check-release', '--dry-run', '--json', '--uninstall', 'healthChecks', '3760', 'package-sha256', 'WSL']) assert.match(text, new RegExp(token, 'i'));
+  assert.match(text, /--mode standalone --json/);
+  assert.match(text, /--mode gateway --json/);
+  assert.match(text, /--version \"\$VERSION\" --package-url \"\$PACKAGE_URL\" --package-sha256 \"\$SHA256\"/);
+  assert.match(text, /Maintainer-only GitHub Release publication/);
+  assert.match(text, /curl \| bash/);
+});
+
 function extractConfigWriterScript(installerSource) {
-  const normalizedSource = installerSource.replace(/\r\n/g, '\n');
+  const normalizedInstallerSource = installerSource.replace(/\r\n/g, '\n');
   const marker = 'log "写入 OpenClaw 配置"';
-  const markerIndex = normalizedSource.indexOf(marker);
+  const markerIndex = normalizedInstallerSource.indexOf(marker);
   assert.notEqual(markerIndex, -1);
 
-  const start = normalizedSource.indexOf("const fs = require('node:fs');", markerIndex);
+  const start = normalizedInstallerSource.indexOf("const fs = require('node:fs');", markerIndex);
   assert.notEqual(start, -1);
 
-  const end = normalizedSource.indexOf('\nNODE\nfi\n\nif [[ "${DRY_RUN}" -eq 0 ]]; then\n  log "校验 OpenClaw 配置"', start);
+  const end = normalizedInstallerSource.indexOf('\nNODE\nfi\n\nif [[ "${DRY_RUN}" -eq 0 ]]; then\n  log "校验 OpenClaw 配置"', start);
   assert.notEqual(end, -1);
-  return normalizedSource.slice(start, end);
+  return normalizedInstallerSource.slice(start, end);
 }
 
 test('installer config writer prunes retired product residue instead of preserving compatibility', () => {
@@ -277,7 +371,7 @@ test('installer config writer prunes retired product residue instead of preservi
     installPath: path.join(tmpRoot, 'extensions', 'keep'),
   });
   const normalizedLoadPaths = nextConfig.plugins.load.paths.map((value) =>
-    path.resolve(value).replace(/\\/g, '/'),
+    value.replace(/\\/g, '/'),
   );
   assert.deepEqual(normalizedLoadPaths, [
     path.join(tmpRoot, 'extensions', 'keep').replace(/\\/g, '/'),

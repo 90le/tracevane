@@ -4,7 +4,7 @@ Purpose: 给 AI 编程代理和开发者建立同一个 IDE / VS Code 类 Workbe
 
 本文件不是要求完整复刻 VS Code，也不是插件兼容规范。Tracevane 只参考主流代码 IDE 的交互语义，并按 M3/M4/M5/M6/M7 分阶段实现。
 
-视觉提醒：本文建立的是 IDE 交互和术语共识，不是要求复刻 VS Code 主题。Tracevane 的 File Surface、IDE Workbench、Monaco、xterm、Dockview、Diff、Problems、Output 必须映射 `apps/web/src/design/theme.css` 中的 Aurora token，并遵守 `docs/界面设计守则.md`、`DESIGN.md` 和 `14-视觉主题与设计系统适配.md`。
+视觉提醒：本文建立的是 IDE 交互和术语共识，不是要求复刻 VS Code 主题。Tracevane 的 File Surface、IDE Workbench、Monaco、xterm、Dockview、Diff、Problems、Output 必须映射 `apps/web/src/design/theme.css` 中的 Aurora token，并遵守 `docs/界面设计守则.md` 和 `14-视觉主题与设计系统适配.md`。
 
 AI/开发者不要把“像 VS Code 一样可拆分、可移动、可持久化”误解为“使用 VS Code Dark+ 配色、默认蓝色 drop target 或纯黑终端”。
 
