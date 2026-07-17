@@ -18,11 +18,10 @@ import {
   readExplorerTransferPayload,
 } from "@/shared/explorer-core";
 import {
-  createTerminalWebSocketUrl,
   createWorkbenchTerminalSession,
   endWorkbenchTerminalSession,
-  parseTerminalEvent,
 } from "./terminalClient";
+import { connectWorkbenchTerminal, type WorkbenchTerminalTransport } from "./terminalTransport";
 import { XtermHost, type XtermDimensions, type XtermHostHandle } from "./XtermHost";
 
 export type TerminalPaneStatus = "idle" | "creating" | "connecting" | "running" | "closed" | "error";
@@ -64,13 +63,12 @@ export function TerminalPaneView({
   shell?: string | null;
   createMode?: "create" | "resume";
   active: boolean;
-  compact?: boolean;
   showHeader?: boolean;
   onFocus: (paneId: string) => void;
   onClose: (paneId: string) => void;
 }) {
   const xtermRef = React.useRef<XtermHostHandle | null>(null);
-  const socketRef = React.useRef<WebSocket | null>(null);
+  const transportRef = React.useRef<WorkbenchTerminalTransport | null>(null);
   const sessionIdRef = React.useRef<string | null>(null);
   const dimensionsRef = React.useRef<XtermDimensions>({ cols: 80, rows: 24 });
   const [sessionId, setSessionId] = React.useState<string | null>(null);
@@ -95,21 +93,20 @@ export function TerminalPaneView({
     };
   }, []);
 
-  const closeSocket = React.useCallback(() => {
-    const socket = socketRef.current;
-    socketRef.current = null;
-    if (!socket) return;
+  const closeTransport = React.useCallback(() => {
+    const transport = transportRef.current;
+    transportRef.current = null;
+    if (!transport) return;
     try {
-      socket.close();
+      transport.close();
     } catch {
       // ignore close races
     }
   }, []);
 
   const sendText = React.useCallback((text: string) => {
-    const socket = socketRef.current;
-    if (!text || !socket || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(text);
+    if (!text) return;
+    transportRef.current?.sendInput(text);
   }, []);
 
   const updateSelectedText = React.useCallback((selection: string) => {
@@ -157,57 +154,62 @@ export function TerminalPaneView({
     }
   }, []);
 
-  const attachSocket = React.useCallback((sid: string) => {
-    closeSocket();
+  const attachTransport = React.useCallback((sid: string) => {
+    closeTransport();
     setStatus("connecting");
     setMessage("正在连接终端输出流…");
-    const socket = new WebSocket(createTerminalWebSocketUrl(sid, { rootId, cwd, profileId, shell }));
-    socketRef.current = socket;
-    socket.addEventListener("open", () => {
-      if (socketRef.current !== socket) return;
-      setStatus("running");
-      setMessage("终端运行中");
-      socket.send(JSON.stringify({ type: "resize", ...dimensionsRef.current }));
-      // Do not auto-steal focus from Explorer/Editor when a socket opens.
-    });
-    socket.addEventListener("message", (event) => {
-      if (socketRef.current !== socket) return;
-      const payload = parseTerminalEvent(event);
-      if (!payload) return;
-      if (payload.type === "output") {
-        xtermRef.current?.write(payload.data);
-        return;
-      }
-      if (payload.type === "session") {
+    const transport = connectWorkbenchTerminal(sid, {
+      rootId,
+      cwd,
+      profileId,
+      shell,
+      cols: dimensionsRef.current.cols,
+      rows: dimensionsRef.current.rows,
+    }, {
+      onOpen: () => {
+        if (transportRef.current !== transport) return;
         setStatus("running");
-        setBackend(payload.descriptor?.durableBackend ?? null);
-        setMessage(payload.descriptor?.durableBackend === "tmux"
-          ? "终端运行中 · tmux 持久化"
-          : "终端运行中 · PTY 持久化");
-        return;
-      }
-      if (payload.type === "closed") {
-        setStatus("closed");
-        setMessage(payload.reason === "session_ended" ? "终端已关闭" : "终端进程已退出");
-        return;
-      }
-      if (payload.type === "error") {
+        setMessage("终端运行中");
+        // Do not auto-steal focus from Explorer/Editor when a transport opens.
+      },
+      onEvent: (payload) => {
+        if (transportRef.current !== transport) return;
+        if (payload.type === "output") {
+          xtermRef.current?.write(payload.data);
+          return;
+        }
+        if (payload.type === "session") {
+          setStatus("running");
+          setBackend(payload.descriptor?.durableBackend ?? null);
+          setMessage(payload.descriptor?.durableBackend === "tmux"
+            ? "终端运行中 · tmux 持久化"
+            : "终端运行中 · PTY 持久化");
+          return;
+        }
+        if (payload.type === "closed") {
+          setStatus("closed");
+          setMessage(payload.reason === "session_ended" ? "终端已关闭" : "终端进程已退出");
+          return;
+        }
+        if (payload.type === "error") {
+          setStatus("error");
+          setMessage(payload.message);
+        }
+      },
+      onClose: () => {
+        if (transportRef.current !== transport) return;
+        transportRef.current = null;
+        setStatus((current) => (current === "closed" || current === "error" ? current : "closed"));
+        setMessage((current) => current || "终端连接已断开");
+      },
+      onError: (errorMessage) => {
+        if (transportRef.current !== transport) return;
         setStatus("error");
-        setMessage(payload.message);
-      }
+        setMessage(errorMessage);
+      },
     });
-    socket.addEventListener("close", () => {
-      if (socketRef.current !== socket) return;
-      socketRef.current = null;
-      setStatus((current) => (current === "closed" || current === "error" ? current : "closed"));
-      setMessage((current) => current || "终端连接已断开");
-    });
-    socket.addEventListener("error", () => {
-      if (socketRef.current !== socket) return;
-      setStatus("error");
-      setMessage("终端 WebSocket 连接失败");
-    });
-  }, [active, closeSocket, cwd, profileId, rootId, shell]);
+    transportRef.current = transport;
+  }, [closeTransport, cwd, profileId, rootId, shell]);
 
   const startSession = React.useCallback(async () => {
     if (!rootId) return;
@@ -251,7 +253,7 @@ export function TerminalPaneView({
         if (disposedRef.current) return;
         setSessionId(descriptor.sessionId);
         setBackend(descriptor.durableBackend ?? null);
-        attachSocket(descriptor.sessionId);
+        attachTransport(descriptor.sessionId);
       } catch (error) {
         if (createMode !== "create") {
           setStatus("closed");
@@ -269,7 +271,7 @@ export function TerminalPaneView({
     })();
     startSessionInFlightRef.current = { terminalId, promise };
     await promise;
-  }, [attachSocket, createMode, cwd, killSession, onClose, paneId, profileId, rootId, shell, terminalId, title]);
+  }, [attachTransport, createMode, cwd, killSession, onClose, paneId, profileId, rootId, shell, terminalId, title]);
 
   React.useEffect(() => {
     if (sessionId || status === "creating" || status === "connecting" || status === "running") return;
@@ -278,11 +280,11 @@ export function TerminalPaneView({
   }, [sessionId, startSession, status, terminalId]);
 
   React.useEffect(() => {
-    // Prop identity changes must not reuse the previous xterm/socket pair.
+    // Prop identity changes must not reuse the previous xterm/transport pair.
     if (previousTerminalIdRef.current === terminalId) return;
     previousTerminalIdRef.current = terminalId;
     userClosedRef.current = false;
-    closeSocket();
+    closeTransport();
     setTerminalFocused(false);
     startSessionInFlightRef.current = null;
     sessionIdRef.current = null;
@@ -292,14 +294,14 @@ export function TerminalPaneView({
     setBackend(null);
     xtermRef.current?.clear();
     updateSelectedText("");
-  }, [closeSocket, terminalId, updateSelectedText]);
+  }, [closeTransport, terminalId, updateSelectedText]);
 
   React.useEffect(() => () => {
     // Component unmount means the browser view detached, not that the user ended
     // the terminal. Keep the pinned PTY alive for refresh, route changes, panel
     // placement switches, and later cross-device reattach flows.
-    closeSocket();
-  }, [closeSocket]);
+    closeTransport();
+  }, [closeTransport]);
 
   React.useEffect(() => {
     if (!menu) return;
@@ -334,9 +336,7 @@ export function TerminalPaneView({
 
   const handleResize = React.useCallback((dimensions: XtermDimensions) => {
     dimensionsRef.current = dimensions;
-    const socket = socketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(JSON.stringify({ type: "resize", ...dimensions }));
+    transportRef.current?.resize(dimensions);
   }, []);
 
   const selectAll = React.useCallback(() => {
@@ -356,7 +356,7 @@ export function TerminalPaneView({
     setMenu(null);
     userClosedRef.current = true;
     const sid = sessionIdRef.current || terminalId;
-    closeSocket();
+    closeTransport();
     setStatus("closed");
     setMessage("终端已关闭");
     onClose(paneId);
@@ -367,7 +367,7 @@ export function TerminalPaneView({
         });
       }
     });
-  }, [closeSocket, killSession, onClose, paneId, terminalId]);
+  }, [closeTransport, killSession, onClose, paneId, terminalId]);
 
   const insertPath = React.useCallback((path: string | undefined) => {
     const normalized = String(path || "").trim();
@@ -529,8 +529,8 @@ export function TerminalPaneView({
       ) : null}
       <div className="relative min-h-0 min-w-0" data-ide-terminal-pane-body>
         {status === "error" ? (
-          <div className="absolute inset-x-3 top-3 z-10 flex items-start gap-2 rounded-md border border-red/40 bg-red-soft p-2 text-xs text-ink-strong" role="status">
-            <AlertTriangle className="mt-0.5 size-4 text-red" />
+          <div className="absolute inset-x-3 top-3 z-10 flex items-start gap-2 rounded-md border border-danger/40 bg-danger-soft p-2 text-xs text-ink-strong" role="status">
+            <AlertTriangle className="mt-0.5 size-4 text-danger" />
             <div>
               <div className="font-medium">终端不可用</div>
               <div className="text-muted">{message}</div>
@@ -630,7 +630,7 @@ function TerminalPaneMenuButton({
       role="menuitem"
       className={cn(
         "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent [&_svg]:size-3.5",
-        danger && "text-red hover:bg-red-soft",
+        danger && "text-danger hover:bg-danger-soft",
       )}
       disabled={disabled}
       onClick={onClick}

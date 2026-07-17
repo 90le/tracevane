@@ -10,7 +10,6 @@ export function TerminalGroupView({
   cwd,
   cwdAbsolutePath,
   activePaneId,
-  compact = false,
   showPaneHeader = true,
   onFocusPane,
   onClosePane,
@@ -22,7 +21,6 @@ export function TerminalGroupView({
   cwd: string;
   cwdAbsolutePath?: string;
   activePaneId: string;
-  compact?: boolean;
   showPaneHeader?: boolean;
   onFocusPane: (paneId: string) => void;
   onClosePane: (paneId: string) => void;
@@ -44,7 +42,6 @@ export function TerminalGroupView({
         shell={pane.shell}
         createMode={pane.createMode}
         active={activePaneId === pane.paneId}
-        compact={compact}
         showHeader={showPaneHeader}
         onFocus={onFocusPane}
         onClose={onClosePane}
@@ -85,7 +82,6 @@ export function TerminalGroupView({
               cwd={cwd}
               cwdAbsolutePath={cwdAbsolutePath}
               activePaneId={activePaneId}
-              compact={compact}
               showPaneHeader={showPaneHeader}
               onFocusPane={onFocusPane}
               onClosePane={onClosePane}

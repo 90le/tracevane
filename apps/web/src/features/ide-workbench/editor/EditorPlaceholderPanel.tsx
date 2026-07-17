@@ -54,7 +54,7 @@ export function EditorPlaceholderPanel({
         <div className="mx-auto mb-3 grid size-11 place-items-center rounded-md bg-primary-soft text-primary">
           {isFile ? (
             <FileText className="size-5" />
-          ) : params.title.includes("Down") || params.title.includes("下") ? (
+          ) : params.title.includes("向下") ? (
             <SplitSquareVertical className="size-5" />
           ) : (
             <SplitSquareHorizontal className="size-5" />

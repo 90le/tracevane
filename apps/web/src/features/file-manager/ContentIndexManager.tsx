@@ -23,7 +23,9 @@ import {
   useRebuildFilesContentIndexMutation,
   useScanFilesContentIndexMutation,
 } from "@/lib/query/files";
+import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
+import { LoadingState } from "@/shared/states/LoadingState";
 import type {
   FilesContentIndexRecordPreview,
   FilesContentIndexRecordsPayload,
@@ -498,9 +500,7 @@ function IndexRecordsPanel({
         data-content-index-virtualized-records
       >
         {loading && !records.length ? (
-          <div className="px-4 py-8 text-center text-xs text-muted">
-            正在加载索引记录…
-          </div>
+          <LoadingState className="px-4 py-10" title="正在加载索引记录…" />
         ) : records.length ? (
           <div
             className="relative divide-y divide-line"
@@ -521,9 +521,12 @@ function IndexRecordsPanel({
             </div>
           </div>
         ) : (
-          <div className="px-4 py-8 text-center text-xs text-muted">
-            当前筛选没有索引记录。
-          </div>
+          <EmptyState
+            className="px-4 py-10"
+            title="当前筛选没有索引记录"
+            description="调整搜索关键词或状态筛选后再试。"
+            icon={<FileSearch />}
+          />
         )}
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-1.5 border-t border-line bg-panel px-2 py-1.5 text-xs text-muted sm:gap-2 sm:px-3 sm:py-2">
@@ -610,8 +613,8 @@ function IndexRecordRow({
         className={cn(
           "w-fit rounded-full px-2 py-0.5",
           record.status === "valid"
-            ? "bg-green-soft text-green"
-            : "bg-amber-soft text-amber",
+            ? "bg-success/10 text-success"
+            : "bg-warning-soft text-warning",
         )}
       >
         {record.status === "valid" ? "有效" : "失效"}

@@ -1,5 +1,7 @@
 import * as React from "react";
 
+import { resolveApiUrl } from "@/lib/runtime";
+
 export type ExternalLspProviderRuntimeStatus =
   "available" | "starting" | "stopped" | "crashed" | "degraded" | "unavailable";
 
@@ -164,7 +166,7 @@ export interface ExternalLspProviderStatusSummary {
 export async function requestLspStatus(
   options: { signal?: AbortSignal } = {},
 ): Promise<LspStatusResponse> {
-  const response = await fetch("/api/lsp/status", {
+  const response = await fetch(resolveApiUrl("/api/lsp/status"), {
     headers: { Accept: "application/json" },
     signal: options.signal,
   });

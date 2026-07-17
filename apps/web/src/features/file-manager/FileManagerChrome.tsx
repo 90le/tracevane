@@ -71,8 +71,6 @@ export interface FileManagerBookmarkItem {
 export interface FileManagerHeaderProps {
   rootId: string;
   roots: FileRootSummary[];
-  rootAbsolutePath?: string;
-  directoryPath: string;
   viewMode: FileManagerViewMode;
   onChangeRoot: (rootId: string) => void;
   onNewFile: () => void;
@@ -292,8 +290,6 @@ function compactBreadcrumbs(
 }
 
 export interface FileManagerNavigationBarProps {
-  roots: FileRootSummary[];
-  onChangeRoot: (rootId: string) => void;
   directoryPath: string;
   parentPath: string | null;
   breadcrumbs: FileBreadcrumb[];
@@ -302,7 +298,6 @@ export interface FileManagerNavigationBarProps {
   pathSuggestions: FileManagerLocation[];
   pathSuggestionsOpen: boolean;
   activePathSuggestionIndex: number;
-  quickLocations: FileManagerQuickLocation[];
   favoriteTree: FileManagerBookmarkItem[];
   favoriteCount: number;
   recentLocations: FileManagerQuickLocation[];
@@ -341,14 +336,6 @@ export interface FileManagerNavigationBarProps {
   onClearRecentLocations: () => void;
   filterInputRef?: React.RefObject<HTMLInputElement | null>;
   onFilterTextChange: (value: string) => void;
-  onToggleShowHidden: () => void;
-  rootId: string;
-  viewMode: FileManagerViewMode;
-  onNewFile: () => void;
-  onNewDirectory: () => void;
-  onUpload: () => void;
-  onChangeViewMode: (mode: FileManagerViewMode) => void;
-  onRefresh: () => void;
   currentLocation: FileManagerLocation;
 }
 
@@ -2021,7 +2008,7 @@ export function FileManagerNavigationBar({
               </div>
             </details>
           ) : null}
-        </div>{" "}
+        </div>
       </div>
 
       <details

@@ -45,12 +45,3 @@ export function explorerFileType(entry: Pick<FileEntrySummary, "kind" | "ext" | 
   if (DOCUMENT_EXTENSIONS.has(ext)) return "document";
   return "binary";
 }
-
-export function isExplorerEditableText(entry: Pick<FileEntrySummary, "kind" | "textLike">): boolean {
-  return entry.kind === "file" && entry.textLike;
-}
-
-export function isExplorerPreviewableMedia(entry: Pick<FileEntrySummary, "kind" | "ext" | "imageLike" | "textLike">): boolean {
-  const type = explorerFileType(entry);
-  return type === "image" || type === "video" || type === "audio" || type === "pdf";
-}

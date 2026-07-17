@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
+import { Button } from "@/design/ui/button";
 
 import type {
   OpenClawRecoveryCommandSnapshot,
@@ -33,12 +34,12 @@ export function PanelHead({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+    <div className="flex min-w-0 flex-wrap items-center gap-3 border-b border-line px-4 py-3">
       <div className="min-w-0">
         <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
-        {sub && <span className="text-sm text-subtle">{sub}</span>}
+        {sub && <span className="block truncate text-sm text-subtle">{sub}</span>}
       </div>
-      {action && <div className="ml-auto shrink-0">{action}</div>}
+      {action && <div className="ml-auto shrink-0 max-sm:ml-0">{action}</div>}
     </div>
   );
 }
@@ -177,7 +178,7 @@ export function CommandEvidence({
             <span
               className={cn(
                 "inline-flex items-center rounded-full px-[9px] py-[3px] text-xs font-semibold",
-                cmd.ok ? "bg-green-soft text-green" : "bg-red-soft text-red",
+                cmd.ok ? "bg-success/12 text-success" : "bg-danger-soft text-danger",
               )}
             >
               {cmd.ok ? "成功" : "失败"}
@@ -228,22 +229,22 @@ export function Pager({
         第 {page} / {Math.max(totalPages, 1)} 页 · 共 {totalEntries} 条
       </span>
       <div className="ml-auto flex gap-2">
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={onPrev}
           disabled={!hasPreviousPage || pending}
-          className="rounded-sm border border-line px-2.5 py-1 text-muted outline-none transition-colors hover:bg-panel-2 hover:text-ink focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           上一页
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           onClick={onNext}
           disabled={!hasNextPage || pending}
-          className="rounded-sm border border-line px-2.5 py-1 text-muted outline-none transition-colors hover:bg-panel-2 hover:text-ink focus-visible:shadow-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           下一页
-        </button>
+        </Button>
       </div>
     </div>
   );

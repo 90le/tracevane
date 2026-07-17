@@ -413,7 +413,7 @@ export function BulkActionBar({
             onChmod={onChmod}
             onUnarchive={onUnarchive}
           />
-          <div className="ml-auto flex shrink-0 items-center gap-2 rounded border border-red/20 bg-red-soft px-2 py-1 text-red">
+          <div className="ml-auto flex shrink-0 items-center gap-2 rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
             <span className="hidden md:inline">危险操作</span>
             <Button
               variant="danger"
@@ -485,53 +485,7 @@ export function BulkActionBar({
                 label="编辑"
                 onClick={onEdit}
               />
-            ) : (
-              <details
-                className="group col-span-1"
-                data-file-manager-mobile-bulk-more
-              >
-                <summary
-                  className="grid min-h-14 cursor-pointer list-none place-items-center gap-1 rounded-md border border-line bg-panel-2 px-1 py-2 text-center text-2xs text-muted shadow-sm marker:hidden hover:border-primary-line hover:bg-primary-soft hover:text-primary focus-visible:shadow-[var(--ring)] focus-visible:outline-none"
-                  aria-label="更多批量操作"
-                >
-                  <MoreHorizontal className="size-3.5" />
-                  <span>更多</span>
-                </summary>
-                <div className="absolute inset-x-3 bottom-[calc(100%+0.5rem)] z-10 grid grid-cols-2 gap-2 rounded-lg border border-line bg-panel p-2 shadow-xl">
-                  {canRename ? (
-                    <MobileBulkAction
-                      icon={<File className="size-4" />}
-                      label="重命名"
-                      onClick={onRename}
-                    />
-                  ) : null}
-                  <MobileBulkAction
-                    icon={<Package className="size-4" />}
-                    label="打包"
-                    onClick={onArchive}
-                  />
-                  {canUnarchive ? (
-                    <MobileBulkAction
-                      icon={<ArchiveRestore className="size-4" />}
-                      label="解压"
-                      onClick={onUnarchive}
-                    />
-                  ) : null}
-                  <MobileBulkAction
-                    icon={<File className="size-4" />}
-                    label="权限"
-                    onClick={onChmod}
-                  />
-                  <MobileBulkAction
-                    icon={<Trash2 className="size-4" />}
-                    label="删除"
-                    onClick={onDelete}
-                    danger
-                  />
-                </div>
-              </details>
-            )}
-            {canEdit && onEdit ? (
+            ) : null}
             <details
               className="group col-span-1"
               data-file-manager-mobile-bulk-more
@@ -576,7 +530,6 @@ export function BulkActionBar({
                 />
               </div>
             </details>
-            ) : null}
           </div>
         </div>
       </div>
@@ -680,7 +633,7 @@ function MobileBulkAction({
       className={cn(
         "grid min-h-14 place-items-center gap-1 rounded-md border border-line bg-panel-2 px-1 py-2 text-center text-2xs shadow-sm focus-visible:shadow-[var(--ring)] focus-visible:outline-none",
         danger
-          ? "border-red/25 bg-red-soft text-red"
+          ? "border-danger/25 bg-danger-soft text-danger"
           : "text-muted hover:border-primary-line hover:bg-primary-soft hover:text-primary",
       )}
       onClick={onClick}
@@ -2295,7 +2248,7 @@ function FileRow({
             </span>
           ) : null}
           {dropOperation ? (
-            <span className="hidden shrink-0 rounded bg-primary px-1.5 py-0.5 text-2xs font-semibold text-white sm:inline">
+            <span className="hidden shrink-0 rounded bg-primary px-1.5 py-0.5 text-2xs font-semibold text-primary-ink sm:inline">
               {dropOperation === "upload"
                 ? "上传到此处"
                 : dropOperation === "copy"
@@ -2322,7 +2275,7 @@ function FileRow({
               : "无修改时间"}
           </span>
           {dropOperation ? (
-            <span className="rounded bg-primary px-1.5 py-0.5 font-semibold text-white">
+            <span className="rounded bg-primary px-1.5 py-0.5 font-semibold text-primary-ink">
               {dropOperation === "upload"
                 ? "上传到此处"
                 : dropOperation === "copy"
@@ -2586,7 +2539,7 @@ function FileGridCard({
             {entry.kind === "file" ? <span>{formatBytes(entry.size ?? 0)}</span> : null}
           </div>
           {dropOperation ? (
-            <div className="mt-1 rounded-full bg-primary px-2 py-0.5 text-2xs font-semibold text-white">
+            <div className="mt-1 rounded-full bg-primary px-2 py-0.5 text-2xs font-semibold text-primary-ink">
               {dropOperation === "upload"
                 ? "上传到此处"
                 : dropOperation === "copy"

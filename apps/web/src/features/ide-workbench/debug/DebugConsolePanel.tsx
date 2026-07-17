@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { EmptyState } from "@/shared/states/EmptyState";
 import { evaluateIdeDebugSession } from "./debugClient";
 import { useIdeDebugSnapshot } from "./debugStore";
 import type { DebugEvaluateMode } from "../../../../../../types/debug";
@@ -43,17 +44,17 @@ export function DebugConsolePanel() {
   }, [handleEvaluate]);
 
   return (
-    <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-canvas" data-ide-debug-console-panel>
+    <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-canvas" data-ide-debug-console-panel>
       <div className="flex min-h-8 items-center justify-between gap-3 border-b border-line px-3 text-xs text-muted">
-        <span>Debug Console</span>
-        <span className="truncate">
-          {snapshot.sessions.length} sessions · {snapshot.events.length} events · {snapshot.watches.length} watches
+        <span className="shrink-0">Debug Console</span>
+        <span className="min-w-0 truncate">
+          {snapshot.sessions.length} 个会话 · {snapshot.events.length} 条事件 · {snapshot.watches.length} 个监视
         </span>
       </div>
       <div ref={scrollerRef} className="min-h-0 overflow-auto p-3 font-mono text-xs leading-5">
         {snapshot.watches.length ? (
           <section className="mb-3 rounded-md border border-line bg-panel/80 p-2 font-sans" data-ide-debug-watch-list>
-            <div className="mb-1 text-xs font-semibold text-ink-strong">Watch</div>
+            <div className="mb-1 text-xs font-semibold text-ink-strong">监视</div>
             <div className="grid gap-1">
               {snapshot.watches.map((watch) => (
                 <div key={`${watch.sessionId}:${watch.expression}`} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded bg-canvas px-2 py-1 text-xs" data-ide-debug-watch-result>
@@ -66,7 +67,7 @@ export function DebugConsolePanel() {
         ) : null}
         {snapshot.evaluations.length ? (
           <section className="mb-3 rounded-md border border-line bg-panel/80 p-2 font-sans" data-ide-debug-evaluation-list>
-            <div className="mb-1 text-xs font-semibold text-ink-strong">Evaluate</div>
+            <div className="mb-1 text-xs font-semibold text-ink-strong">求值</div>
             <div className="grid gap-1">
               {snapshot.evaluations.slice(-5).map((item) => (
                 <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded bg-canvas px-2 py-1 text-xs" data-ide-debug-evaluation-result>
@@ -87,9 +88,12 @@ export function DebugConsolePanel() {
             <span className="min-w-0 whitespace-pre-wrap break-words text-ink">{event.text}</span>
           </div>
         )) : (
-          <div className="rounded-md border border-dashed border-line bg-panel p-3 text-sm font-sans text-muted" data-ide-debug-console-empty>
-            Debug Console 尚无输出。启动 debug session 后可用受控表达式读取 session.state、cwd、program、lineNumber 等 proof 值。
-          </div>
+          <EmptyState
+            className="h-full font-sans"
+            title="Debug Console 尚无输出"
+            description="启动调试会话后，可在下方输入受控表达式（如 session.state、cwd、program、lineNumber）求值。"
+            data-ide-debug-console-empty
+          />
         )}
       </div>
       <div className="border-t border-line bg-panel px-3 py-2">
@@ -114,7 +118,7 @@ export function DebugConsolePanel() {
         </div>
         <div className="mt-1 flex min-w-0 justify-between gap-2 text-[11px] text-muted">
           <span className="truncate" data-ide-debug-console-active-session>
-            {activeSession ? `active: ${activeSession.name} · ${activeSession.state}` : "先启动一个 Debug session"}
+            {activeSession ? `当前：${activeSession.name} · ${activeSession.state}` : "先启动一个调试会话"}
           </span>
           {error ? <span className="truncate text-danger" data-ide-debug-console-error>{error}</span> : null}
         </div>

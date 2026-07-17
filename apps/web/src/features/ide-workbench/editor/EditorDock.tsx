@@ -12,10 +12,11 @@ import type {
   SerializedDockview,
 } from "dockview-react";
 import { DockviewReact } from "dockview-react";
-import { CheckCheck, Code2, Copy, Eye, MoreHorizontal, Pin, Save, Sparkles, SplitSquareHorizontal, SplitSquareVertical, TextCursorInput, X } from "lucide-react";
+import { CheckCheck, Code2, Copy, Eye, FileText, MoreHorizontal, Pin, Save, Sparkles, SplitSquareHorizontal, SplitSquareVertical, TextCursorInput, X } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { toast } from "@/design/ui/sonner";
+import { EmptyState } from "@/design/ui/state";
 import type { EditorSaveState } from "@/shared/editor-core";
 import type { IdeGitDecoration } from "../git";
 import type { IdeWorkbenchEditorFileMetadata, IdeWorkbenchEditorTab } from "../types";
@@ -193,11 +194,11 @@ export function EditorDock({
     const id = `split-${direction}-${Date.now()}`;
     api.addPanel<EditorPlaceholderParams>({
       id,
-      title: direction === "right" ? "Split Right" : "Split Down",
+      title: direction === "right" ? "向右拆分" : "向下拆分",
       component: EDITOR_COMPONENT,
       params: {
         kind: "split-placeholder",
-        title: direction === "right" ? "Split Right 占位" : "Split Down 占位",
+        title: direction === "right" ? "向右拆分" : "向下拆分",
         description:
           "已创建新的编辑器分组。请从资源管理器打开文件，或从已有标签页右键拆分。",
       },
@@ -246,14 +247,13 @@ function EditorDockHeaderActionsAdapter(props: IDockviewHeaderActionsProps) {
 
 function EditorDockWatermark(_props: IWatermarkPanelProps) {
   return (
-    <div className="grid h-full place-items-center bg-canvas p-6 text-center text-sm text-muted" data-ide-editor-watermark>
-      <div className="max-w-md rounded-lg border border-dashed border-line bg-panel px-5 py-4">
-        <div className="font-semibold text-ink-strong">未打开文件</div>
-        <div className="mt-2">
-          从左侧资源管理器选择一个文件开始编辑或预览。已打开文件会保留在上方标签页，并随工作区布局一起恢复。
-        </div>
-      </div>
-    </div>
+    <EmptyState
+      className="h-full bg-canvas"
+      icon={<FileText />}
+      title="未打开文件"
+      description="从左侧资源管理器选择一个文件开始编辑或预览。已打开文件会保留在上方标签页，并随工作区布局一起恢复。"
+      data-ide-editor-watermark
+    />
   );
 }
 
@@ -504,7 +504,7 @@ function EditorDockTab({
           event.preventDefault();
           event.stopPropagation();
           api.setActive();
-          setMenu({ x: event.clientX, y: event.clientY });
+          setMenu(clampTabMenuPoint(event.clientX, event.clientY));
         }}
         onKeyDown={(event) => {
           if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
@@ -512,7 +512,7 @@ function EditorDockTab({
             event.stopPropagation();
             api.setActive();
             const rect = event.currentTarget.getBoundingClientRect();
-            setMenu({ x: rect.left + 12, y: rect.bottom + 4 });
+            setMenu(clampTabMenuPoint(rect.left + 12, rect.bottom + 4));
           }
         }}
         tabIndex={0}
@@ -531,8 +531,8 @@ function EditorDockTab({
           <span
             className={cn(
               "grid min-w-4 shrink-0 place-items-center rounded border px-1 py-0.5 text-[10px] font-semibold leading-none",
-              gitDecoration.tone === "added" && "border-green/40 bg-green-soft text-green",
-              gitDecoration.tone === "modified" && "border-amber/40 bg-amber-soft text-amber",
+              gitDecoration.tone === "added" && "border-success/40 bg-success/10 text-success",
+              gitDecoration.tone === "modified" && "border-warning/40 bg-warning-soft text-warning",
               gitDecoration.tone === "deleted" && "border-danger-line bg-danger-soft text-danger",
               gitDecoration.tone === "renamed" && "border-primary-line bg-primary-soft text-primary",
               gitDecoration.tone === "untracked" && "border-primary-line bg-primary-soft text-primary",
@@ -545,7 +545,7 @@ function EditorDockTab({
             {gitDecoration.label}
           </span>
         ) : null}
-        {tab?.dirty ? <span className="shrink-0 text-amber" aria-label="未保存修改">●</span> : null}
+        {tab?.dirty ? <span className="shrink-0 text-warning" aria-label="未保存修改">●</span> : null}
         {tab ? (
           <button
             type="button"
@@ -568,7 +568,7 @@ function EditorDockTab({
       {menu ? createPortal(
         <div
           role="menu"
-          className="fixed z-[1000] min-w-56 rounded-md border border-line bg-panel p-1 text-sm text-ink shadow-lg"
+          className="fixed z-[1000] min-w-56 rounded-lg border border-line bg-panel p-1 text-sm text-ink shadow-lg"
           style={{ left: menu.x, top: menu.y }}
           onPointerDown={(event) => event.stopPropagation()}
           data-ide-editor-tab-context-menu
@@ -696,6 +696,14 @@ function EditorTabMenuButton({
       {shortcut ? <span className="rounded border border-line bg-panel-2 px-1 font-mono text-2xs text-subtle">{shortcut}</span> : null}
     </button>
   );
+}
+
+function clampTabMenuPoint(x: number, y: number): { x: number; y: number } {
+  const menuWidth = 232;
+  return {
+    x: Math.max(8, Math.min(x, window.innerWidth - menuWidth)),
+    y: Math.max(8, y),
+  };
 }
 
 function filePanelParams(

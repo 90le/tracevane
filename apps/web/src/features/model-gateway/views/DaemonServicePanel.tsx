@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/design/ui/dialog";
 import { SkeletonRow } from "@/shared/states/Skeleton";
+import { ErrorState } from "@/shared/states/ErrorState";
 import { toast } from "@/design/ui/sonner";
 
 import {
@@ -157,19 +158,19 @@ export function DaemonServicePanel({
           ) : serviceQuery.isLoading ? (
             <SkeletonRow />
           ) : serviceQuery.error ? (
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-red">
-                {serviceQuery.error.message}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void serviceQuery.refetch()}
-              >
-                <RefreshCw />
-                重试
-              </Button>
-            </div>
+            <ErrorState
+              title="无法加载守护服务状态"
+              description={serviceQuery.error.message}
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void serviceQuery.refetch()}
+                >
+                  重试
+                </Button>
+              }
+            />
           ) : (
             <>
               {/* Status facts — live fields only. */}
@@ -202,7 +203,7 @@ export function DaemonServicePanel({
                 </div>
               </dl>
               {manager?.lastError && (
-                <p className="flex items-start gap-1.5 text-sm text-amber">
+                <p className="flex items-start gap-1.5 text-sm text-warning">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   {manager.lastError}
                 </p>
@@ -253,8 +254,8 @@ export function DaemonServicePanel({
               )}
 
               {/* Danger area — stop disables the gateway. */}
-              <div className="grid gap-2 rounded-sm border border-red bg-red-soft p-3">
-                <div className="flex items-center gap-1.5 text-sm font-semibold text-red">
+              <div className="grid gap-2 rounded-sm border border-danger-line bg-danger-soft p-3">
+                <div className="flex items-center gap-1.5 text-sm font-semibold text-danger">
                   <AlertTriangle className="size-4" />
                   危险操作
                 </div>
@@ -264,7 +265,7 @@ export function DaemonServicePanel({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="justify-self-start text-red hover:bg-red-soft"
+                  className="justify-self-start text-danger hover:bg-danger-soft"
                   onClick={() => setConfirm("stop")}
                   disabled={pending}
                 >
@@ -283,7 +284,7 @@ export function DaemonServicePanel({
       >
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-warning-soft text-warning [&_svg]:size-4">
               <RotateCw />
             </span>
             <DialogTitle>重启守护服务</DialogTitle>
@@ -319,7 +320,7 @@ export function DaemonServicePanel({
       >
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-danger-soft text-danger [&_svg]:size-4">
               <AlertTriangle />
             </span>
             <DialogTitle>停止守护服务</DialogTitle>

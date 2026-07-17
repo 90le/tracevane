@@ -149,8 +149,8 @@ export function DashboardPage() {
   const hydrationLabel = secondarySourcesEnabled
     ? isFetching
       ? "正在更新"
-      : "实时来源已补齐"
-    : "首屏已就绪，后台检测排队中";
+      : "实时状态已更新"
+    : "基础状态已就绪，详细检测进行中";
   const releaseVersion =
     summary?.server.version ?? sources.health.data?.version;
 
@@ -194,8 +194,7 @@ export function DashboardPage() {
           一个屏幕看清 Agent 工作是否能继续推进。
         </p>
         <p className="mt-1 text-sm text-muted">
-          首屏先展示导航、关键入口和静态驾驶舱；网关、消息、平台守护与
-          Agent CLI 状态随后补齐，不再让慢探测挡住 Dashboard。
+          汇总模型网关、消息接入、平台守护与 Agent CLI 的运行状态；较慢的检测在后台自动补齐，不影响当前操作。
         </p>
 
         {/* Readiness pillars — one glance, each deep-links to its domain. */}
@@ -237,8 +236,8 @@ export function DashboardPage() {
               title={secondarySourcesEnabled ? "一切就绪" : "正在补齐后台检测"}
               description={
                 secondarySourcesEnabled
-                  ? "当前没有从运行态综合出的待处理事项。"
-                  : "摘要和入口已可用；较慢的 owner-domain 探测将在首屏后补齐。"
+                  ? "当前没有从运行状态综合出的待处理事项。"
+                  : "摘要和入口已可用；较慢的后台检测将在稍后自动补齐。"
               }
             />
           ) : (
@@ -252,9 +251,9 @@ export function DashboardPage() {
                     icon={<Icon />}
                     iconClass={
                       item.severity === "high"
-                        ? "bg-red-soft text-red"
+                        ? "bg-danger-soft text-danger"
                         : item.severity === "medium"
-                          ? "bg-amber-soft text-amber"
+                          ? "bg-warning-soft text-warning"
                           : "bg-panel-3 text-muted"
                     }
                     title={item.title}

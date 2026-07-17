@@ -6,6 +6,8 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
 import { getTerminalSessions } from "@/lib/api/terminal";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { LoadingState } from "@/shared/states/LoadingState";
 import { endWorkbenchTerminalSessions, flushPendingTerminalKillRetries, getPendingTerminalKillIds, schedulePendingTerminalKillFlush } from "./terminalClient";
 
 export function TerminalManagerDialog({
@@ -225,21 +227,26 @@ export function TerminalManagerDialog({
 
           <div className="max-h-[58vh] space-y-3 overflow-y-auto pr-1">
             {loading && !sessions.length ? (
-              <div className="rounded-md border border-line bg-panel-2 p-4 text-center text-muted">正在加载终端列表…</div>
+              <LoadingState title="正在加载终端列表…" className="rounded-md border border-line bg-panel-2" />
             ) : null}
             {!loading && !sessions.length ? (
-              <div className="rounded-md border border-dashed border-line bg-canvas p-6 text-center text-muted" data-ide-terminal-manager-empty>
-                <div>没有仍在运行或可恢复的终端。终端管理器不会自动创建终端；需要新终端时请回到面板点击“新建终端”。</div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => onOpenChange(false)}
-                  data-ide-terminal-manager-empty-back
-                >
-                  返回面板新建
-                </Button>
-              </div>
+              <EmptyState
+                icon={<TerminalIcon />}
+                title="没有仍在运行或可恢复的终端"
+                description="终端管理器不会自动创建终端；需要新终端时请回到面板点击“新建终端”。"
+                className="rounded-md border border-dashed border-line bg-canvas"
+                data-ide-terminal-manager-empty
+                action={(
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onOpenChange(false)}
+                    data-ide-terminal-manager-empty-back
+                  >
+                    返回面板新建
+                  </Button>
+                )}
+              />
             ) : null}
             {groups.map((group) => (
               <section key={group.key} className="rounded-md border border-line bg-panel" data-ide-terminal-manager-group={group.key}>
@@ -368,7 +375,7 @@ function groupSessions(sessions: TerminalSessionDescriptor[], currentRootId: str
 }
 
 function StatusBadge({ status }: { status: TerminalSessionDescriptor["status"] }) {
-  const tone = status === "running" ? "bg-green-soft text-green" : "bg-amber-soft text-amber";
+  const tone = status === "running" ? "bg-success/10 text-success" : "bg-warning-soft text-warning";
   return <span className={cn("rounded px-1.5 py-0.5 text-2xs", tone)}>{formatStatus(status)}</span>;
 }
 

@@ -13,6 +13,9 @@ import {
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { ErrorState } from "@/shared/states/ErrorState";
+import { SkeletonRow } from "@/shared/states/Skeleton";
 import {
   FILES_GLOBAL_SCOPE_ID,
   useFilesTrashQuery,
@@ -293,17 +296,33 @@ export function TrashManager({
           {!trashQueryReady || trash.isLoading ? (
             <TrashLoading />
           ) : trash.error ? (
-            <div className="rounded-b-xl border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-              {trash.error.message}
-            </div>
+            <ErrorState
+              className="px-4 py-10"
+              title="无法读取回收站"
+              description={trash.error.message}
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void trash.refetch()}
+                >
+                  重试
+                </Button>
+              }
+            />
           ) : !items.length ? (
-            <div className="rounded-b-xl border border-dashed border-line bg-panel-2 px-3 py-10 text-center text-sm text-muted">
-              回收站为空。默认删除的文件会显示在这里。
-            </div>
+            <EmptyState
+              className="px-4 py-10"
+              title="回收站为空"
+              description="默认删除的文件会显示在这里。"
+              icon={<Trash2 />}
+            />
           ) : !visibleItems.length ? (
-            <div className="rounded-b-xl border border-line bg-panel px-3 py-10 text-center text-sm text-muted">
-              没有匹配“{query}”的回收站项目。
-            </div>
+            <EmptyState
+              className="px-4 py-10"
+              title="没有匹配的回收站项目"
+              description={`没有匹配“${query}”的项目，试试调整筛选关键词。`}
+            />
           ) : (
             <div
               className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-b-lg border border-line bg-panel"
@@ -695,13 +714,12 @@ function TrashMetric({
 
 function TrashLoading() {
   return (
-    <div className="rounded-b-xl border border-line bg-panel px-3 py-3">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div
-          key={index}
-          className="mb-2 h-12 rounded-lg bg-panel-2 last:mb-0"
-          style={{ opacity: 1 - index * 0.08 }}
-        />
+    <div
+      className="rounded-b-xl border border-line bg-panel py-1"
+      aria-busy="true"
+    >
+      {Array.from({ length: 5 }).map((_, index) => (
+        <SkeletonRow key={index} />
       ))}
     </div>
   );

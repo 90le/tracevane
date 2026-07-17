@@ -1,9 +1,9 @@
 import { explorerDirname, joinExplorerPath, normalizeExplorerPath } from "./path";
 import type { ExplorerCommands, ExplorerRootId } from "./types";
 
-export const EXPLORER_RESOURCE_DRAG_MIME = "application/x-tracevane-explorer-resource";
-export const LEGACY_IDE_RESOURCE_DRAG_MIME = "application/x-tracevane-ide-resource";
-export const LEGACY_FILE_MANAGER_ENTRY_DRAG_MIME = "application/x-tracevane-file-manager-paths";
+const EXPLORER_RESOURCE_DRAG_MIME = "application/x-tracevane-explorer-resource";
+const LEGACY_IDE_RESOURCE_DRAG_MIME = "application/x-tracevane-ide-resource";
+const LEGACY_FILE_MANAGER_ENTRY_DRAG_MIME = "application/x-tracevane-file-manager-paths";
 
 export type ExplorerTransferOperation = "copy" | "move";
 
@@ -74,7 +74,7 @@ export function createExplorerTransferPayload(input: {
   };
 }
 
-export function explorerTransferItemFromEntry(entry: ExplorerTransferEntryLike): ExplorerTransferItem {
+function explorerTransferItemFromEntry(entry: ExplorerTransferEntryLike): ExplorerTransferItem {
   const path = normalizeExplorerPath(entry.path);
   return {
     path,
@@ -105,7 +105,7 @@ function dirnameFromPath(path: string): string {
   return explorerDirname(path);
 }
 
-export function createExplorerClipboardState(input: {
+function createExplorerClipboardState(input: {
   operation: ExplorerTransferOperation;
   items: ExplorerTransferItem[];
 }): ExplorerClipboardState {
@@ -117,30 +117,7 @@ export function createExplorerClipboardState(input: {
   };
 }
 
-export function getExplorerTransferItems(source: { paths?: string[]; items?: ExplorerTransferItem[] } | null | undefined): ExplorerTransferItem[] {
-  if (!source) return [];
-  const items = Array.isArray(source.items) ? source.items : [];
-  if (items.length) {
-    return items
-      .map((item) => ({
-        ...item,
-        path: normalizeExplorerPath(item.path),
-        name: item.name?.trim() || item.path.split("/").pop() || item.path,
-      }))
-      .filter((item) => item.path.length > 0);
-  }
-  const paths = Array.isArray(source.paths) ? source.paths : [];
-  return paths
-    .map((path) => normalizeExplorerPath(path))
-    .filter(Boolean)
-    .map((path) => ({ path, name: path.split("/").pop() || path }));
-}
-
-export function getExplorerTransferPaths(source: { paths?: string[]; items?: ExplorerTransferItem[] } | null | undefined): string[] {
-  return getExplorerTransferItems(source).map((item) => item.path);
-}
-
-export function findBlockedSelfOrDescendantDrop(
+function findBlockedSelfOrDescendantDrop(
   items: ExplorerTransferItem[],
   destinationDirectoryPath: string,
 ): ExplorerTransferItem | null {
@@ -227,7 +204,7 @@ export function hasExplorerTransferPayload(dataTransfer: DataTransfer): boolean 
   );
 }
 
-export function parseExplorerTransferPayload(raw: string): ExplorerTransferPayload | null {
+function parseExplorerTransferPayload(raw: string): ExplorerTransferPayload | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<ExplorerTransferPayload>;
@@ -254,7 +231,7 @@ export function parseExplorerTransferPayload(raw: string): ExplorerTransferPaylo
   }
 }
 
-export function parseLegacyFileManagerPayload(raw: string): ExplorerTransferPayload | null {
+function parseLegacyFileManagerPayload(raw: string): ExplorerTransferPayload | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { rootId?: unknown; paths?: unknown };
@@ -272,7 +249,7 @@ export function parseLegacyFileManagerPayload(raw: string): ExplorerTransferPayl
   }
 }
 
-export function isSelfOrDescendantDrop(sourcePath: string, destinationDirectoryPath: string): boolean {
+function isSelfOrDescendantDrop(sourcePath: string, destinationDirectoryPath: string): boolean {
   const source = normalizeExplorerPath(sourcePath);
   const destination = normalizeExplorerPath(destinationDirectoryPath);
   return destination === source || destination.startsWith(`${source}/`);

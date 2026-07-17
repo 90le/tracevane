@@ -173,7 +173,7 @@ export function BackupsView() {
       <Dialog open={confirm !== null} onOpenChange={(o) => !o && !pending && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-warning-soft text-warning [&_svg]:size-4">
               <RotateCcw />
             </span>
             <DialogTitle>恢复配置备份</DialogTitle>

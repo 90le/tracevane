@@ -59,7 +59,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: "/ide",
     label: "IDE 工作台",
     title: "IDE 工作台",
-    subtitle: "M4 Workbench Layout Foundation：项目级开发工作台骨架。",
+    subtitle: "项目级开发工作台：多 Tab 编辑器、拆分编辑组与面板布局。",
     group: "工作流",
     icon: PanelLeft,
     status: "ready",
@@ -169,7 +169,7 @@ export function resolvePageMeta(pathname: string, search = ""): PageMeta {
     breadcrumbs.push({ label: "IDE 工作台" });
     label = "IDE 工作台";
     title = "IDE 工作台";
-    subtitle = "M4 Workbench Layout Foundation：独立项目级开发工作台骨架。";
+    subtitle = "项目级开发工作台：多 Tab 编辑器、拆分编辑组与面板布局。";
   } else if (pathname.startsWith("/platforms/openclaw")) {
     const section = pathname.split("/")[3] || "overview";
     const sectionLabel = OPENCLAW_SECTION_LABELS[section] ?? "总览";

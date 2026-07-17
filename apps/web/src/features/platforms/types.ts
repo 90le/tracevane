@@ -12,8 +12,6 @@ export type { OpenClawRecoveryStatusPayload } from "../../../../../types/opencla
 export type { ModelGatewayStatusResponse } from "../../../../../types/model-gateway";
 export type { ChannelConnectorsStatusResponse } from "../../../../../types/channel-connectors";
 
-export type PlatformView = "overview" | "openclaw";
-
 export type PlatformSectionId =
   | "overview"
   | "guard"
@@ -51,9 +49,4 @@ export interface PlatformCard {
   boundary: string;
   primary: PlatformLink;
   secondary?: PlatformLink;
-}
-
-export interface PlatformEvidence {
-  label: string;
-  value: string;
 }

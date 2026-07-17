@@ -22,10 +22,6 @@ export async function saveIdeEditorTab(tabId: string): Promise<boolean> {
   return handle.save();
 }
 
-export function focusIdeEditorTab(tabId: string): void {
-  runtimeHandles.get(tabId)?.focus();
-}
-
 export function runIdeEditorAction(tabId: string, actionId: string): void {
   const handle = runtimeHandles.get(tabId);
   if (!handle?.runAction) return;

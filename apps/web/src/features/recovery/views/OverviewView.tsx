@@ -171,9 +171,9 @@ export function OverviewView({ goToView }: RecoveryViewProps) {
               icon={<Wifi />}
               iconClass={
                 probe.gatewayReachable === true
-                  ? "bg-green-soft text-green"
+                  ? "bg-success/12 text-success"
                   : probe.gatewayReachable === false
-                    ? "bg-red-soft text-red"
+                    ? "bg-danger-soft text-danger"
                     : undefined
               }
               title="网关可达性"

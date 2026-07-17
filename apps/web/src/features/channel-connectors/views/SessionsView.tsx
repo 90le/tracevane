@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/design/ui/dialog";
+import { Input } from "@/design/ui/input";
 import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton, SkeletonRow } from "@/shared/states/Skeleton";
@@ -29,6 +30,7 @@ import type {
   ChannelConnectorAgentSessionRuntimeStatus,
 } from "../types";
 import type { ChannelConnectorsViewProps } from "./types";
+import { FormField, SelectInput } from "./V3Fields";
 import { Panel, PanelHead, formatTime } from "./_shared";
 
 const EVENT_TONE: Record<
@@ -64,7 +66,7 @@ function humanEvent(event: ChannelConnectorAgentSessionDriverRuntimeEvent): {
     case "turn.failed":
       return { title: "Agent 回合失败", detail: event.reason || "上游返回失败或本地执行异常", action: "查看诊断日志", variant: "bad" };
     case "turn.fallback":
-      return { title: "已触发 fallback", detail: event.reason || "主路径不可用，已尝试备用投递", action: "检查路由模型是否匹配", variant: "warn" };
+      return { title: "已触发备用执行路径", detail: event.reason || "主路径不可用，已尝试备用投递", action: "检查 Gateway 模型路由是否匹配", variant: "warn" };
     case "turn.started":
       return { title: "开始处理消息", detail: `${event.agent} 正在处理 ${event.bindingId}`, action: "等待回复", variant: "ok" };
     case "turn.finished":
@@ -251,7 +253,7 @@ function sessionSubtitle(
 }
 
 function routeSummary(route: ChannelConnectorAgentSessionDriverBindingStatus | null): string {
-  if (!route) return "未匹配到绑定路由；请检查配置是否已同步到守护服务。";
+  if (!route) return "未匹配到运行时投递映射；请检查配置是否已同步到消息守护。";
   return `${route.agent} · ${valueOrDefault(route.model)} · ${valueOrDefault(route.permissionMode, "默认权限")} · ${valueOrDefault(route.workDir, "默认目录")}`;
 }
 
@@ -403,7 +405,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                   setPolicyNotice({ tone: "ok", text: "策略已保存并热重载，新的并发与队列限制已生效。" });
                   toast.success("策略已保存并应用");
                 } else if (reload.status === "pending") {
-                  setPolicyNotice({ tone: "warn", text: `策略已保存；当前有 ${reload.activeRuns + reload.activeTurns} 个任务/turn，结束后自动热重载。` });
+                  setPolicyNotice({ tone: "warn", text: `策略已保存；当前有 ${reload.activeRuns + reload.activeTurns} 个进行中的任务，结束后自动热重载。` });
                   toast.info("策略等待任务结束后应用");
                 } else if (reload.status === "restart-required") {
                   setPolicyNotice({ tone: "warn", text: `策略已保存，需要重启消息守护：${reload.restartRequiredReason || "运行时边界变化"}` });
@@ -464,11 +466,11 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           const reset = result.reset;
           setEvidence(
             reset
-              ? `已重置会话：override=${reset.controlsCleared ? "yes" : "no"}，Agent sessions=${reset.sessionsCleared}，history=${reset.historyCleared}，driver=${reset.killed ? "stopped" : "none"}`
+              ? `已重置会话：覆盖${reset.controlsCleared ? "已清除" : "未设置"}，Agent 会话清除 ${reset.sessionsCleared} 个，历史清除 ${reset.historyCleared} 条，驱动${reset.killed ? "已终止" : "无需终止"}`
               : `已请求重置会话 ${session.sessionId}`,
           );
-          toast.success("已重置为默认路由", {
-            description: "已清理该 IM 会话的覆盖、历史和持久 Agent session；下一条消息会按默认路由重新创建。",
+          toast.success("已重置为默认投递", {
+            description: "已清理该 IM 会话的覆盖、历史和持久 Agent 会话；下一条消息会按默认投递重新创建。",
           });
           void sessionsQuery.refetch();
         },
@@ -519,29 +521,21 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
         />
         {policyEditing ? (
           <div className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="grid gap-1.5 text-sm">
-              <span className="font-medium text-ink-strong">最大同时执行</span>
-              <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyDraft.maxConcurrentTurns} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxConcurrentTurns: Number(e.target.value) || 1 }))} />
-              <span className="text-xs text-subtle">不同会话竞争这个全局槽位。</span>
-            </label>
-            <label className="grid gap-1.5 text-sm">
-              <span className="font-medium text-ink-strong">持久会话缓存</span>
-              <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={1} max={128} value={policyDraft.maxSessions} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxSessions: Number(e.target.value) || 1 }))} />
-              <span className="text-xs text-subtle">空闲 session 保留上限，不等于并发。</span>
-            </label>
-            <label className="grid gap-1.5 text-sm">
-              <span className="font-medium text-ink-strong">超出策略</span>
-              <select className="h-9 rounded-sm border border-line bg-panel-2 px-2" value={policyDraft.busyStrategy} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, busyStrategy: e.target.value === "queue" ? "queue" : "reject" }))}>
+            <FormField label="最大同时执行" hint="不同会话竞争这个全局槽位。">
+              <Input type="number" min={1} max={128} value={policyDraft.maxConcurrentTurns} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxConcurrentTurns: Number(e.target.value) || 1 }))} />
+            </FormField>
+            <FormField label="持久会话缓存" hint="空闲 session 保留上限，不等于并发。">
+              <Input type="number" min={1} max={128} value={policyDraft.maxSessions} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, maxSessions: Number(e.target.value) || 1 }))} />
+            </FormField>
+            <FormField label="超出策略" hint="队列只限制不同会话的全局竞争。">
+              <SelectInput value={policyDraft.busyStrategy} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, busyStrategy: e.target.value === "queue" ? "queue" : "reject" }))}>
                 <option value="reject">直接拒绝</option>
                 <option value="queue">进入 FIFO 队列</option>
-              </select>
-              <span className="text-xs text-subtle">队列只限制不同会话的全局竞争。</span>
-            </label>
-            <label className="grid gap-1.5 text-sm">
-              <span className="font-medium text-ink-strong">队列容量</span>
-              <input className="h-9 rounded-sm border border-line bg-panel-2 px-2" type="number" min={0} max={5000} value={policyDraft.queueMaxRecords} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, queueMaxRecords: Number(e.target.value) || 0 }))} />
-              <span className="text-xs text-subtle">超过容量会拒绝新任务。</span>
-            </label>
+              </SelectInput>
+            </FormField>
+            <FormField label="队列容量" hint="超过容量会拒绝新任务。">
+              <Input type="number" min={0} max={5000} value={policyDraft.queueMaxRecords} onChange={(e) => setPolicyDraft((draft) => ({ ...draft, queueMaxRecords: Number(e.target.value) || 0 }))} />
+            </FormField>
           </div>
         ) : (
           <dl className="grid grid-cols-2 divide-x divide-y divide-line sm:grid-cols-4 sm:divide-y-0">
@@ -555,10 +549,10 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
           <div
             className={
               policyNotice.tone === "ok"
-                ? "border-t border-line bg-green-soft px-4 py-2.5 text-sm text-green"
+                ? "border-t border-line bg-success/10 px-4 py-2.5 text-sm text-success"
                 : policyNotice.tone === "bad"
-                  ? "border-t border-line bg-red-soft px-4 py-2.5 text-sm text-red"
-                  : "border-t border-line bg-amber-soft px-4 py-2.5 text-sm text-amber"
+                  ? "border-t border-line bg-danger-soft px-4 py-2.5 text-sm text-danger"
+                  : "border-t border-line bg-warning-soft px-4 py-2.5 text-sm text-warning"
             }
             role="status"
           >
@@ -580,7 +574,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Panel>
         <PanelHead
           title="会话投递"
-          sub="IM 触发的 Agent session 与投递链路证据；kill / reap 为写操作，需确认。"
+          sub="IM 触发的 Agent 会话与投递链路证据；终止与回收为写操作，需确认。"
           action={
             <div className="flex items-center gap-2">
               <Badge variant="outline">
@@ -636,7 +630,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-amber hover:bg-amber-soft"
+                        className="text-warning hover:bg-warning-soft"
                         onClick={() => setConfirm({ kind: "reset", session })}
                         disabled={pending}
                       >
@@ -647,7 +641,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-red hover:bg-red-soft"
+                      className="text-danger hover:bg-danger-soft"
                       onClick={() => setConfirm({ kind: "kill", session })}
                       disabled={pending}
                     >
@@ -656,19 +650,19 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                     </Button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <Badge variant="outline">turns {session.turnCount}</Badge>
-                    <Badge variant="outline">running {session.running}</Badge>
-                    <Badge variant="outline">idle {formatIdle(session.idleMs)}</Badge>
-                    <Badge variant="outline">用于 {formatTime(session.lastUsedAt)}</Badge>
+                    <Badge variant="outline">回合 {session.turnCount}</Badge>
+                    <Badge variant="outline">运行中 {session.running}</Badge>
+                    <Badge variant="outline">空闲 {formatIdle(session.idleMs)}</Badge>
+                    <Badge variant="outline">最近使用 {formatTime(session.lastUsedAt)}</Badge>
                     {routeDefault && (
                       <Badge variant={sessionOverridden ? "warn" : "ok"}>
-                        {sessionOverridden ? "会话覆盖" : "跟随路由"}
+                        {sessionOverridden ? "会话覆盖" : "跟随默认"}
                       </Badge>
                     )}
                   </div>
                   <div className="grid gap-1 rounded-sm border border-line bg-panel px-3 py-2 text-xs text-muted">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge variant="outline">默认路由</Badge>
+                      <Badge variant="outline">默认投递</Badge>
                       <span className="min-w-0 break-words">
                         {routeSummary(routeDefault)}
                       </span>
@@ -695,13 +689,13 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
                       </div>
                     )}
                     {sessionOverridden && (
-                      <span className="text-amber">
-                        该会话已通过 IM 命令或运行时状态覆盖默认路由；后续消息会继续复用当前会话配置，直到会话终止或重置。
+                      <span className="text-warning">
+                        该会话已通过 IM 命令或运行时状态覆盖默认投递；后续消息会继续复用当前会话配置，直到会话终止或重置。
                       </span>
                     )}
                   </div>
                   {session.lastError && (
-                    <p className="flex items-start gap-1.5 text-xs text-red">
+                    <p className="flex items-start gap-1.5 text-xs text-danger">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                       {session.lastError}
                     </p>
@@ -722,7 +716,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Panel>
         <PanelHead
           title="需要关注的会话事件"
-          sub="失败和 fallback 优先；原始事件类型保留为小标签，便于排查但不占主视觉。"
+          sub="失败和备用路径优先；原始事件类型保留为小标签，便于排查但不占主视觉。"
         />
         {recentEvents.length === 0 ? (
           <EmptyState title="暂无事件" description="尚无 session / turn 事件记录。" />
@@ -760,7 +754,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Dialog open={confirm?.kind === "reap"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-warning-soft text-warning [&_svg]:size-4">
               <Recycle />
             </span>
             <DialogTitle>回收空闲会话</DialogTitle>
@@ -784,13 +778,13 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Dialog open={confirm?.kind === "reset"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-warning-soft text-warning [&_svg]:size-4">
               <Recycle />
             </span>
-            <DialogTitle>重置为默认路由</DialogTitle>
+            <DialogTitle>重置为默认投递</DialogTitle>
           </DialogHeader>
           <DialogBody>
-            这会清理该 IM 会话的 override、Agent session 续接记录和本地 conversation history，并终止当前持久 driver。下一条消息会按绑定路由默认 Agent、模型、目录和权限重新创建。
+            这会清理该 IM 会话的覆盖配置、Agent 会话续接记录和本地对话历史，并终止当前持久连接。下一条消息会按默认投递的 Agent、模型、目录和权限重新创建。
             {confirm?.kind === "reset" && (
               <code className="mt-2 block rounded-sm bg-panel-3 px-2 py-1 font-mono text-xs text-muted">
                 {confirm.session.bindingId} · {confirm.session.sessionKey}
@@ -808,7 +802,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
               onClick={() => confirm?.kind === "reset" && runReset(confirm.session)}
               disabled={pending}
             >
-              {pending ? "重置中…" : "确认重置为默认路由"}
+              {pending ? "重置中…" : "确认重置为默认投递"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -818,7 +812,7 @@ export function SessionsView(_props: ChannelConnectorsViewProps) {
       <Dialog open={confirm?.kind === "kill"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-danger-soft text-danger [&_svg]:size-4">
               <AlertTriangle />
             </span>
             <DialogTitle>终止会话</DialogTitle>

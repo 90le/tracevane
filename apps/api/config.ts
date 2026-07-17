@@ -7,7 +7,7 @@ import { resolveProjectRoot } from '../../lib/project-root.js';
 import type { TracevaneExposureKind, TracevaneServerConfig, TracevaneTransportConfig } from '../../types/api.js';
 
 const DEFAULT_PORT = 3760;
-const DEFAULT_GATEWAY_PORT = 18789;
+const DEFAULT_GATEWAY_PORT = 31879;
 const DEFAULT_GATEWAY_BASE_PATH = '/tracevane';
 const TRACEVANE_VERSION_FALLBACK = '0.1.71';
 
@@ -46,6 +46,25 @@ function normalizeOptionalBasePath(value: unknown): string {
 
 function buildGatewayWsUrl(port: number): string {
   return `ws://127.0.0.1:${port}`;
+}
+
+function resolveWebDistDir(projectRoot: string, moduleDir: string): string {
+  // The packaged layout (see pack.sh) keeps the built UI at
+  // `<pluginRoot>/apps/web/dist`, with the compiled backend under
+  // `<pluginRoot>/dist/...`. Probe the module-relative locations as a
+  // fallback so an install whose root markers resolve differently still
+  // finds the web build; fall back to the primary candidate otherwise.
+  const candidates = [
+    path.join(projectRoot, 'apps', 'web', 'dist'),
+    path.resolve(moduleDir, '..', '..', '..', 'apps', 'web', 'dist'),
+    path.resolve(moduleDir, '..', '..', 'apps', 'web', 'dist'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[0];
 }
 
 function resolveOpenClawRoot(api: OpenClawPluginApi): string {
@@ -162,7 +181,8 @@ export function createTracevaneConfig(
   api: OpenClawPluginApi,
   pluginConfig: Record<string, unknown> = {}
 ): TracevaneServerConfig {
-  const projectRoot = resolveProjectRoot(path.dirname(fileURLToPath(import.meta.url)));
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const projectRoot = resolveProjectRoot(moduleDir);
   const tracevaneVersion = resolveTracevaneVersion(projectRoot);
   const openclawRoot = resolveOpenClawRoot(api);
   const openclawConfigFile = path.join(openclawRoot, 'openclaw.json');
@@ -185,7 +205,7 @@ export function createTracevaneConfig(
     openclawRoot,
     openclawConfigFile,
     projectRoot,
-    webDistDir: path.join(projectRoot, 'apps', 'web', 'dist'),
+    webDistDir: resolveWebDistDir(projectRoot, moduleDir),
     gatewayPort,
     gatewayWsUrl: buildGatewayWsUrl(gatewayPort),
     gatewayControlUiBasePath: gatewayRuntime.controlUiBasePath,
@@ -194,7 +214,8 @@ export function createTracevaneConfig(
 }
 
 export function createStandaloneTracevaneConfig(overrides: Partial<TracevaneServerConfig> = {}): TracevaneServerConfig {
-  const projectRoot = path.resolve(overrides.projectRoot || resolveProjectRoot(path.dirname(fileURLToPath(import.meta.url))));
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const projectRoot = path.resolve(overrides.projectRoot || resolveProjectRoot(moduleDir));
   const tracevaneVersion = resolveTracevaneVersion(projectRoot);
   const openclawRoot = overrides.openclawRoot
     || process.env.OPENCLAW_STATE_DIR
@@ -225,7 +246,7 @@ export function createStandaloneTracevaneConfig(overrides: Partial<TracevaneServ
     openclawRoot,
     openclawConfigFile,
     projectRoot,
-    webDistDir: overrides.webDistDir || path.join(projectRoot, 'apps', 'web', 'dist'),
+    webDistDir: overrides.webDistDir || resolveWebDistDir(projectRoot, moduleDir),
     gatewayPort,
     gatewayWsUrl: overrides.gatewayWsUrl || buildGatewayWsUrl(gatewayPort),
     gatewayControlUiBasePath: normalizeOptionalBasePath(overrides.gatewayControlUiBasePath),

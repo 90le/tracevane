@@ -83,7 +83,7 @@ export function ExplorerContextMenuBase({
             className={cn(
               "flex min-h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left outline-none transition-colors",
               "hover:bg-panel-2 focus-visible:bg-primary-soft focus-visible:shadow-[var(--ring)]",
-              item.danger ? "text-red" : "text-ink",
+              item.danger ? "text-danger" : "text-ink",
               item.disabled && "cursor-not-allowed text-subtle opacity-55 hover:bg-transparent",
             )}
             onClick={() => {

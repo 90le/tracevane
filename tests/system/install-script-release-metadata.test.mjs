@@ -4,6 +4,7 @@ import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   injectInstallerDefaultVersion,
@@ -130,7 +131,7 @@ test('build scripts clean generated output before compiling fresh artifacts', ()
 
   const result = childProcess.spawnSync(
     process.execPath,
-    [new URL('../../scripts/clean-build-output.mjs', import.meta.url).pathname, 'all'],
+    [fileURLToPath(new URL('../../scripts/clean-build-output.mjs', import.meta.url)), 'all'],
     {
       encoding: 'utf8',
       env: {

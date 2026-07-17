@@ -23,6 +23,9 @@ import { readFile, writeFileContent } from "@/lib/api/files";
 import { useFilesSearchQuery } from "@/lib/query/files";
 import { normalizeExplorerPath } from "@/shared/explorer-core";
 import { requestLspWorkspaceSymbols } from "../lsp/lspInteractionClient";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { ErrorState } from "@/shared/states/ErrorState";
+import { LoadingState } from "@/shared/states/LoadingState";
 import type { FileSearchResult } from "../../../../../../types/files";
 import type { LspWorkspaceSymbolItem, LspWorkspaceSymbolsResponse } from "../../../../../../types/lsp";
 
@@ -236,7 +239,7 @@ export function IdeSearchView({
                 {mode === "symbols" ? "符号" : "文件系统"}
               </span>
             </div>
-            <div className="truncate text-2xs text-subtle">{rootLabel || "Workspace Search"}</div>
+            <div className="truncate text-2xs text-subtle">{rootLabel || "工作区搜索"}</div>
           </div>
         </div>
         <form
@@ -402,7 +405,7 @@ export function IdeSearchView({
               <div className="mb-1 flex min-w-0 items-center justify-between gap-2 px-1 text-2xs text-subtle" data-ide-search-summary>
                 <span className="shrink-0">{filteredSymbolItems.length} 个符号</span>
                 <span className="truncate">
-                  scanned: {symbolResponse?.scannedFiles ?? 0}{symbolResponse?.truncated ? " · truncated" : ""} · scope: /{symbolResponse?.path ?? scopePath}
+                  已扫描 {symbolResponse?.scannedFiles ?? 0} 个文件{symbolResponse?.truncated ? " · 结果已截断" : ""} · 范围 /{symbolResponse?.path ?? scopePath}
                 </span>
               </div>
               {filteredSymbolItems.map((item) => (
@@ -435,7 +438,7 @@ export function IdeSearchView({
               <span className="shrink-0">
                 {filteredResults.length} 个结果{filteredResults.length !== results.length ? ` / ${results.length}` : ""}
               </span>
-              <span className="truncate">scope: /{query.data?.directoryPath ?? scopePath}</span>
+              <span className="truncate">范围 /{query.data?.directoryPath ?? scopePath}</span>
             </div>
             {filteredResults.map((result) => (
               <SearchResultRow
@@ -606,7 +609,7 @@ function SymbolResultRow({
         {item.path}:{item.startLine}:{item.startColumn}
       </div>
       {item.containerName ? (
-        <div className="truncate text-2xs text-muted">in {item.containerName}</div>
+        <div className="truncate text-2xs text-muted">位于 {item.containerName}</div>
       ) : null}
     </button>
   );
@@ -670,17 +673,14 @@ function SearchEmptyState({
   loading?: boolean;
   tone?: "muted" | "danger";
 }) {
-  return (
-    <div className="grid min-h-36 place-items-center rounded-sm border border-dashed border-line bg-panel p-4 text-center" data-ide-search-empty>
-      <div>
-        <div className={cn("mx-auto mb-2 grid size-9 place-items-center rounded-md", tone === "danger" ? "bg-red-soft text-red" : "bg-primary-soft text-primary")}>
-          {loading ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
-        </div>
-        <div className="text-sm font-semibold text-ink-strong">{title}</div>
-        <div className="mt-1 text-xs text-muted">{description}</div>
-      </div>
-    </div>
-  );
+  const className = "min-h-36 rounded-sm border border-dashed border-line bg-panel";
+  if (loading) {
+    return <LoadingState title={title} description={description} className={className} data-ide-search-empty />;
+  }
+  if (tone === "danger") {
+    return <ErrorState title={title} description={description} className={className} data-ide-search-empty />;
+  }
+  return <EmptyState icon={<Search />} title={title} description={description} className={className} data-ide-search-empty />;
 }
 
 function highlightSnippet(snippet: string, query: string): React.ReactNode {
@@ -691,7 +691,7 @@ function highlightSnippet(snippet: string, query: string): React.ReactNode {
   return (
     <>
       {snippet.slice(0, index)}
-      <mark className="rounded bg-amber-soft px-0.5 text-amber">{snippet.slice(index, index + trimmed.length)}</mark>
+      <mark className="rounded bg-warning-soft px-0.5 text-warning">{snippet.slice(index, index + trimmed.length)}</mark>
       {snippet.slice(index + trimmed.length)}
     </>
   );

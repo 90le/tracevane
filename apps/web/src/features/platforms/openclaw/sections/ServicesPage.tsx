@@ -25,9 +25,9 @@ export function ServicesPage() {
   const daemonService = useRecoveryDaemonServiceQuery();
   const service = daemonService.data ?? recovery.data?.service;
   const rows: ServiceRow[] = [
-    { key: "gateway", name: "OpenClaw 网关", state: health.data?.gateway ?? "unknown", detail: `端口 ${health.data?.gatewayPort ?? "—"}`, owner: "System health", hint: "模型/平台入口是否可达", tone: stateTone(health.data?.gateway ?? "unknown") },
+    { key: "gateway", name: "OpenClaw 网关", state: health.data?.gateway ?? "unknown", detail: `端口 ${health.data?.gatewayPort ?? "—"}`, owner: "系统健康检查", hint: "模型/平台入口是否可达", tone: stateTone(health.data?.gateway ?? "unknown") },
     { key: "tracevane-service", name: "Tracevane 本地服务", state: health.data?.serviceState ?? "unknown", detail: health.data?.serviceSubState ?? "—", owner: "Tracevane", hint: "当前 Web/API 宿主进程状态", tone: stateTone(health.data?.serviceState ?? "unknown") },
-    { key: "recovery-daemon", name: "平台守护进程", state: recovery.data?.daemon.pid ? "active" : "unknown", detail: recovery.data?.daemon.pid ? `pid ${recovery.data.daemon.pid}` : "pid —", owner: "Platform guard", hint: "负责备份、修复与巡检", tone: recovery.data?.daemon.pid ? "ok" : "warn" },
+    { key: "recovery-daemon", name: "平台守护进程", state: recovery.data?.daemon.pid ? "active" : "unknown", detail: recovery.data?.daemon.pid ? `pid ${recovery.data.daemon.pid}` : "pid —", owner: "平台守护", hint: "负责备份、修复与巡检", tone: recovery.data?.daemon.pid ? "ok" : "warn" },
     { key: "supervisor", name: service?.serviceName ?? "守护服务单元", state: service?.activeState ?? "unknown", detail: service?.enabledState ?? "—", owner: service?.supervisor ?? "—", hint: "systemd/launchd/supervisor 管理状态", tone: stateTone(service?.activeState ?? "unknown") },
   ];
   const [selectedKey, setSelectedKey] = useSelectedKey(rows.map((row) => row.key));

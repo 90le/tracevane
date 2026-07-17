@@ -44,13 +44,6 @@ export interface TerminalLayoutState {
   tabs: TerminalTabRecord[];
 }
 
-export interface TerminalPanePlacement {
-  paneId: string;
-  terminalId: string;
-  active: boolean;
-}
-
-
 export interface TerminalProfileSelection {
   profileId?: string | null;
   shell?: string | null;

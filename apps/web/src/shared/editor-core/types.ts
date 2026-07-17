@@ -29,14 +29,6 @@ export interface EditorDocumentSnapshot {
   readAt: string;
 }
 
-export interface EditorDirtyState {
-  saveState: EditorSaveState;
-  dirty: boolean;
-  lastSavedContent: string;
-  lastSavedModifiedAt: string | null;
-  error: string | null;
-}
-
 export interface EditorTabState {
   id: EditorDocumentId;
   ref: EditorFileRef;

@@ -470,7 +470,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
             </div>
             <div className="flex flex-wrap gap-2 lg:justify-end">
               <Button
-                variant="default"
+                variant="primary"
                 size="sm"
                 onClick={() => goToView("providercfg", { create: true })}
               >
@@ -478,7 +478,7 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                 添加 Provider
               </Button>
               <Button
-                variant="primary"
+                variant="outline"
                 size="sm"
                 onClick={handleCodexLogin}
                 disabled={codexLoginMutation.isPending}
@@ -604,12 +604,17 @@ export function ProvidersView({ goToView }: ModelGatewayViewProps) {
                         onClick={() => goToView("providercfg", { provider: provider.id })}
                       />
                       {providerActiveRoutes.length === 0 ? (
-                        <IconAction
-                          icon={<Activity />}
-                          label="未被当前路由使用"
-                          onClick={() => undefined}
-                          disabled
-                        />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              className="inline-flex size-9 items-center justify-center text-subtle/60 [&_svg]:size-4"
+                              aria-label="未被当前路由使用"
+                            >
+                              <Activity />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>未被当前路由使用</TooltipContent>
+                        </Tooltip>
                       ) : (
                         providerActiveRoutes.map((route) => {
                           const scope = route.scope;

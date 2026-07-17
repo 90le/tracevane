@@ -403,7 +403,7 @@ function UsageHeader({
         </p>
         <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted">
           <span className="inline-flex items-center gap-1 rounded-sm bg-panel-2 px-2 py-1">
-            <CheckCircle2 className="size-3.5 text-green" />
+            <CheckCircle2 className="size-3.5 text-success" />
             已入账 {numberText(requestCount)} 次
           </span>
           <span className="inline-flex items-center gap-1 rounded-sm bg-panel-2 px-2 py-1">

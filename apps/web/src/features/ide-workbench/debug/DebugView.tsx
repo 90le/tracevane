@@ -3,6 +3,7 @@ import { Bug, Circle, CircleDot, CircleStop, ExternalLink, Pause, Play, SkipForw
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { ErrorState } from "@/shared/states/ErrorState";
 import { controlIdeDebugSession, createIdeDebugSession, stopIdeDebugSession } from "./debugClient";
 import {
   removeDebugBreakpoint,
@@ -29,6 +30,7 @@ export function IdeDebugView({
 }) {
   const snapshot = useIdeDebugSnapshot();
   const [busy, setBusy] = React.useState(false);
+  const debugUnavailable = snapshot.connectionState === "unavailable";
   const profiles = snapshot.status?.supportedProfiles ?? [];
   const [selectedProfileId, setSelectedProfileId] = React.useState("mock-node");
   const [launchArgsText, setLaunchArgsText] = React.useState("");
@@ -155,9 +157,17 @@ export function IdeDebugView({
         <div className="mt-1 text-xs text-muted" data-ide-debug-status>
           {snapshot.connectionState === "connected" ? "Debug Gateway 已连接" : snapshot.message ?? "Debug Gateway 等待连接"}
         </div>
+        {debugUnavailable ? (
+          <ErrorState
+            className="mt-2 gap-1.5 rounded-md border border-dashed border-line bg-canvas px-3 py-4"
+            title="网关单端口模式下不可用"
+            description="调试实时通道使用原始 WebSocket（/ws/debug），OpenClaw 网关单端口模式不会把 WS 升级转发给插件，且暂无对应的 gateway RPC 桥接。调试启动、断点命中、调用栈与变量均依赖该通道，因此已在当前模式下停用；请在 Tracevane 独立端口模式下使用调试功能。"
+            data-ide-debug-gateway-unavailable
+          />
+        ) : null}
         <div className="mt-3 grid min-w-0 grid-cols-1 gap-2">
           <div className="rounded-lg border border-line bg-canvas p-2" data-ide-debug-launch-config>
-            <label className="block text-xs font-medium text-subtle" htmlFor="ide-debug-profile-select">Launch profile</label>
+            <label className="block text-xs font-medium text-subtle" htmlFor="ide-debug-profile-select">启动配置</label>
             <select
               id="ide-debug-profile-select"
               className="mt-1 h-8 w-full rounded-md border border-line bg-panel px-2 text-sm text-ink-strong outline-none focus:border-primary-line"
@@ -172,7 +182,7 @@ export function IdeDebugView({
               )}
             </select>
             <div className="mt-1 truncate text-[11px] text-muted" data-ide-debug-profile-description>
-              {selectedProfile?.description ?? "等待 Debug status profiles"}
+              {selectedProfile?.description ?? "正在读取可用调试配置…"}
             </div>
             <input
               className="mt-2 h-8 w-full rounded-md border border-line bg-panel px-2 font-mono text-xs text-ink-strong outline-none placeholder:text-muted focus:border-primary-line disabled:opacity-60"
@@ -195,15 +205,15 @@ export function IdeDebugView({
               size="sm"
               variant="primary"
               onClick={handleStartSelectedProfile}
-              disabled={!rootId || !selectedProfile || (selectedProfile.requiresProgram && !activeFile) || busy}
-              title={selectedProfile?.requiresProgram && !activeFile ? "先在编辑器中打开一个 JavaScript/TypeScript 文件" : "使用所选 launch profile 启动"}
+              disabled={debugUnavailable || !rootId || !selectedProfile || (selectedProfile.requiresProgram && !activeFile) || busy}
+              title={selectedProfile?.requiresProgram && !activeFile ? "先在编辑器中打开一个 JavaScript/TypeScript 文件" : "使用所选启动配置开始调试"}
               data-ide-debug-launch-start
             >
               <Play />
               启动所选配置
             </Button>
           </div>
-          <Button className="w-full min-w-0 justify-start" size="sm" onClick={handleStart} disabled={!rootId || busy} data-ide-debug-start>
+          <Button className="w-full min-w-0 justify-start" size="sm" onClick={handleStart} disabled={debugUnavailable || !rootId || busy} data-ide-debug-start>
             <Play />
             启动 Mock
           </Button>
@@ -212,7 +222,7 @@ export function IdeDebugView({
             size="sm"
             variant="primary"
             onClick={handleStartAdapterProof}
-            disabled={!rootId || !activeFile || busy}
+            disabled={debugUnavailable || !rootId || !activeFile || busy}
             title={activeFile ? `使用 Node Lite 调试 ${activeFile.path}` : "先在编辑器中打开一个 JavaScript/TypeScript 文件"}
             data-ide-debug-adapter-start
           >
@@ -279,7 +289,7 @@ export function IdeDebugView({
                   <div className="flex min-w-0 items-center gap-2">
                     <button
                       type="button"
-                      className="rounded-sm text-red hover:bg-red-soft"
+                      className="rounded-sm text-danger hover:bg-danger-soft"
                       aria-label={breakpoint.enabled === false ? "启用断点" : "禁用断点"}
                       onClick={() => setDebugBreakpointEnabled(breakpoint, breakpoint.enabled === false)}
                     >
@@ -302,7 +312,7 @@ export function IdeDebugView({
                     </button>
                     <button
                       type="button"
-                      className="rounded-sm p-1 text-muted hover:bg-red-soft hover:text-red"
+                      className="rounded-sm p-1 text-muted hover:bg-danger-soft hover:text-danger"
                       aria-label="删除断点"
                       onClick={() => removeDebugBreakpoint(breakpoint)}
                     >
@@ -315,7 +325,7 @@ export function IdeDebugView({
           </div>
         ) : (
           <div className="mb-4 rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-breakpoints-empty>
-            在 Monaco 编辑器行号/断点栏点击可添加断点；启动 Mock 后会停在首个启用断点。
+            在编辑器行号栏点击可添加断点；启动调试后会停在首个启用的断点。
           </div>
         )}
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Sessions</div>
@@ -342,14 +352,14 @@ export function IdeDebugView({
                 {session.program ? <div className="mt-1 truncate font-mono text-xs text-muted">program: {session.program}</div> : null}
                 {session.launchArgs?.length ? <div className="mt-1 truncate font-mono text-xs text-muted" data-ide-debug-session-args>args: {session.launchArgs.length}</div> : null}
                 {session.launchEnvKeys?.length ? <div className="mt-1 truncate font-mono text-xs text-muted" data-ide-debug-session-env>env: {session.launchEnvKeys.join(", ")}</div> : null}
-                {session.lastError ? <div className="mt-1 text-xs text-red" data-ide-debug-session-error>{session.lastError}</div> : null}
+                {session.lastError ? <div className="mt-1 text-xs text-danger" data-ide-debug-session-error>{session.lastError}</div> : null}
                 {session.message ? <div className="mt-1 text-xs text-subtle">{session.message}</div> : null}
               </div>
             ))}
           </div>
         ) : (
           <div className="rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-empty>
-            还没有 Debug session。请选择可用的启动配置后开始调试。
+            还没有调试会话。请选择启动配置后开始调试。
           </div>
         )}
         <div className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Call Stack</div>
@@ -370,7 +380,7 @@ export function IdeDebugView({
           </div>
         ) : (
           <div className="mb-4 rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-stack-empty>
-            Adapter proof 运行后会显示最小调用栈。
+            调试会话停止后会显示调用栈。
           </div>
         )}
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Variables</div>
@@ -404,7 +414,7 @@ export function IdeDebugView({
           </div>
         ) : (
           <div className="mb-4 rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-scopes-empty>
-            Debug session 停止后会显示最小 Scopes 分组。
+            调试会话停止后会显示作用域分组。
           </div>
         )}
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Raw Variables</div>
@@ -424,7 +434,7 @@ export function IdeDebugView({
           </div>
         ) : (
           <div className="rounded-md border border-dashed border-line bg-canvas p-3 text-sm text-muted" data-ide-debug-variables-empty>
-            Adapter proof 运行后会显示最小变量快照。
+            调试会话停止后会显示变量快照。
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -9,7 +9,8 @@ const rootDir = path.resolve(here, "../..");
 // The pure normalizer lives in a runtime-loadable .mjs so node:test can import
 // it directly (no TS loader needed). The TS api client re-exports it.
 const { normalizeApiError } = await import(
-  path.join(rootDir, "apps/web/src/lib/api/normalize-error.mjs")
+  pathToFileURL(path.join(rootDir, "apps/web/src/lib/api/normalize-error.mjs"))
+    .href
 );
 
 test("2xx responses are not errors", () => {

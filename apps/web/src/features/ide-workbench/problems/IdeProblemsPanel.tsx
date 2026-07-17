@@ -1,7 +1,8 @@
-import { AlertCircle, Circle, Eraser, Info, Lightbulb, TriangleAlert } from "lucide-react";
+import { AlertCircle, CheckCircle2, Circle, Eraser, Info, Lightbulb, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { EmptyState } from "@/shared/states/EmptyState";
 import { clearWorkbenchProblems, type WorkbenchProblem, type WorkbenchProblemSeverity, useWorkbenchProblems } from "./problemStore";
 
 export function IdeProblemsPanel({
@@ -51,12 +52,13 @@ export function IdeProblemsPanel({
           ))}
         </div>
       ) : (
-        <div className="grid min-h-0 place-items-center p-4" data-ide-problems-empty>
-          <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-3 text-center text-sm text-muted">
-            <div className="font-medium text-ink-strong">当前没有 Problems</div>
-            <div className="mt-1 text-xs">当前没有发现问题。语言服务、搜索、Git 或调试产生的问题会显示在这里。</div>
-          </div>
-        </div>
+        <EmptyState
+          className="min-h-0"
+          icon={<CheckCircle2 />}
+          title="当前没有 Problems"
+          description="语言服务、搜索、Git 或调试产生的问题会显示在这里。"
+          data-ide-problems-empty
+        />
       )}
     </section>
   );
@@ -74,8 +76,8 @@ function ProblemCount({ severity, count }: { severity: WorkbenchProblemSeverity;
 function ProblemIcon({ severity }: { severity: WorkbenchProblemSeverity }) {
   const className = cn(
     "size-3.5 shrink-0",
-    severity === "error" && "text-red",
-    severity === "warning" && "text-amber",
+    severity === "error" && "text-danger",
+    severity === "warning" && "text-warning",
     severity === "info" && "text-primary",
     severity === "hint" && "text-subtle",
   );

@@ -34,8 +34,8 @@ test("dashboard keeps the static cockpit visible during bootstrap", () => {
   assert.doesNotMatch(page, /SkeletonRow|<Skeleton/);
   assert.doesNotMatch(page, /if \(isLoading\)/);
   assert.match(page, /isBootstrapping/);
-  assert.match(page, /首屏先展示导航、关键入口和静态驾驶舱/);
-  assert.match(page, /首屏已就绪，后台检测排队中/);
+  assert.match(page, /较慢的检测在后台自动补齐/);
+  assert.match(page, /摘要和入口已可用/);
   assert.match(page, /正在补齐后台检测/);
   assert.match(page, /快速启动/);
 });

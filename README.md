@@ -35,7 +35,7 @@ runtime surface, not the whole workspace model.
 │   ├── brand-identity.md     # Domain recommendation, logo direction and browser icon inventory
 │   ├── ide-code-editor-solution/
 │   │   ├── 00-README.md     # IDE / online editor planning index
-│   │   └── 01..08-*.md      # Product, architecture, frontend/backend and rollout notes
+│   │   └── 01..15-*.md      # Product, architecture, frontend/backend and rollout notes
 │   └── 界面设计守则.md        # UI/design guardrails
 ├── assets/brand/             # Source SVG/browser icon brand pack
 ├── lib/                     # OpenClaw/plugin host compatibility and delivery helpers
@@ -43,7 +43,6 @@ runtime surface, not the whole workspace model.
 ├── tests/                   # System, terminal and browser smoke tests
 ├── types/                   # Shared TypeScript contracts
 ├── index.ts                 # OpenClaw extension entrypoint
-├── DESIGN.md                # Active product/design source of truth
 └── openclaw.plugin.json     # Extension manifest
 ```
 
@@ -51,11 +50,10 @@ runtime surface, not the whole workspace model.
 
 Start with these documents, in this order:
 
-1. [DESIGN.md](DESIGN.md) — active product/design source of truth.
-2. [docs/brand-identity.md](docs/brand-identity.md) — domain recommendation, selected logo route and icon asset inventory.
-3. [docs/界面设计守则.md](docs/界面设计守则.md) — visual and interaction guardrails.
-4. [docs/ide-code-editor-solution/00-README.md](docs/ide-code-editor-solution/00-README.md) — code editor / IDE documentation index.
-5. [apps/api/README.md](apps/api/README.md) — backend foundation notes.
+1. [docs/brand-identity.md](docs/brand-identity.md) — domain recommendation, selected logo route and icon asset inventory.
+2. [docs/界面设计守则.md](docs/界面设计守则.md) — visual and interaction guardrails.
+3. [docs/ide-code-editor-solution/00-README.md](docs/ide-code-editor-solution/00-README.md) — code editor / IDE documentation index.
+4. [apps/api/README.md](apps/api/README.md) — backend foundation notes.
 
 The previous README referenced several planning documents that are no longer in
 `docs/`. This README now points only to documents that are present in the

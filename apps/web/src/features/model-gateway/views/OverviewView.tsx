@@ -591,7 +591,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
 
         {routeAlerts.length > 0 && (
           <div className="border-t border-line px-4 py-3">
-            <div className="flex flex-wrap items-start gap-2 text-sm text-amber">
+            <div className="flex flex-wrap items-start gap-2 text-sm text-warning">
               <CircleAlert className="mt-0.5 size-4 shrink-0" />
               <div className="grid gap-1">
                 {routeAlerts.slice(0, 3).map((alert) => (
@@ -698,8 +698,8 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                   <TableRow
                     key={scope}
                     className={cn(
-                      route?.state === "missing" && "bg-red-soft/20",
-                      route?.state === "fallback" && "bg-amber-soft/20",
+                      route?.state === "missing" && "bg-danger-soft/20",
+                      route?.state === "fallback" && "bg-warning-soft/20",
                     )}
                   >
                     <TableCell className="min-w-0">
@@ -769,7 +769,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                             <div
                               className={cn(
                                 "mt-1 truncate text-xs",
-                                lastSmoke.ok ? "text-muted" : "text-red",
+                                lastSmoke.ok ? "text-muted" : "text-danger",
                               )}
                               title={lastSmoke.message}
                             >
@@ -886,8 +886,8 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
                     icon={isOpen ? <ZapOff /> : <RouteOff />}
                     iconClass={
                       isOpen
-                        ? "bg-red-soft text-red"
-                        : "bg-amber-soft text-amber"
+                        ? "bg-danger-soft text-danger"
+                        : "bg-warning-soft text-warning"
                     }
                     title={provider.name}
                     subtitle={providerAttentionSummary(provider)}
@@ -900,7 +900,7 @@ export function OverviewView({ goToView }: ModelGatewayViewProps) {
               {healthyProviders.length > 0 && (
                 <Row
                   icon={<Check />}
-                  iconClass="bg-green-soft text-green"
+                  iconClass="bg-green-soft text-success"
                   title={`${healthyProviders.length} 个 Provider 正常`}
                   subtitle={healthyProviders.map((p) => p.name).join(" · ")}
                   trailing={<Badge variant="ok">在线</Badge>}

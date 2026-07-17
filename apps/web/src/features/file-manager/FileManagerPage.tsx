@@ -13,6 +13,7 @@ import {
   useFilesSummaryQuery,
 } from "@/lib/query/files";
 import { toast } from "@/design/ui/sonner";
+import { LoadingState } from "@/shared/states/LoadingState";
 import {
   OperationHistoryPanel,
   createOperationRecord,
@@ -501,16 +502,6 @@ export function FileManagerPage() {
   const quickLocations = React.useMemo(
     () => buildQuickLocations(favoriteBookmarkLocations, recentLocations),
     [favoriteBookmarkLocations, recentLocations],
-  );
-  const quickLocationViews = React.useMemo(
-    () =>
-      quickLocations.map((location) => ({
-        ...location,
-        favorited: favoriteBookmarkLocations.some((item) =>
-          sameLocation(item, location),
-        ),
-      })),
-    [favoriteBookmarkLocations, quickLocations],
   );
   const recentLocationViews = React.useMemo(
     () =>
@@ -1690,8 +1681,6 @@ export function FileManagerPage() {
           <FileManagerHeader
             rootId={rootId}
             roots={roots}
-            rootAbsolutePath={root?.absolutePath}
-            directoryPath={directoryPath}
             viewMode={viewMode}
             onChangeRoot={(nextRootId) => {
               setRootId(nextRootId);
@@ -1708,13 +1697,6 @@ export function FileManagerPage() {
             onToggleShowHidden={() => setShowHidden((value) => !value)}
           />
           <FileManagerNavigationBar
-            roots={roots}
-            onChangeRoot={(nextRootId) => {
-              setRootId(nextRootId);
-              setDirectoryPath("");
-              setSelectedPath(undefined);
-              setSelectedPaths(new Set());
-            }}
             directoryPath={directoryPath}
             parentPath={parentPath}
             breadcrumbs={breadcrumbs}
@@ -1723,7 +1705,6 @@ export function FileManagerPage() {
             pathSuggestions={pathSuggestions}
             pathSuggestionsOpen={pathSuggestionsOpen}
             activePathSuggestionIndex={activePathSuggestionIndex}
-            quickLocations={quickLocationViews}
             favoriteTree={favoriteTree}
             favoriteCount={favoriteCount}
             recentLocations={recentLocationViews}
@@ -1776,14 +1757,6 @@ export function FileManagerPage() {
             onClearRecentLocations={clearRecentLocations}
             filterInputRef={fileManagerFilterRef}
             onFilterTextChange={setFilterText}
-            onToggleShowHidden={() => setShowHidden((value) => !value)}
-            rootId={rootId}
-            viewMode={viewMode}
-            onNewFile={() => setDialog({ kind: "newFile" })}
-            onNewDirectory={() => setDialog({ kind: "newDir" })}
-            onUpload={() => openUploadManager(directoryPath)}
-            onChangeViewMode={setViewMode}
-            onRefresh={refresh}
             currentLocation={currentLocation}
           />
         </header>
@@ -2245,14 +2218,7 @@ function fileEntryFromMenuTarget(
 }
 
 function FileManagerLazyPanelLoading({ label }: { label: string }) {
-  return (
-    <div className="grid min-h-[360px] place-items-center p-6 text-sm text-muted">
-      <div className="grid justify-items-center gap-2">
-        <span className="size-6 animate-spin rounded-full border-2 border-line border-t-primary" />
-        <span>{label}</span>
-      </div>
-    </div>
-  );
+  return <LoadingState className="min-h-[360px]" title={label} />;
 }
 
 function FileManagerModalLoading({ label }: { label: string }) {

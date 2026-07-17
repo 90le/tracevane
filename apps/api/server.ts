@@ -3,6 +3,7 @@ import http from "node:http";
 import type { Duplex } from "node:stream";
 import path from "node:path";
 import {
+  sendBinary,
   sendJson,
   sendNoContent,
   sendText,
@@ -35,8 +36,21 @@ const CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".webmanifest": "application/manifest+json",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 export function createTracevaneRouter(
@@ -116,12 +130,12 @@ function serveStaticAsset(
 
   const extname = path.extname(filePath);
   const contentType = CONTENT_TYPES[extname] || "application/octet-stream";
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const body =
-    path.basename(filePath) === "index.html"
-      ? injectRuntimeConfig(raw, runtimeConfig)
-      : raw;
-  sendText(res, 200, body, contentType);
+  if (path.basename(filePath) === "index.html") {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    sendText(res, 200, injectRuntimeConfig(raw, runtimeConfig), contentType);
+    return true;
+  }
+  sendBinary(res, 200, fs.readFileSync(filePath), contentType);
   return true;
 }
 
@@ -178,18 +192,62 @@ function normalizeRequestPath(
     return;
   }
 
-  const basePath = process.env.TRACEVANE_BASE_PATH || "";
-  if (!basePath || basePath === "/") return;
+  stripConfiguredBasePath(req, process.env.TRACEVANE_BASE_PATH || "");
+}
 
-  const url = new URL(
-    req.url || "/",
-    `http://${req.headers.host || "127.0.0.1"}`,
-  );
-  if (url.pathname.startsWith(basePath)) {
-    // Remove base path prefix: /x/tracevane/api/... -> /api/...
-    url.pathname = url.pathname.slice(basePath.length) || "/";
-    req.url = url.pathname + url.search;
-  }
+// Raw WebSocket realtime endpoints served by createTracevaneUpgradeHandler in
+// standalone mode (terminal `/ws/terminal`, LSP `/ws/lsp`, debug `/ws/debug`;
+// see the handleUpgrade implementations under apps/api/modules/). The OpenClaw
+// gateway never forwards socket upgrades to plugin HTTP routes, so in gateway
+// exposure these endpoints cannot work and must fail fast instead of hanging
+// or being answered with the SPA fallback.
+const GATEWAY_RAW_WEBSOCKET_PATHS = new Set([
+  "/ws/terminal",
+  "/ws/lsp",
+  "/ws/debug",
+]);
+
+function isWebSocketUpgradeRequest(req: http.IncomingMessage): boolean {
+  const upgrade = req.headers.upgrade;
+  return typeof upgrade === "string" && upgrade.trim().toLowerCase() === "websocket";
+}
+
+function isGatewayRawWebSocketPath(pathname: string): boolean {
+  const normalized = pathname.replace(/\/+$/g, "") || "/";
+  return GATEWAY_RAW_WEBSOCKET_PATHS.has(normalized);
+}
+
+function sendGatewayRawWebSocketUnsupported(
+  res: http.ServerResponse,
+  pathname: string,
+): void {
+  sendJson(res, 501, {
+    error: {
+      code: "realtime_transport_unsupported",
+      message:
+        "Raw WebSocket realtime endpoints are unavailable when Tracevane is exposed through the OpenClaw gateway; use the gateway RPC realtime transport instead.",
+      retryable: false,
+      source: "tracevane",
+      details: {
+        endpoint: pathname,
+        realtimeTransport: "gateway-rpc",
+        feasibility: "blocked-gateway-single-port-no-raw-websocket-upgrade",
+        alternatives: [
+          "Terminal realtime is available through the Tracevane terminal gateway RPC methods.",
+          "Run the Tracevane standalone server when raw WebSocket realtime (terminal, LSP, debug) is required.",
+        ],
+      },
+    },
+  });
+}
+
+function shouldRejectGatewayRawWebSocket(
+  req: http.IncomingMessage,
+  pathname: string,
+  runtimeConfig: TracevaneClientRuntimeConfig | null | undefined,
+): boolean {
+  if (runtimeConfig?.exposureKind !== "gateway") return false;
+  return isWebSocketUpgradeRequest(req) || isGatewayRawWebSocketPath(pathname);
 }
 
 export function createTracevaneUpgradeHandler(
@@ -237,6 +295,13 @@ export function createTracevaneRequestHandler(
 
     if (req.method === "OPTIONS") {
       sendNoContent(res);
+      return true;
+    }
+
+    if (
+      shouldRejectGatewayRawWebSocket(req, url.pathname, options.runtimeConfig)
+    ) {
+      sendGatewayRawWebSocketUnsupported(res, url.pathname);
       return true;
     }
 

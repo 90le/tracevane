@@ -159,7 +159,7 @@ function CodexLoginPanel({ providerId }: { providerId: string }) {
   };
 
   return (
-    <section className="grid gap-3 rounded-lg border border-line bg-panel-2 p-4">
+    <section className="grid gap-3 rounded-md border border-line bg-panel-2 p-4">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <strong className="text-base text-ink-strong">登录新账号（Codex 设备授权）</strong>
@@ -300,7 +300,7 @@ function AccountRow({
         <div className="grid gap-0.5 text-sm">
           <span className="text-muted">成功：{fmtTime(account.lastSuccessAt)}</span>
           {account.lastError && (
-            <span className="truncate text-red" title={account.lastError}>
+            <span className="truncate text-danger" title={account.lastError}>
               错误：{account.lastError}
             </span>
           )}

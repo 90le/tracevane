@@ -381,6 +381,22 @@ probe_url() {
   return 127
 }
 
+is_port_in_use() {
+  local port="$1"
+  node - "${port}" <<'NODE'
+const net = require('node:net');
+const port = Number(process.argv[2]);
+const socket = net.connect({ port, host: '127.0.0.1' });
+const finish = (inUse) => {
+  socket.destroy();
+  process.exit(inUse ? 0 : 1);
+};
+socket.once('connect', () => finish(true));
+socket.once('error', () => finish(false));
+setTimeout(() => finish(false), 1500).unref();
+NODE
+}
+
 verify_package_checksum() {
   local archive_path="$1"
   local expected_sha256="$2"
@@ -688,7 +704,21 @@ case "${TRACEVANE_MODE}" in
   *) die "--mode 只支持 standalone 或 gateway" ;;
 esac
 
+if ! [[ "${TRACEVANE_API_PORT}" =~ ^[0-9]+$ ]] || [[ "${TRACEVANE_API_PORT}" -lt 1 || "${TRACEVANE_API_PORT}" -gt 65535 ]]; then
+  die "--api-port 必须是 1-65535 的数字（当前: ${TRACEVANE_API_PORT}）"
+fi
+case "${TRACEVANE_GATEWAY_BIND}" in
+  auto|loopback|lan|tailnet|custom) ;;
+  *) die "--gateway-bind 只支持 auto|loopback|lan|tailnet|custom（当前: ${TRACEVANE_GATEWAY_BIND}）" ;;
+esac
+
 require_command node
+if ! node -e 'const major = Number(process.versions.node.split(".")[0]); process.exit(major >= 18 ? 0 : 1)'; then
+  die "Node.js 版本过低（当前 $(node --version 2>/dev/null || printf '未知')），Tracevane 需要 Node.js >= 18"
+fi
+if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+  die "缺少 curl 或 wget，无法读取站点 metadata 或下载安装包"
+fi
 if [[ "${CHECK_RELEASE}" -eq 1 ]]; then
   log "Tracevane release metadata OK"
   log "版本: ${TRACEVANE_VERSION}"
@@ -738,6 +768,14 @@ if version_lt "${CURRENT_OPENCLAW_VERSION}" "${OPENCLAW_MIN_VERSION}"; then
     fi
     
     auto_fix_missing_dependencies
+  fi
+fi
+
+if [[ "${DRY_RUN}" -eq 0 ]] && is_port_in_use "${TRACEVANE_API_PORT}"; then
+  if http_get "http://127.0.0.1:${TRACEVANE_API_PORT}/api/system/health" 2>/dev/null | grep -q '"sseConnections"'; then
+    log "端口 ${TRACEVANE_API_PORT} 上已有运行中的 Tracevane，本次执行升级替换"
+  else
+    die "端口 ${TRACEVANE_API_PORT} 已被占用且未响应 Tracevane 健康检查；请释放该端口、重启异常的旧实例（openclaw gateway restart），或通过 --api-port 指定其它端口"
   fi
 fi
 
@@ -834,6 +872,8 @@ pkg.exports = {
     types: './dist/index.d.ts',
   },
 };
+// 安装后的插件目录不是 monorepo workspace 根，移除 workspaces 避免 npm 按 workspace 解析缺失的 apps/*。
+delete pkg.workspaces;
 pkg.openclaw = pkg.openclaw && typeof pkg.openclaw === 'object' ? pkg.openclaw : {};
 pkg.openclaw.id = 'tracevane';
 pkg.openclaw.kind = 'ui';

@@ -236,7 +236,7 @@ export function IssuesView() {
                 key={issue.id}
                 icon={<AlertTriangle />}
                 iconClass={
-                  issue.severity === "high" ? "bg-red-soft text-red" : "bg-amber-soft text-amber"
+                  issue.severity === "high" ? "bg-danger-soft text-danger" : "bg-warning-soft text-warning"
                 }
                 title={issue.title}
                 subtitle={issue.detail}
@@ -257,7 +257,7 @@ export function IssuesView() {
         <div className="grid gap-3 p-4">
           {/* Safe: probe — directly executable. */}
           <div className="flex flex-wrap items-center gap-3 rounded-sm border border-line bg-panel-2 p-3">
-            <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-green-soft text-green [&_svg]:size-4">
+            <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-success/12 text-success [&_svg]:size-4">
               <ScanSearch />
             </span>
             <div className="min-w-0 flex-1">
@@ -266,9 +266,7 @@ export function IssuesView() {
                 只读诊断：探测网关可达性并刷新状态，不写入任何配置。
               </p>
             </div>
-            <Badge variant="ok" className="gap-1">
-              安全
-            </Badge>
+            <Badge variant="ok">安全</Badge>
             <Button
               variant="primary"
               size="sm"
@@ -297,9 +295,9 @@ export function IssuesView() {
             return (
               <div
                 key={action}
-                className="flex flex-wrap items-center gap-3 rounded-sm border border-amber bg-amber-soft p-3"
+                className="flex flex-wrap items-center gap-3 rounded-sm border border-warning/40 bg-warning-soft p-3"
               >
-                <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel text-amber [&_svg]:size-4">
+                <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel text-warning [&_svg]:size-4">
                   <MetaIcon />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -365,7 +363,7 @@ export function IssuesView() {
       <Dialog open={confirm !== null} onOpenChange={(o) => !o && !pending && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-warning-soft text-warning [&_svg]:size-4">
               <DialogIcon />
             </span>
             <DialogTitle>{dialog?.title}</DialogTitle>

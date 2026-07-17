@@ -1,4 +1,5 @@
 import { controlDebugSession, createDebugSession, evaluateDebugSession, stopDebugSession } from "@/lib/api/debug";
+import { resolveWebSocketUrl } from "@/lib/runtime";
 import type {
   DebugBreakpointLocation,
   DebugControlAction,
@@ -7,6 +8,9 @@ import type {
   DebugGatewayServerEvent,
   DebugSessionPayload,
 } from "../../../../../../types/debug";
+
+export const DEBUG_GATEWAY_UNAVAILABLE_MESSAGE =
+  "当前为 OpenClaw 网关单端口模式，Debug Gateway 实时通道不可用（网关不会把 WebSocket 升级转发给插件）。";
 
 export interface IdeDebugCreateInput {
   rootId: string;
@@ -50,9 +54,7 @@ export function evaluateIdeDebugSession(
 
 export function createDebugWebSocketUrl(): string {
   if (typeof window === "undefined") return "ws://127.0.0.1/ws/debug";
-  const basePath = normalizeBasePath((window as typeof window & { __TRACEVANE_BASE_PATH__?: string }).__TRACEVANE_BASE_PATH__);
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${basePath}/ws/debug`;
+  return resolveWebSocketUrl("/ws/debug");
 }
 
 export function parseDebugGatewayEvent(data: unknown): DebugGatewayServerEvent | null {
@@ -63,10 +65,4 @@ export function parseDebugGatewayEvent(data: unknown): DebugGatewayServerEvent |
   } catch {
     return null;
   }
-}
-
-function normalizeBasePath(value: string | undefined): string {
-  if (!value) return "";
-  const normalized = value.startsWith("/") ? value : `/${value}`;
-  return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
 }

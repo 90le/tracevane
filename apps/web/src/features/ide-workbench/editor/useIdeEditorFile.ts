@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { readEditorFile } from "@/shared/editor-core";
 import type { EditorFileRef, EditorReadResult } from "@/shared/editor-core";
 
-export function ideEditorFileQueryKey(ref: EditorFileRef) {
+function ideEditorFileQueryKey(ref: EditorFileRef) {
   return ["ide-workbench", "editor-file", ref.rootId, ref.path] as const;
 }
 

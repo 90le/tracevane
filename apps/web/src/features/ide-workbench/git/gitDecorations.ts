@@ -50,7 +50,7 @@ export function buildIdeGitDecorations(status: GitStatusPayload | null): IdeGitD
   };
 }
 
-export function gitRepositoryRootPath(status: GitStatusPayload | null): string {
+function gitRepositoryRootPath(status: GitStatusPayload | null): string {
   if (!status?.available) return "";
   const directoryPath = normalizeExplorerPath(status.directoryPath);
   const repositoryRelativePath = normalizeExplorerPath(status.repositoryRelativePath);

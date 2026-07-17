@@ -20,6 +20,7 @@ import type {
   LspWorkspaceSymbolsRequest,
   LspWorkspaceSymbolsResponse,
 } from "../../../../../../types/lsp";
+import { resolveApiUrl } from "@/lib/runtime";
 
 export async function requestLspHover(
   request: LspPositionRequest,
@@ -103,7 +104,7 @@ async function requestLspFeature<T>(
   request: unknown,
   options: { signal?: AbortSignal },
 ): Promise<T> {
-  const response = await fetch(endpoint, {
+  const response = await fetch(resolveApiUrl(endpoint), {
     method: "POST",
     headers: {
       Accept: "application/json",

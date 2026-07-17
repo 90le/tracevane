@@ -44,7 +44,7 @@ export function EditorConflictDialog({
         data-ide-editor-conflict-dialog
       >
         <DialogHeader className="items-start border-b border-line px-4 pb-3 pt-4">
-          <div className="grid size-9 shrink-0 place-items-center rounded-md bg-amber-soft text-amber">
+          <div className="grid size-9 shrink-0 place-items-center rounded-md bg-warning-soft text-warning">
             <ShieldAlert className="size-5" aria-hidden />
           </div>
           <div className="min-w-0 flex-1">
@@ -55,7 +55,7 @@ export function EditorConflictDialog({
           </div>
         </DialogHeader>
         <DialogBody className="grid gap-2 border-b border-line bg-panel-2 px-4 py-3 text-sm">
-          <div className="flex items-center gap-2 text-amber">
+          <div className="flex items-center gap-2 text-warning">
             <AlertTriangle className="size-4 shrink-0" aria-hidden />
             <span className="font-medium">已阻止静默覆盖。</span>
             <span className="min-w-0 truncate text-muted">{message}</span>

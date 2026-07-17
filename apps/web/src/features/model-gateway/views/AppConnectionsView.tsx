@@ -242,7 +242,7 @@ function ConnectionDetailSheet({
               </div>
 
               {connection.issues.length > 0 && (
-                <div className="grid gap-1 rounded-md border border-line bg-red-soft p-3 text-sm text-red">
+                <div className="grid gap-1 rounded-md border border-line bg-danger-soft p-3 text-sm text-danger">
                   {connection.issues.map((issue, i) => (
                     <span key={i}>{issue}</span>
                   ))}
@@ -328,7 +328,7 @@ function ConnectionDetailSheet({
                         onChange={(e) => setDraft(e.target.value)}
                       />
                       {draftEmpty && (
-                        <span className="text-xs text-red">内容不能为空。</span>
+                        <span className="text-xs text-danger">内容不能为空。</span>
                       )}
                       {!draftDirty && !draftEmpty && (
                         <span className="text-xs text-subtle">内容与预览一致，无需保存。</span>
@@ -451,7 +451,7 @@ function ConnectionDetailSheet({
                                 {backupLoading ? (
                                   <span className="text-xs text-subtle">读取备份内容…</span>
                                 ) : backupError ? (
-                                  <span className="text-xs text-red">{backupError}</span>
+                                  <span className="text-xs text-danger">{backupError}</span>
                                 ) : backupContent !== null ? (
                                   <DiffView
                                     base={currentContent ?? ""}
@@ -527,7 +527,7 @@ function ConfirmWriteDialog({
         {state && connection && (
           <>
             <DialogHeader>
-              <DialogTitle className={cn(isEdit && "flex items-center gap-2 text-red")}>
+              <DialogTitle className={cn(isEdit && "flex items-center gap-2 text-danger")}>
                 {isEdit && <AlertTriangle className="size-5" />}
                 {kind === "apply"
                   ? "应用网关路由"
@@ -539,7 +539,7 @@ function ConfirmWriteDialog({
             <DialogBody>
               <DialogDescription className="grid gap-2">
                 {isEdit ? (
-                  <span className="text-red">
+                  <span className="text-danger">
                     将<strong>直接写入</strong>编辑后的源文件内容到 <strong>{connection.label}</strong>。
                   </span>
                 ) : (
@@ -750,7 +750,7 @@ function ResultSheet({
           <>
             <SheetHeader>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-5 text-green" />
+                <CheckCircle2 className="size-5 text-success" />
                 <SheetTitle>
                   {result.kind === "apply" ? "已应用" : "已回滚"} · {result.label}
                 </SheetTitle>

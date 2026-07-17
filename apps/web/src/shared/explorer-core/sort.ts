@@ -34,7 +34,7 @@ export function sortExplorerEntries<T extends FileEntrySummary>(
     .map(({ entry }) => entry);
 }
 
-export function compareExplorerEntryValue(
+function compareExplorerEntryValue(
   left: FileEntrySummary,
   right: FileEntrySummary,
   key: ExplorerSortKey,

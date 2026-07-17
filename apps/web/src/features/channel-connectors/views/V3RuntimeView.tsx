@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Activity, Clock3, MessageSquare, RadioTower, RefreshCw, ScrollText, Server, Workflow } from "lucide-react";
+import { Activity, Clock3, MessageSquare, RadioTower, RefreshCw, ScrollText, Server, ShieldCheck, Workflow } from "lucide-react";
 
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
@@ -79,7 +79,7 @@ export function V3RuntimeView({ goToView, selectedAccount }: ChannelConnectorsVi
   return (
     <div className="grid gap-[18px]">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1"><h2 className="text-lg font-semibold text-ink-strong">运行中心</h2><p className="text-sm text-muted">按渠道账号观察连接、入站队列、热重载、回复 replay 与日志。</p></div>
+        <div className="min-w-0 flex-1"><h2 className="text-lg font-semibold text-ink-strong">运行中心</h2><p className="text-sm text-muted">按渠道账号观察连接、入站队列、热重载、回复投递与日志。</p></div>
         <Button variant="outline" size="sm" disabled={statusQuery.isFetching} onClick={() => { void statusQuery.refetch(); void logsQuery.refetch(); }}><RefreshCw className={statusQuery.isFetching ? "animate-spin" : undefined} />刷新</Button>
       </div>
 
@@ -87,7 +87,7 @@ export function V3RuntimeView({ goToView, selectedAccount }: ChannelConnectorsVi
         <PanelHead title="账号连接" sub={issues ? `${issues} 个账号需要处理` : "启用账号按一账号一连接运行"} action={<Button variant="ghost" size="sm" onClick={() => goToView("accounts")}><RadioTower />渠道账号</Button>} />
         {accounts.length === 0 ? <div className="p-4"><EmptyState title="暂无渠道账号" description="创建账号后，这里会显示连接与真实入站状态。" /></div> : <div className="divide-y divide-line">{accounts.map(({ account, state }) => (
           <div key={account.id} ref={account.id === selectedAccount ? selectedRef : undefined} className={account.id === selectedAccount ? "bg-primary-soft/40" : undefined}>
-            <Row icon={<RadioTower />} iconClass={state.variant === "ok" ? "bg-green-soft text-green" : state.variant === "warn" ? "bg-amber-soft text-amber" : undefined} title={account.displayName} subtitle={`${account.platform} · ${state.detail}${state.receivedAt ? ` · ${formatTime(state.receivedAt)}` : ""}`} subtitleClassName="whitespace-normal break-words" trailing={<Badge variant={state.variant}>{state.label}</Badge>} onClick={() => goToView("accounts", { account: account.id })} />
+            <Row icon={<RadioTower />} iconClass={state.variant === "ok" ? "bg-success/10 text-success" : state.variant === "warn" ? "bg-warning-soft text-warning" : undefined} title={account.displayName} subtitle={`${account.platform} · ${state.detail}${state.receivedAt ? ` · ${formatTime(state.receivedAt)}` : ""}`} subtitleClassName="whitespace-normal break-words" trailing={<Badge variant={state.variant}>{state.label}</Badge>} onClick={() => goToView("accounts", { account: account.id })} />
           </div>
         ))}</div>}
       </Panel>
@@ -98,7 +98,7 @@ export function V3RuntimeView({ goToView, selectedAccount }: ChannelConnectorsVi
           <div className="divide-y divide-line">
             <Row icon={<Workflow />} title="当前排队" subtitle={`${ingress?.activeAccounts ?? 0} 个账号正在消费`} trailing={<Badge variant={(ingress?.queued ?? 0) > 0 ? "warn" : "ok"}>{ingress?.queued ?? 0}</Badge>} />
             <Row icon={<Activity />} title="完成 / 失败" subtitle={`${ingress?.completed ?? 0} 已完成`} trailing={<Badge variant={(ingress?.failed ?? 0) > 0 ? "warn" : "mute"}>{ingress?.failed ?? 0} 失败</Badge>} />
-            <Row icon={<ShieldCheckIcon />} title="重复事件" subtitle="按账号 + event/message ID 做 TTL 去重" trailing={<Badge variant="info">{ingress?.duplicates ?? 0} 已拦截</Badge>} />
+            <Row icon={<ShieldCheck />} title="重复事件" subtitle="按账号 + event/message ID 做 TTL 去重" trailing={<Badge variant="info">{ingress?.duplicates ?? 0} 已拦截</Badge>} />
             <Row icon={<Clock3 />} title="待恢复 Agent 任务" subtitle={runtime?.pendingAgentRuns.oldestQueuedAt ? `最早 ${formatTime(runtime.pendingAgentRuns.oldestQueuedAt)}` : "没有因进程中断而待恢复的任务"} trailing={<Badge variant={(runtime?.pendingAgentRuns.count ?? 0) > 0 ? "warn" : "ok"}>{runtime?.pendingAgentRuns.count ?? 0}</Badge>} />
             <Row icon={<MessageSquare />} title="回复 Outbox" subtitle={runtime?.replyOutbox.oldestPendingAt ? `最早待发送 ${formatTime(runtime.replyOutbox.oldestPendingAt)}` : `${runtime?.replyOutbox.delivered ?? 0} 条已投递`} trailing={<Badge variant={(runtime?.replyOutbox.deadLetter ?? 0) > 0 ? "warn" : (runtime?.replyOutbox.pending ?? 0) > 0 ? "info" : "ok"}>{runtime?.replyOutbox.pending ?? 0} 待发送 · {runtime?.replyOutbox.deadLetter ?? 0} 死信</Badge>} />
           </div>
@@ -115,28 +115,24 @@ export function V3RuntimeView({ goToView, selectedAccount }: ChannelConnectorsVi
 
       {(runtime?.replyOutbox.recentDeadLetters.length ?? 0) > 0 && <Panel>
         <PanelHead title="回复死信" sub="永久失败或超过重试上限的回复；不包含回复正文和凭据。" />
-        <div className="divide-y divide-line">{runtime?.replyOutbox.recentDeadLetters.map((record) => <Row key={record.id} icon={<MessageSquare />} iconClass="bg-amber-soft text-amber" title={`${record.platform} · ${record.accountId}`} subtitle={`${record.lastError || "投递失败"} · ${formatTime(record.updatedAt)}`} trailing={<Badge variant="warn">{record.attempts} 次</Badge>} />)}</div>
+        <div className="divide-y divide-line">{runtime?.replyOutbox.recentDeadLetters.map((record) => <Row key={record.id} icon={<MessageSquare />} iconClass="bg-warning-soft text-warning" title={`${record.platform} · ${record.accountId}`} subtitle={`${record.lastError || "投递失败"} · ${formatTime(record.updatedAt)}`} trailing={<Badge variant="warn">{record.attempts} 次</Badge>} />)}</div>
       </Panel>}
 
       <DaemonServicePanel onMutated={() => { void statusQuery.refetch(); void daemonConfigQuery.refetch(); }} />
 
       <Panel>
         <PanelHead title="运行时映射证据" sub="运行期映射由渠道账号、分发策略与 Agent 工作区生成，不是独立的用户配置对象。" action={<Button variant="ghost" size="sm" onClick={() => setShowRuntimeConfig((value) => !value)}>{showRuntimeConfig ? "收起" : "展开"}</Button>} />
-        {showRuntimeConfig && <div className="divide-y divide-line">{runtimeBindings.length ? runtimeBindings.map(({ project, binding }) => <Row key={`${project.id}:${binding.id}`} icon={<Workflow />} title={binding.displayName || binding.id} subtitle={`${binding.platform} · ${project.name || project.id} · ${project.workDir}`} trailing={<Badge variant={binding.enabled ? "ok" : "mute"}>{binding.enabled ? "启用" : "停用"}</Badge>} />) : <div className="p-4 text-sm text-muted">暂无运行时映射。</div>}</div>}
+        {showRuntimeConfig && <div className="divide-y divide-line">{runtimeBindings.length ? runtimeBindings.map(({ project, binding }) => <Row key={`${project.id}:${binding.id}`} icon={<Workflow />} title={binding.displayName || binding.id} subtitle={`${binding.platform} · ${project.name || project.id} · ${project.workDir}`} trailing={<Badge variant={binding.enabled ? "ok" : "mute"}>{binding.enabled ? "启用" : "停用"}</Badge>} />) : <div className="p-4"><EmptyState title="暂无运行时映射" description="保存并应用渠道账号后，这里会显示生成的运行时映射。" /></div>}</div>}
       </Panel>
 
       <Panel>
         <PanelHead title="守护日志" sub={logsQuery.data?.logFile || "daemon log"} action={<div className="flex gap-2"><Button variant="ghost" size="sm" onClick={() => setShowRawLogs((value) => !value)}>{showRawLogs ? "收起原始日志" : "原始日志"}</Button><Button variant="outline" size="sm" onClick={() => void logsQuery.refetch()}><RefreshCw />刷新</Button></div>} />
         {lines.length === 0 ? <div className="p-4"><EmptyState title="暂无日志" description="守护进程尚未输出日志。" icon={<ScrollText />} /></div> : <div className="grid gap-3 p-3">
           <div className="grid gap-2 sm:grid-cols-3"><div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">日志行数</div><div className="text-lg font-semibold text-ink-strong">{lines.length}</div></div><div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">问题行</div><div className="text-lg font-semibold text-ink-strong">{lines.filter(isProblem).length}</div></div><div className="rounded-sm border border-line bg-panel-2 p-3"><div className="text-xs text-subtle">最新输出</div><div className="truncate text-sm text-muted">{truncate(lines.at(-1) || "—", 110)}</div></div></div>
-          {problemLines.map((line, index) => <code key={`${index}:${line}`} className="block max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-sm border border-amber/40 bg-amber-soft px-3 py-2 font-mono text-xs text-amber">{truncate(line)}</code>)}
+          {problemLines.map((line, index) => <code key={`${index}:${line}`} className="block max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-sm border border-warning/40 bg-warning-soft px-3 py-2 font-mono text-xs text-warning">{truncate(line)}</code>)}
           {showRawLogs && <pre className="max-h-[min(52vh,520px)] overflow-auto whitespace-pre-wrap break-all rounded-sm border border-line bg-panel-2 p-3 font-mono text-xs text-muted">{lines.slice(-180).join("\n")}</pre>}
         </div>}
       </Panel>
     </div>
   );
-}
-
-function ShieldCheckIcon() {
-  return <Activity />;
 }

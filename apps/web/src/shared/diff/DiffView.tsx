@@ -113,8 +113,8 @@ export function DiffView({
             <span className="text-subtle">无改动</span>
           ) : (
             <>
-              <span className="font-mono text-green">+{stats.added}</span>
-              <span className="font-mono text-red">-{stats.removed}</span>
+              <span className="font-mono text-success">+{stats.added}</span>
+              <span className="font-mono text-danger">-{stats.removed}</span>
             </>
           )}
         </span>
@@ -133,8 +133,8 @@ export function DiffView({
               key={i}
               className={cn(
                 "flex gap-2 px-3",
-                seg.type === "add" && "bg-green-soft text-green",
-                seg.type === "del" && "bg-red-soft text-red",
+                seg.type === "add" && "bg-green-soft text-success",
+                seg.type === "del" && "bg-danger-soft text-danger",
               )}
             >
               <span aria-hidden className="select-none opacity-60">

@@ -344,7 +344,7 @@ export function WorkspacesView({ selectedTarget }: ChannelConnectorsViewProps) {
                   <TableCell data-label="启动目录"><span className="flex max-w-72 min-w-0 items-center gap-1.5 text-sm text-muted" title={target.workspace.workDir}><FolderOpen className="size-3.5 shrink-0" /><span className="min-w-0 truncate">{target.workspace.workDir}</span></span></TableCell>
                   <TableCell data-label="绑定账号"><Badge variant={usage.length ? "info" : "mute"}>{usage.length} 个账号</Badge></TableCell>
                   <TableCell data-label="状态"><Badge variant={target.enabled ? "ok" : "mute"}>{target.enabled ? "启用" : "停用"}</Badge></TableCell>
-                  <TableCell data-label="动作"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="编辑工作区" aria-label="编辑工作区" onClick={() => setEditing(target)}><Pencil /></Button><Button variant="ghost" size="icon" title={usage.length ? "仍被账号引用" : "删除工作区"} aria-label="删除工作区" disabled={usage.length > 0} className="text-red" onClick={() => setDeleteTarget(target)}><Trash2 /></Button></div></TableCell>
+                  <TableCell data-label="动作"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="编辑工作区" aria-label="编辑工作区" onClick={() => setEditing(target)}><Pencil /></Button><Button variant="ghost" size="icon" title={usage.length ? "仍被账号引用" : "删除工作区"} aria-label="删除工作区" disabled={usage.length > 0} className="text-danger" onClick={() => setDeleteTarget(target)}><Trash2 /></Button></div></TableCell>
                 </TableRow>
               );
             })}

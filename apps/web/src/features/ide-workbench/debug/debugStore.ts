@@ -23,7 +23,7 @@ export interface IdeDebugConsoleEvent {
 
 export interface IdeDebugSnapshot {
   connected: boolean;
-  connectionState: "idle" | "connecting" | "connected" | "disconnected" | "error";
+  connectionState: "idle" | "connecting" | "connected" | "disconnected" | "error" | "unavailable";
   message: string | null;
   status: DebugStatusPayload | null;
   sessions: DebugSessionDescriptor[];

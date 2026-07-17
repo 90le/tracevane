@@ -94,7 +94,7 @@ export function UploadTaskStrip({
         </button>
         <button
           type="button"
-          className="text-muted hover:text-red disabled:opacity-40"
+          className="text-muted hover:text-danger disabled:opacity-40"
           onClick={onCancel}
           disabled={!live}
         >

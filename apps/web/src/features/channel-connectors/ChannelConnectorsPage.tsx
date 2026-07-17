@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Activity, Bot, LayoutDashboard, MessageSquare, RadioTower } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
+import { LoadingState } from "@/shared/states/LoadingState";
 
 import {
   CHANNEL_CONNECTORS_VIEWS,
@@ -10,7 +11,7 @@ import {
   type ChannelConnectorsViewProps,
 } from "./views/types";
 
-/** Primary local viewbar tabs per docs/IM渠道前端设计契约.md. */
+/** Primary local viewbar tabs per docs/channel-connectors/channel-connectors-overhaul-plan.md. */
 const PRIMARY_TABS: ReadonlyArray<{
   view: ChannelConnectorsView;
   label: string;
@@ -56,14 +57,10 @@ const VIEW_COMPONENTS: Record<
   ),
 };
 
-
 function ChannelConnectorsViewFallback() {
   return (
-    <div className="grid min-h-[220px] place-items-center rounded-md border border-line bg-panel p-6 text-sm text-muted">
-      <div className="grid justify-items-center gap-3">
-        <span className="size-7 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
-        <span>正在打开消息接入视图…</span>
-      </div>
+    <div className="rounded-md border border-line bg-panel">
+      <LoadingState title="正在打开消息接入视图…" />
     </div>
   );
 }

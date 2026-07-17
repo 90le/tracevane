@@ -103,8 +103,8 @@ export function ProviderPill({ model }: { model: string }) {
 
 export function ComparisonBadge({ comparison }: { comparison: GatewayComparison }) {
   const toneClass = {
-    good: "text-green",
-    warn: "text-amber",
+    good: "text-success",
+    warn: "text-warning",
     muted: "text-muted",
     primary: "text-primary",
   }[comparison.tone];

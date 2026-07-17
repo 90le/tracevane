@@ -4061,10 +4061,21 @@ function applyProviderAuth(headers: Headers, provider: ModelGatewayProvider, sec
 
 function withProxyNetwork(proxyUrl: string | null | undefined, init: RequestInit, label: string): FetchInitWithDispatcher {
   if (!proxyUrl) return init;
-  const undici = require("undici") as {
+  // "undici" is an optional, undeclared dependency: lazy-require it so slim
+  // installs still boot, and only proxy-enabled requests fail (structured).
+  let undici: {
     ProxyAgent?: new (uri: string) => unknown;
     Socks5ProxyAgent?: new (uri: string) => unknown;
   };
+  try {
+    undici = require("undici") as typeof undici;
+  } catch {
+    throw new ModelGatewayServiceError(
+      "model_gateway_proxy_unavailable",
+      `Proxy support for ${label} requires the optional "undici" package, which is not installed.`,
+      500,
+    );
+  }
   const scheme = (() => {
     try {
       return new URL(proxyUrl).protocol.toLowerCase();

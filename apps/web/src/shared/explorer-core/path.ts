@@ -17,11 +17,6 @@ export function normalizeExplorerPath(path?: string | null): ExplorerPath {
   return parts.join("/");
 }
 
-export function explorerBasename(path?: string | null): string {
-  const normalized = normalizeExplorerPath(path);
-  return normalized.split("/").filter(Boolean).pop() ?? "";
-}
-
 export function explorerDirname(path?: string | null): ExplorerPath {
   const normalized = normalizeExplorerPath(path);
   const parts = normalized.split("/").filter(Boolean);
@@ -37,11 +32,6 @@ export function explorerParentPath(path?: string | null): ExplorerPath | null {
 
 export function joinExplorerPath(...segments: Array<string | null | undefined>): ExplorerPath {
   return normalizeExplorerPath(segments.filter(Boolean).join("/"));
-}
-
-export function explorerPathDepth(path?: string | null): number {
-  const normalized = normalizeExplorerPath(path);
-  return normalized ? normalized.split("/").filter(Boolean).length : 0;
 }
 
 export function explorerPathSegments(path?: string | null): string[] {

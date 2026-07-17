@@ -546,7 +546,7 @@ function ModelListField({ label, value, onChange, options, helper }: { label: st
 }
 
 function SectionNav({ active, onChange }: { active: ConfigSection; onChange: (section: ConfigSection) => void }) {
-  return <nav aria-label="OpenClaw 配置子页面" className="grid gap-1 border-b border-line p-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-8">{CONFIG_SECTIONS.map((section) => <button key={section.id} type="button" onClick={() => onChange(section.id)} aria-current={active === section.id ? "page" : undefined} className={`rounded-sm px-3 py-2 text-left transition ${active === section.id ? "bg-primary text-white shadow-sm" : "text-muted hover:bg-panel-2 hover:text-ink-strong"}`}><span className="block text-sm font-semibold">{section.title}</span><span className="block truncate text-xs opacity-80">{section.desc}</span></button>)}</nav>;
+  return <nav aria-label="OpenClaw 配置子页面" className="grid gap-1 border-b border-line p-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-8">{CONFIG_SECTIONS.map((section) => <button key={section.id} type="button" onClick={() => onChange(section.id)} aria-current={active === section.id ? "page" : undefined} className={`rounded-sm px-3 py-2 text-left transition ${active === section.id ? "bg-primary text-primary-ink shadow-sm" : "text-muted hover:bg-panel-2 hover:text-ink-strong"}`}><span className="block text-sm font-semibold">{section.title}</span><span className="block truncate text-xs opacity-80">{section.desc}</span></button>)}</nav>;
 }
 
 function FieldGrid({ children }: { children: React.ReactNode }) {

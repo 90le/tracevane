@@ -6,6 +6,7 @@ import type {
 } from "@/features/cli-agents/types";
 import { isApiError } from "@/lib/api/errors";
 import { createTerminalSession, deleteTerminalSession, endTerminalSession, endTerminalSessions } from "@/lib/api/terminal";
+import { resolveWebSocketUrl } from "@/lib/runtime";
 
 export type WorkbenchTerminalEvent =
   | {
@@ -32,16 +33,6 @@ export interface CreateWorkbenchTerminalOptions {
   profileId?: string | null;
   shell?: string | null;
   resume?: boolean;
-}
-
-declare global {
-  interface Window {
-    __TRACEVANE_RUNTIME__?: {
-      webSocketBasePath?: string;
-      realtimeTransport?: string;
-      features?: { terminalRealtime?: boolean };
-    };
-  }
 }
 
 export function createWorkbenchTerminalSession(
@@ -141,12 +132,6 @@ export function schedulePendingTerminalKillFlush(delayMs = 1_500): void {
     pendingKillFlushDueAt = 0;
     void flushPendingTerminalKillRetries();
   }, normalizedDelayMs);
-}
-
-export function isTerminalKillPending(sessionId: string): boolean {
-  const sid = normalizeTerminalSessionId(sessionId);
-  if (!sid) return false;
-  return getPendingTerminalKillIds().has(sid);
 }
 
 export function getPendingTerminalKillIds(): Set<string> {
@@ -328,9 +313,6 @@ export function createTerminalWebSocketUrl(
   sessionId: string,
   options: CreateWorkbenchTerminalOptions,
 ): string {
-  const runtime = window.__TRACEVANE_RUNTIME__;
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const basePath = normalizeBasePath(runtime?.webSocketBasePath ?? "");
   const params = new URLSearchParams({
     sid: sessionId,
     rootId: options.rootId,
@@ -342,7 +324,7 @@ export function createTerminalWebSocketUrl(
     resume: "1",
     pinned: "1",
   });
-  return `${protocol}//${window.location.host}${basePath}/ws/terminal?${params.toString()}`;
+  return resolveWebSocketUrl(`/ws/terminal?${params.toString()}`);
 }
 
 export function parseTerminalEvent(raw: MessageEvent<string>): WorkbenchTerminalEvent | null {
@@ -368,20 +350,14 @@ function normalizeTerminalTitle(value: string | null | undefined): string | null
   return raw || null;
 }
 
-function normalizeProfileId(value: string | null | undefined): string {
+export function normalizeProfileId(value: string | null | undefined): string {
   const raw = String(value || "").trim();
   return raw || "local-shell";
 }
 
-function normalizeShellName(value: string | null | undefined): string {
+export function normalizeShellName(value: string | null | undefined): string {
   const raw = String(value || "").trim();
   return raw || "bash";
-}
-
-function normalizeBasePath(value: string): string {
-  const raw = String(value || "").trim();
-  if (!raw || raw === "/") return "";
-  return `/${raw.replace(/^\/+|\/+$/g, "")}`;
 }
 
 function normalizeTerminalSessionId(value: string | null | undefined): string {

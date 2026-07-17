@@ -715,8 +715,8 @@ export function FileManagerActionDialog({
           </div>
         ) : (
           <div className="grid gap-3 px-5 py-3 text-sm text-muted">
-            <div className="rounded border border-red/20 bg-red-soft p-3 text-red">
-              <div className="font-semibold text-red">
+            <div className="rounded border border-danger/20 bg-danger-soft p-3 text-danger">
+              <div className="font-semibold text-danger">
                 危险操作：默认移入回收站
               </div>
               <div className="mt-1 text-xs">
@@ -765,10 +765,10 @@ export function FileManagerActionDialog({
                 type="checkbox"
                 checked={deletePermanently}
                 onChange={(event) => setDeletePermanently(event.target.checked)}
-                className="mt-0.5 size-3 accent-red"
+                className="mt-0.5 size-3 accent-danger"
               />
               <span>
-                <strong className="text-red">永久删除</strong>：跳过
+                <strong className="text-danger">永久删除</strong>：跳过
                 .openclaw/.tracevane/trash，直接从文件系统移除。
               </span>
             </label>
@@ -834,7 +834,7 @@ function ArchiveDryRunSummary({
       <div
         className={
           errorMessage
-            ? "mt-3 rounded border border-red/20 bg-red-soft px-2 py-2 text-xs text-red"
+            ? "mt-3 rounded border border-danger/20 bg-danger-soft px-2 py-2 text-xs text-danger"
             : "mt-3 rounded border border-line bg-panel-2 px-2 py-2 text-xs text-subtle"
         }
         data-file-manager-archive-dry-run
@@ -855,19 +855,19 @@ function ArchiveDryRunSummary({
         <span className="rounded-full bg-panel px-2 py-0.5 text-muted">
           {preview.counts.total} 项
         </span>
-        <span className="rounded-full bg-green-soft px-2 py-0.5 text-green">
+        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">
           {preview.counts.ready} 可打包
         </span>
         <span className="rounded-full bg-primary-soft px-2 py-0.5 text-primary">
           {preview.archiveFormat}
         </span>
         {preview.destinationExists ? (
-          <span className="rounded-full bg-red-soft px-2 py-0.5 text-red" data-file-manager-archive-target-conflict>
+          <span className="rounded-full bg-danger-soft px-2 py-0.5 text-danger" data-file-manager-archive-target-conflict>
             目标已存在
           </span>
         ) : null}
         {preview.counts.errors ? (
-          <span className="rounded-full bg-red-soft px-2 py-0.5 text-red">
+          <span className="rounded-full bg-danger-soft px-2 py-0.5 text-danger">
             {preview.counts.errors} 错误
           </span>
         ) : null}
@@ -876,7 +876,7 @@ function ArchiveDryRunSummary({
         输出：{preview.archivePath}
       </div>
       {preview.destinationExists ? (
-        <div className="rounded border border-red/20 bg-red-soft px-2 py-1 text-red">
+        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
           目标归档文件已经存在。为避免静默覆盖，请更换打包文件名。
         </div>
       ) : null}
@@ -885,7 +885,7 @@ function ArchiveDryRunSummary({
           {visibleErrors.map((item) => (
             <div key={item.sourcePath} className="grid gap-0.5 border-b border-line px-2 py-1 last:border-b-0">
               <span className="truncate font-mono text-[11px] text-ink-strong">{item.sourcePath}</span>
-              <span className="truncate text-red">{item.message}</span>
+              <span className="truncate text-danger">{item.message}</span>
             </div>
           ))}
         </div>
@@ -905,7 +905,7 @@ function ChmodDryRunSummary({
 }) {
   if (!modeValid)
     return (
-      <div className="rounded border border-red/20 bg-red-soft px-2 py-1 text-red">
+      <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
         请输入 3-4 位八进制权限，例如 644 或 0755。
       </div>
     );
@@ -940,7 +940,7 @@ function ChmodDryRunSummary({
         </span>
       </div>
       {preview.truncated ? (
-        <div className="rounded border border-red/20 bg-red-soft px-2 py-1 text-red">
+        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
           影响范围超过安全预览上限，请缩小选择后再执行。
         </div>
       ) : null}
@@ -986,7 +986,7 @@ function UnarchiveDryRunSummary({
       <div
         className={
           errorMessage
-            ? "rounded border border-red/20 bg-red-soft px-2 py-1 text-red"
+            ? "rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger"
             : "rounded border border-line bg-panel px-2 py-1 text-subtle"
         }
       >
@@ -1008,7 +1008,7 @@ function UnarchiveDryRunSummary({
         <span className="rounded-full bg-panel-2 px-2 py-0.5 text-muted">
           {counts.total} 项
         </span>
-        <span className="rounded-full bg-green-soft px-2 py-0.5 text-green">
+        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">
           {counts.ready} 就绪
         </span>
         {counts.rename ? (
@@ -1022,18 +1022,18 @@ function UnarchiveDryRunSummary({
           </span>
         ) : null}
         {risky ? (
-          <span className="rounded-full bg-amber-soft px-2 py-0.5 text-amber">
+          <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning">
             {risky} 风险
           </span>
         ) : null}
         {counts.errors ? (
-          <span className="rounded-full bg-red-soft px-2 py-0.5 text-red">
+          <span className="rounded-full bg-danger-soft px-2 py-0.5 text-danger">
             {counts.errors} 错误
           </span>
         ) : null}
       </div>
       {counts.conflicts || counts.errors ? (
-        <div className="rounded border border-red/20 bg-red-soft px-2 py-1 text-red">
+        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
           存在阻塞冲突或不安全条目，请选择覆盖、跳过或保留两者后再执行。
         </div>
       ) : null}
@@ -1092,7 +1092,7 @@ function TransferDryRunSummary({
       <div
         className={
           errorMessage
-            ? "rounded border border-red/20 bg-red-soft px-2 py-1 text-red"
+            ? "rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger"
             : "rounded border border-line bg-panel px-2 py-1 text-subtle"
         }
       >
@@ -1114,7 +1114,7 @@ function TransferDryRunSummary({
         <span className="rounded-full bg-panel-2 px-2 py-0.5 text-muted">
           {counts.total} 项
         </span>
-        <span className="rounded-full bg-green-soft px-2 py-0.5 text-green">
+        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">
           {counts.ready} 就绪
         </span>
         {counts.rename ? (
@@ -1128,18 +1128,18 @@ function TransferDryRunSummary({
           </span>
         ) : null}
         {risky ? (
-          <span className="rounded-full bg-amber-soft px-2 py-0.5 text-amber">
+          <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning">
             {risky} 风险
           </span>
         ) : null}
         {counts.errors ? (
-          <span className="rounded-full bg-red-soft px-2 py-0.5 text-red">
+          <span className="rounded-full bg-danger-soft px-2 py-0.5 text-danger">
             {counts.errors} 错误
           </span>
         ) : null}
       </div>
       {counts.conflicts ? (
-        <div className="rounded border border-red/20 bg-red-soft px-2 py-1 text-red">
+        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
           存在阻塞冲突，请选择覆盖、跳过或保留两者后再执行。
         </div>
       ) : null}
@@ -1187,7 +1187,7 @@ function OverwriteConfirmField({
   count: number;
 }) {
   return (
-    <label className="grid gap-1 rounded border border-amber/30 bg-amber-soft/60 p-2 text-xs text-amber">
+    <label className="grid gap-1 rounded border border-warning/30 bg-warning-soft/60 p-2 text-xs text-warning">
       <span>
         覆盖会替换 {count} 个目标同名项；输入 OVERWRITE 后才允许执行。
       </span>

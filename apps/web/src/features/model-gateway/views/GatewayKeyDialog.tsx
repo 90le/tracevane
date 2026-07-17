@@ -13,6 +13,8 @@ import {
 import { Input } from "@/design/ui/input";
 import { Badge } from "@/design/ui/badge";
 import { toast } from "@/design/ui/sonner";
+import { ErrorState } from "@/shared/states/ErrorState";
+import { LoadingState } from "@/shared/states/LoadingState";
 
 import {
   useModelGatewayClientAuthQuery,
@@ -135,14 +137,21 @@ export function GatewayKeyDialog({
         </DialogHeader>
         <DialogBody className="grid gap-4">
           {authQuery.isLoading ? (
-            <p className="text-sm text-muted" role="status" aria-busy="true">
-              加载密钥状态…
-            </p>
+            <LoadingState title="加载密钥状态…" />
           ) : authQuery.error ? (
-            <p className="flex items-center gap-1.5 text-sm text-red">
-              <AlertTriangle className="size-4" />
-              {authQuery.error.message}
-            </p>
+            <ErrorState
+              title="无法加载密钥状态"
+              description={authQuery.error.message}
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void authQuery.refetch()}
+                >
+                  重试
+                </Button>
+              }
+            />
           ) : (
             <>
               <p className="text-sm text-muted">
@@ -195,7 +204,7 @@ export function GatewayKeyDialog({
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                   />
-                  <p className="flex items-center gap-1.5 text-xs text-amber">
+                  <p className="flex items-center gap-1.5 text-xs text-warning">
                     <AlertTriangle className="size-3.5" />
                     替换密钥后现有客户端需同步更新，否则将无法连接。
                   </p>
@@ -203,7 +212,7 @@ export function GatewayKeyDialog({
               )}
 
               {mode === "confirm-generate" && (
-                <p className="flex items-start gap-1.5 rounded-sm border border-line bg-amber-soft p-3 text-sm text-amber">
+                <p className="flex items-start gap-1.5 rounded-sm border border-line bg-warning-soft p-3 text-sm text-warning">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   生成新密钥会立即作废旧密钥，所有现有客户端必须更新后才能继续连接。确认生成？
                 </p>

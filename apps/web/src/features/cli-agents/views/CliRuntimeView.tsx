@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CheckCircle2,
   CircleSlash,
@@ -23,6 +24,7 @@ import {
   DialogTitle,
 } from "@/design/ui/dialog";
 import { toast } from "@/design/ui/sonner";
+import { EmptyState } from "@/shared/states/EmptyState";
 import { ErrorState } from "@/shared/states/ErrorState";
 
 import { useTerminalStatusQuery } from "@/lib/query/dashboard";
@@ -150,6 +152,7 @@ function fallbackInstallTarget(
  * status APIs resolve, so the page never feels blocked by local binary probes.
  */
 export function CliRuntimeView() {
+  const navigate = useNavigate();
   const terminalStatus = useTerminalStatusQuery({
     staleTime: 30_000,
     retry: false,
@@ -240,19 +243,15 @@ export function CliRuntimeView() {
 
   return (
     <div className="grid gap-4" data-cli-agents-management-page>
-      <Panel className="border-primary-line/60 bg-[linear-gradient(135deg,color-mix(in_srgb,var(--primary)_8%,var(--panel)),var(--panel)_45%,var(--panel-2))]">
+      <Panel className="bg-panel-2">
         <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.16em] text-primary">
-              <ShieldCheck className="size-4" />
-              CLI Agent 管理
-            </div>
-            <h2 className="mt-2 text-xl font-semibold tracking-[-0.02em] text-ink-strong sm:text-2xl">
+            <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-ink-strong">
+              <ShieldCheck className="size-4 text-primary" />
               安装、配置、重装与修复 Codex / Claude Code / OpenCode
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-              页面会先显示可管理的 CLI 列表；本机安装状态、模型网关和 PTY
-              能力在后台检测完成后逐行补齐，避免进入页面时被二进制探测卡住。
+              统一管理本机 Agent CLI 的安装、配置与修复；安装状态、模型网关与终端能力在后台检测完成后自动更新。
             </p>
           </div>
           <div className="flex flex-wrap gap-2 lg:justify-end">
@@ -280,7 +279,7 @@ export function CliRuntimeView() {
             </Button>
           </div>
         </div>
-        <div className="grid border-t border-line sm:grid-cols-4">
+        <div className="grid divide-y divide-line border-t border-line sm:grid-cols-4 sm:divide-x sm:divide-y-0">
           <Fact label="已安装 Agent CLI">
             {statusPending
               ? "检测中"
@@ -301,7 +300,7 @@ export function CliRuntimeView() {
       <Panel>
         <PanelHead
           title="Agent CLI 列表"
-          sub="静态列表先渲染；安装状态和修复建议异步补齐。"
+          sub="安装状态与修复建议在后台检测完成后自动更新。"
           action={
             <ToneBadge
               tone={
@@ -448,9 +447,10 @@ export function CliRuntimeView() {
           />
           <div className="grid gap-2 p-4">
             {installResult.results.length === 0 ? (
-              <div className="rounded-md border border-line bg-panel-2 p-3 text-sm text-muted">
-                没有需要变更的 CLI。
-              </div>
+              <EmptyState
+                title="没有需要变更的 CLI"
+                description="后端未返回任何安装或修复记录。"
+              />
             ) : null}
             {installResult.results.map((result) => (
               <div
@@ -479,7 +479,7 @@ export function CliRuntimeView() {
                   </pre>
                 ) : null}
                 {result.stderr ? (
-                  <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-panel px-2 py-1 text-xs text-red">
+                  <pre className="mt-2 max-h-32 overflow-auto rounded-sm bg-panel px-2 py-1 text-xs text-danger">
                     {result.stderr}
                   </pre>
                 ) : null}
@@ -568,17 +568,20 @@ export function CliRuntimeView() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => navigate("/ide")}
                 >
-                  打开工作区
+                  打开 IDE 工作台
                   <ExternalLink />
                 </Button>
               }
             />
           ) : null}
           {!statusPending && !gatewayPending && repairCount === 0 ? (
-            <div className="px-4 py-3 text-sm text-muted">
-              没有阻断项。需要重装时可在上方任意 CLI 行点击“重装/修复”。
-            </div>
+            <EmptyState
+              icon={<CheckCircle2 />}
+              title="没有阻断项"
+              description="需要重装时可在上方任意 CLI 行点击“重装/修复”。"
+            />
           ) : null}
         </div>
       </Panel>

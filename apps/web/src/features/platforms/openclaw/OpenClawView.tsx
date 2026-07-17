@@ -73,7 +73,7 @@ export function OpenClawView() {
               <Button variant="ghost" size="sm" asChild><Link to="/platforms"><ArrowLeft />平台目录</Link></Button>
               <Badge variant={gatewayUp ? "ok" : "warn"} className="gap-1.5"><Server className="size-3.5" />运行时 {gatewayUp ? "在线" : "需关注"}</Badge>
               {health?.version ? <Badge variant="mute">v{health.version}</Badge> : null}
-              <Badge variant="mute" className="gap-1.5"><Gauge className="size-3.5" />lite overview</Badge>
+              <Badge variant="mute" className="gap-1.5"><Gauge className="size-3.5" />轻量总览</Badge>
             </div>
             <h2 className="mt-4 text-xl font-semibold text-ink-strong">OpenClaw 平台运行摘要</h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
@@ -88,7 +88,7 @@ export function OpenClawView() {
           </div>
           <div className="grid content-between gap-3 rounded-md border border-line bg-panel-2 p-3">
             <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-ink-strong"><ShieldCheck className="size-4 text-accent" />边界说明</div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-ink-strong"><ShieldCheck className="size-4 text-primary" />边界说明</div>
               <p className="mt-2 text-sm leading-6 text-muted">Platform 管第三方平台原生能力；模型网关、IM、CLI、Workspace 的写入口仍在各自 owner 域，避免重复配置。</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -100,12 +100,12 @@ export function OpenClawView() {
       </section>
 
       <section className="rounded-md border border-line bg-panel shadow-sm">
-        <PanelHead title="子页面入口" sub="按对象分层进入，不在总览堆叠所有表单与日志。" action={<Badge variant="mute">9 sections</Badge>} />
+        <PanelHead title="子页面入口" sub="按对象分层进入，不在总览堆叠所有表单与日志。" action={<Badge variant="mute">9 个子页</Badge>} />
         <div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-3">
           {primarySections.map((section) => (
-            <Link key={section.id} to={section.path} className="group min-w-0 rounded-sm border border-line bg-panel-2 px-3 py-3 transition hover:border-primary-line hover:bg-accent-soft/40">
+            <Link key={section.id} to={section.path} className="group min-w-0 rounded-sm border border-line bg-panel-2 px-3 py-3 transition hover:border-primary-line hover:bg-primary-soft/40">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel text-muted group-hover:text-accent"><Route className="size-4" /></span>
+                <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel text-muted group-hover:text-primary"><Route className="size-4" /></span>
                 <span className="min-w-0 flex-1"><strong className="block truncate text-sm text-ink-strong">{section.label}</strong><span className="line-clamp-2 text-xs leading-5 text-muted">{section.description}</span></span>
               </div>
             </Link>

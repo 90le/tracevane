@@ -1,4 +1,4 @@
-import { FolderTree, Maximize2, Minimize2, Minus, MoreHorizontal, PanelLeftClose, X } from "lucide-react";
+import { ChevronRight, FolderTree, Maximize2, Minimize2, Minus, MoreHorizontal, PanelLeftClose, X } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
@@ -9,6 +9,8 @@ import { isApiError } from "@/lib/api/errors";
 import { useFileReadQuery, useWriteFileContentMutation } from "@/lib/query/files";
 import { FileSurfacePreviewPanel } from "@/shared/file-surface";
 import { editorDocumentId, editorTitleForPath, languageForPath } from "@/shared/editor-core";
+import { ErrorState } from "@/shared/states/ErrorState";
+import { LoadingState } from "@/shared/states/LoadingState";
 import { toast } from "@/design/ui/sonner";
 import type { FileEntrySummary } from "@/features/file-manager/file-tools/types";
 import { OnlineEditorMiniExplorer } from "./mini-explorer";
@@ -277,7 +279,7 @@ export function FileOnlineEditorDialog({
     >
       <div
         className={cn(
-          "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-line bg-panel shadow-2xl",
+          "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border border-line bg-panel shadow-lg",
           windowMode === "maximized" ? "rounded-none" : "rounded-xl",
         )}
       >
@@ -295,6 +297,7 @@ export function FileOnlineEditorDialog({
               requestAnimationFrame(() => activeEditorRef.current?.layout());
             }}
             aria-label={windowMode === "maximized" ? "还原在线编辑器" : "最大化在线编辑器"}
+            title={windowMode === "maximized" ? "还原在线编辑器" : "最大化在线编辑器"}
             data-file-online-editor-toggle-maximize
           >
             {windowMode === "maximized" ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
@@ -307,6 +310,7 @@ export function FileOnlineEditorDialog({
               onOpenChange(false);
             }}
             aria-label="最小化在线编辑器"
+            title="最小化在线编辑器"
             data-file-online-editor-minimize
           >
             <Minus className="size-4" />
@@ -316,6 +320,7 @@ export function FileOnlineEditorDialog({
             size="sm"
             onClick={requestCloseAll}
             aria-label="关闭在线编辑器"
+            title="关闭在线编辑器"
             data-file-online-editor-close-window
           >
             <X className="size-4" />
@@ -400,6 +405,7 @@ export function FileOnlineEditorDialog({
               setEditorActionMenuPosition((current) => current ? null : { x: rect.right - 320, y: rect.bottom + 6 });
             }}
             aria-label="打开编辑器操作菜单"
+            title="打开编辑器操作菜单"
             data-file-online-editor-action-menu-trigger
           >
             <MoreHorizontal className="size-4" />
@@ -435,6 +441,7 @@ export function FileOnlineEditorDialog({
             )}
             onClick={() => setMiniExplorerOpen((open) => !open)}
             aria-label={miniExplorerOpen ? "收起文件列表" : "展开文件列表"}
+            title={miniExplorerOpen ? "收起文件列表" : "展开文件列表"}
             aria-expanded={miniExplorerOpen}
             aria-controls="online-editor-mini-explorer"
             data-file-online-editor-mini-explorer-toggle
@@ -601,7 +608,7 @@ function TabContextMenu({
   };
   return (
     <div
-      className="fixed z-[70] min-w-48 overflow-hidden rounded-lg border border-line bg-panel py-1 text-sm text-ink shadow-2xl"
+      className="fixed z-[70] min-w-48 overflow-hidden rounded-lg border border-line bg-panel py-1 text-sm text-ink shadow-lg"
       style={{ left: Math.min(x, window.innerWidth - 224), top: Math.min(y, window.innerHeight - 240) }}
       role="menu"
       aria-label="在线编辑器标签菜单"
@@ -699,7 +706,7 @@ function CloseConfirmDialog({
       aria-label="确认关闭在线编辑器标签"
       data-file-online-editor-close-confirm
     >
-      <div className="w-full max-w-md rounded-lg border border-line bg-panel p-4 text-sm shadow-xl">
+      <div className="w-full max-w-md rounded-lg border border-line-2 bg-panel p-4 text-sm shadow-lg">
         <div className="font-semibold text-ink-strong">保存未保存修改？</div>
         <p className="mt-2 text-muted">
           即将{actionText}，其中 {dirtyCount} 个文件存在未保存修改。你可以先保存、直接不保存并关闭，或取消本次操作。
@@ -715,7 +722,7 @@ function CloseConfirmDialog({
             {saving ? "保存中…" : "保存"}
           </Button>
           <Button
-            variant="outline"
+            variant="danger"
             size="sm"
             onClick={onDiscard}
             disabled={saving}
@@ -852,7 +859,7 @@ function OnlineEditorTabPanel({
         (latest.modifiedAt !== read.modifiedAt || latest.size !== read.size)
       ) {
         onReadMetadataChange({ modifiedAt: latest.modifiedAt, size: latest.size });
-        const message = `File changed on disk before save: ${tab.entry.path}`;
+        const message = `保存前检测到磁盘上的文件已变化：${tab.entry.path}`;
         setConflictError(message);
         setConflictCompareOpen(false);
         setSaveError("文件已在磁盘上发生变化");
@@ -933,22 +940,21 @@ function OnlineEditorTabPanel({
   }, [editorRef, tab.id]);
 
   if (readQuery.isLoading && !tab.deleted) {
-    return <div className="m-4 rounded border border-line bg-panel-2 p-3 text-sm text-muted">读取文件中…</div>;
+    return <LoadingState title="读取文件中…" className="min-h-full" />;
   }
   if ((tab.deleted || readQuery.error) && draftContent == null) {
     return (
-      <div
-        className="m-4 rounded border border-danger/30 bg-danger/5 p-3 text-sm text-danger"
+      <ErrorState
+        className="min-h-full"
+        title={tab.deleted ? "文件已删除" : "文件不可读取或已不存在"}
+        description={
+          tab.deleted
+            ? "该路径已在文件列表中被删除。此标签仅用于说明状态，可关闭标签，或从文件列表重新创建文件。"
+            : readQuery.error?.message
+        }
         data-file-online-editor-missing-state
         data-file-online-editor-deleted-state={tab.deleted ? "true" : "false"}
-      >
-        <div className="font-medium">{tab.deleted ? "文件已删除" : "文件不可读取或已不存在"}</div>
-        <div className="mt-1 text-xs">
-          {tab.deleted
-            ? "Mini Explorer 已删除此路径；clean 标签保留在这里用于解释状态，可关闭标签或从文件列表重新创建。"
-            : readQuery.error?.message}
-        </div>
-      </div>
+      />
     );
   }
   if (!deletedWithDraft && (!read?.textLike || read.content == null)) {
@@ -960,7 +966,7 @@ function OnlineEditorTabPanel({
         loading={readQuery.isFetching}
         error={readQuery.error?.message}
         onReload={() => void readQuery.refetch()}
-        statusNote="同一 File Surface · 非文本只读预览"
+        statusNote="与文件管理器预览一致 · 非文本只读预览"
       />
     );
   }
@@ -983,14 +989,14 @@ function OnlineEditorTabPanel({
       data-file-online-editor-readonly-state={editable ? "editable" : "readonly"}
     >
       {tab.deleted ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-amber/30 bg-amber-soft px-3 py-2 text-xs text-amber" data-file-online-editor-deleted-banner>
+        <div className="flex flex-wrap items-center gap-2 border-b border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning" data-file-online-editor-deleted-banner>
           <span className="font-medium">文件已删除。</span>
           <span className="text-muted">已保留当前未保存内容；为避免误覆盖，当前标签只读，请复制内容或关闭标签后重新创建文件。</span>
         </div>
       ) : null}
       {saveError && !conflictError ? (
         <div
-          className="flex flex-wrap items-center gap-2 border-b border-red/30 bg-red-soft px-3 py-2 text-xs text-red"
+          className="flex flex-wrap items-center gap-2 border-b border-danger-line bg-danger-soft px-3 py-2 text-xs text-danger"
           data-file-online-editor-save-error
         >
           <span className="font-medium">保存失败。</span>
@@ -999,7 +1005,7 @@ function OnlineEditorTabPanel({
       ) : null}
       {conflictError ? (
         <div
-          className="flex flex-wrap items-center gap-2 border-b border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger"
+          className="flex flex-wrap items-center gap-2 border-b border-danger-line bg-danger-soft px-3 py-2 text-xs text-danger"
           data-file-online-editor-conflict-panel
         >
           <span className="font-medium">磁盘文件已变化，已阻止静默覆盖。</span>
@@ -1044,7 +1050,7 @@ function OnlineEditorTabPanel({
       ) : null}
       {conflictError && conflictCompareOpen ? (
         <div
-          className="grid min-h-0 gap-2 border-b border-danger/20 bg-panel-2 p-3 text-xs md:grid-cols-2"
+          className="grid min-h-0 gap-2 border-b border-danger-line bg-panel-2 p-3 text-xs md:grid-cols-2"
           data-file-online-editor-conflict-compare-panel
         >
           <section className="min-w-0 rounded-md border border-line bg-panel">
@@ -1180,8 +1186,8 @@ function OnlineEditorTabPanel({
         <span data-file-online-editor-status-modified title={read?.modifiedAt ?? undefined}>{modifiedAt}</span>
         <span data-file-online-editor-cursor-position>{cursorPosition ? `Ln ${cursorPosition.lineNumber}, Col ${cursorPosition.column}` : "Ln —, Col —"}</span>
         <span data-file-online-editor-status-readonly-reason>{readOnlyReason}</span>
-        {read?.truncated ? <span className="text-amber" data-file-online-editor-truncated-state>已截断</span> : null}
-        {tab.deleted ? <span className="text-amber" data-file-online-editor-status-deleted>已删除</span> : null}
+        {read?.truncated ? <span className="text-warning" data-file-online-editor-truncated-state>已截断</span> : null}
+        {tab.deleted ? <span className="text-warning" data-file-online-editor-status-deleted>已删除</span> : null}
       </footer>
     </div>
   );
@@ -1252,7 +1258,7 @@ function EditorActionMenu({
   const menuTop = Math.max(8, Math.min(y, window.innerHeight - 360));
   return (
     <div
-      className="fixed z-[70] overflow-y-auto overscroll-contain rounded-xl border border-line bg-panel p-1 text-sm text-ink shadow-2xl"
+      className="fixed z-[70] overflow-y-auto overscroll-contain rounded-xl border border-line bg-panel p-1 text-sm text-ink shadow-lg"
       style={{
         left: Math.max(12, Math.min(x, window.innerWidth - menuWidth - 12)),
         top: menuTop,
@@ -1291,7 +1297,7 @@ function EditorActionMenu({
               if (event.key === "Enter") run(onGoto);
             }}
             placeholder="12:8"
-            className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+            className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none transition-[border-color,box-shadow] focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]"
             data-file-online-editor-goto-input
           />
           <Button variant="ghost" size="sm" onClick={() => run(onGoto)} data-file-online-editor-goto>定位</Button>
@@ -1308,13 +1314,13 @@ function EditorActionMenu({
               max={24}
               value={preferences.fontSize}
               onChange={(event) => onPreferencesChange({ fontSize: Math.max(11, Math.min(24, Number(event.target.value) || 13)) })}
-              className="h-8 w-20 rounded border border-line bg-panel px-2 text-xs text-ink outline-none"
+              className="h-8 w-20 rounded border border-line bg-panel px-2 text-xs text-ink outline-none transition-[border-color,box-shadow] focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]"
               data-file-online-editor-font-size
             />
           </label>
           <label className="flex items-center gap-2">
             <span className="w-10 shrink-0">主题</span>
-            <select value={preferences.themeMode} onChange={(event) => onPreferencesChange({ themeMode: event.target.value as CodeEditorThemeMode })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none" data-file-online-editor-theme-mode-select>
+            <select value={preferences.themeMode} onChange={(event) => onPreferencesChange({ themeMode: event.target.value as CodeEditorThemeMode })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none transition-[border-color,box-shadow] focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]" data-file-online-editor-theme-mode-select>
               <option value="auto">跟随系统</option>
               <option value="light">浅色</option>
               <option value="dark">深色</option>
@@ -1322,7 +1328,7 @@ function EditorActionMenu({
           </label>
           <label className="flex items-center gap-2">
             <span className="w-10 shrink-0">换行</span>
-            <select value={preferences.wordWrap} onChange={(event) => onPreferencesChange({ wordWrap: event.target.value as CodeEditorWordWrap })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none" data-file-online-editor-word-wrap-select>
+            <select value={preferences.wordWrap} onChange={(event) => onPreferencesChange({ wordWrap: event.target.value as CodeEditorWordWrap })} className="h-8 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-xs text-ink outline-none transition-[border-color,box-shadow] focus-visible:border-primary-line focus-visible:shadow-[var(--ring)]" data-file-online-editor-word-wrap-select>
               <option value="on">开</option>
               <option value="off">关</option>
             </select>
@@ -1366,7 +1372,7 @@ function MenuDisclosure({
         {...{ [dataAttr]: true }}
       >
         <span>{title}</span>
-        <span className="text-xs text-subtle transition group-open:rotate-90">›</span>
+        <ChevronRight className="size-3.5 text-subtle transition group-open:rotate-90" aria-hidden />
       </summary>
       {children}
     </details>

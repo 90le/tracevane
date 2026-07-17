@@ -228,9 +228,9 @@ export function BindingsPage() {
       </WorkbenchToolbar>
       <div className="grid gap-3 p-3">
         <div className="grid gap-3 md:grid-cols-4">
-          <StatTile label="原生绑定" value={bindings.length} sub="OpenClaw static" />
-          <StatTile label="可选 Agent" value={channels.data?.agents.length ?? 0} sub="OpenClaw options" />
-          <StatTile label="涉及频道" value={new Set(bindings.map((binding) => binding.channel)).size} sub="Channel" />
+          <StatTile label="原生绑定" value={bindings.length} sub="OpenClaw 静态绑定" />
+          <StatTile label="可选 Agent" value={channels.data?.agents.length ?? 0} sub="来自 OpenClaw 配置" />
+          <StatTile label="涉及频道" value={new Set(bindings.map((binding) => binding.channel)).size} sub="按 Channel 去重" />
           <StatTile label="当前选择" value={selected?.accountId ?? "default"} sub={selected?.channel ?? "—"} />
         </div>
         <ResponsiveTable columns={["Bot 匹配", "OpenClaw 目标", "匹配范围", "状态", "操作"]} rows={filtered.map((binding) => <SelectableRow key={binding.id} id={binding.id} selected={selectedKey === binding.id} onSelect={setSelectedKey}><td className="max-w-[360px] truncate px-4 py-3"><div className="font-medium text-ink-strong">{binding.channel} · {binding.accountId ?? "default Bot"}</div><div className="truncate text-xs text-muted">Bot / Account 路由</div></td><td className="max-w-[260px] truncate px-4 py-3 text-muted">{binding.type === "acp" ? "ACP" : "Agent"} → {binding.agentId}</td><td className="max-w-[260px] truncate px-4 py-3 text-muted">{binding.match.peerKind ? `${binding.match.peerKind}${binding.match.peerId ? ` / ${binding.match.peerId}` : ""}` : "任意会话"}</td><td className="px-4 py-3"><StatusPill tone={binding.type === "acp" ? "warn" : "ok"}>{binding.type === "acp" ? "ACP" : "Agent"}</StatusPill></td><td className="px-4 py-3"><div className="flex gap-2"><Button variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); openEditor("edit", binding); }}><Pencil className="size-4" />编辑</Button><Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setDeleteTarget(binding); }}><Trash2 className="size-4" />删除</Button></div></td></SelectableRow>)} empty="无匹配绑定" />

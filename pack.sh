@@ -297,6 +297,8 @@ const manifestPath = path.join(packageDir, 'openclaw.plugin.json');
 
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 pkg.version = version;
+// 发布包不是 monorepo workspace 根，移除 workspaces 避免安装时 npm 按 workspace 解析缺失的 apps/*。
+delete pkg.workspaces;
 pkg.openclaw = pkg.openclaw && typeof pkg.openclaw === 'object' ? pkg.openclaw : {};
 pkg.openclaw.id = 'tracevane';
 pkg.openclaw.kind = 'ui';

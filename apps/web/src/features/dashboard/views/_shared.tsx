@@ -31,12 +31,12 @@ export function PanelHead({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+    <div className="flex min-w-0 flex-wrap items-center gap-3 border-b border-line px-4 py-3">
       <div className="min-w-0">
         <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
-        {sub && <span className="text-sm text-subtle">{sub}</span>}
+        {sub && <span className="block truncate text-sm text-subtle">{sub}</span>}
       </div>
-      {action && <div className="ml-auto">{action}</div>}
+      {action && <div className="ml-auto shrink-0 max-sm:ml-0">{action}</div>}
     </div>
   );
 }
@@ -60,15 +60,15 @@ export function ToneBadge({
   return <Badge variant={TONE_BADGE[tone]}>{children}</Badge>;
 }
 
-/** Tailwind classes for a soft icon-chip per tone. */
+/** Tailwind classes for a soft icon-chip per tone (semantic color tokens). */
 export function toneIconClass(tone: ReadinessTone): string {
   switch (tone) {
     case "ok":
-      return "bg-green-soft text-green";
+      return "bg-success/12 text-success";
     case "warn":
-      return "bg-amber-soft text-amber";
+      return "bg-warning-soft text-warning";
     case "bad":
-      return "bg-red-soft text-red";
+      return "bg-danger-soft text-danger";
     case "info":
       return "bg-primary-soft text-primary";
     default:

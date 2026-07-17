@@ -1,13 +1,9 @@
 /**
- * Workspace files feature types.
+ * File manager feature types.
  *
- * Workspace files owns browsing, selection, inspection metadata and file lifecycle
- * view-model types. Evidence/artifact views should depend on their own owner
- * types.
- *
+ * File Manager owns browsing, selection and file lifecycle operations.
  * Wire contracts are reused from the repo-level `types/*.ts`; we re-export the
- * pieces the views need plus the small view-routing/view-model types the page
- * synthesizes.
+ * pieces the file-manager surfaces need.
  */
 
 // --- Files (roots / directory listing / file content / search) -------------
@@ -25,37 +21,3 @@ export type {
   FilesUploadItemPayload,
   FilesUploadConflictPolicy,
 } from "../../../../../../types/files";
-
-// --- Git (status / diff) ----------------------------------------------------
-export type {
-  GitStatusPayload,
-  GitDiffPayload,
-  GitFileChange,
-  GitFileChangeKind,
-  GitCommitSummary,
-} from "../../../../../../types/git";
-
-// ---------------------------------------------------------------------------
-// View-model types synthesized by the page
-// ---------------------------------------------------------------------------
-
-/** Readiness tone vocabulary (mirrors the other feature surfaces). */
-export type EvidenceTone = "ok" | "warn" | "bad" | "info" | "mute";
-
-/** The rows-column source mode: browse the project tree, or show search hits. */
-export const FILES_BROWSE_MODES = ["tree", "search"] as const;
-export type FilesBrowseMode = (typeof FILES_BROWSE_MODES)[number];
-
-/** Inspection mode for the selected file. */
-export type FilesInspectMode = "content" | "diff";
-
-/** A file selected for inspection (path + display metadata). */
-export interface FilesSelection {
-  path: string;
-  name: string;
-  ext: string | null;
-  /** True when the entry is known to be text-readable for IDE inspection (from browse/search). */
-  textLike: boolean;
-  /** True when the entry is a directory (not a file inspection target). */
-  isDirectory: boolean;
-}

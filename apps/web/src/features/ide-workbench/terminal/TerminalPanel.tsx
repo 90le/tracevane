@@ -1,7 +1,11 @@
 import * as React from "react";
+import { MonitorCog, Plus, Terminal as TerminalIcon } from "lucide-react";
 import type { TerminalProfileDescriptor } from "@/features/cli-agents/types";
 import { getTerminalProfiles, renameTerminalSession } from "@/lib/api/terminal";
+import { Button } from "@/design/ui/button";
 import { toast } from "@/design/ui/sonner";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { LoadingState } from "@/shared/states/LoadingState";
 import { endWorkbenchTerminalSession, endWorkbenchTerminalSessions, schedulePendingTerminalKillFlush } from "./terminalClient";
 import { useTerminalLayoutState } from "./terminalLayoutState";
 import { TerminalGroupView } from "./TerminalGroupView";
@@ -161,11 +165,7 @@ export function TerminalPanel({
       />
       <div className="min-h-0 min-w-0" data-ide-terminal-layout data-terminal-tab-count={layout.tabs.length} data-terminal-pane-count={activePaneCount} data-terminal-active-tab-id={layout.activeTabId} data-terminal-active-pane-id={layout.activePaneId} data-terminal-active-terminal-id={activeTab?.activeTerminalId ?? undefined}>
         {!layoutReady ? (
-          <div className="grid h-full place-items-center p-6 text-center" data-ide-terminal-loading>
-            <div className="max-w-md rounded-lg border border-line bg-canvas px-6 py-5 text-sm text-muted">
-              正在恢复终端布局…
-            </div>
-          </div>
+          <LoadingState className="h-full" title="正在恢复终端布局…" data-ide-terminal-loading />
         ) : active && activeTab ? (
           <TerminalGroupView
             key={activeTab.tabId}
@@ -175,39 +175,31 @@ export function TerminalPanel({
             cwd={cwd}
             cwdAbsolutePath={cwdAbsolutePath}
             activePaneId={activeTab.activePaneId}
-            compact={placement === "right"}
             showPaneHeader={activePaneCount > 1}
             onFocusPane={layoutApi.setActivePane}
             onClosePane={layoutApi.closePane}
             onResizeSplit={layoutApi.resizeSplit}
           />
         ) : (
-          <div className="grid h-full place-items-center p-6 text-center" data-ide-terminal-empty>
-            <div className="max-w-md rounded-lg border border-dashed border-line bg-canvas px-6 py-5 text-sm text-muted">
-              <div className="text-base font-medium text-ink-strong">没有正在运行的终端</div>
-              <p className="mt-2 leading-relaxed">
-                尚未创建或恢复终端。点击“新建终端”创建当前工作区终端，或打开终端管理器恢复仍可恢复的终端会话。
-              </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
-                <button
-                  type="button"
-                  className="rounded-sm border border-line-2 bg-panel px-3 py-1.5 text-sm font-medium text-ink hover:border-primary-line hover:bg-panel-2"
-                  onClick={newTerminalWithDefault}
-                  data-ide-terminal-empty-new
-                >
+          <EmptyState
+            className="h-full"
+            icon={<TerminalIcon />}
+            title="没有正在运行的终端"
+            description="尚未创建或恢复终端。点击“新建终端”创建当前工作区终端，或打开终端管理器恢复仍可恢复的终端会话。"
+            data-ide-terminal-empty
+            action={(
+              <>
+                <Button variant="default" size="sm" onClick={newTerminalWithDefault} data-ide-terminal-empty-new>
+                  <Plus />
                   新建终端
-                </button>
-                <button
-                  type="button"
-                  className="rounded-sm border border-line bg-canvas px-3 py-1.5 text-sm font-medium text-muted hover:border-primary-line hover:bg-panel-2 hover:text-ink"
-                  onClick={() => setManagerOpen(true)}
-                  data-ide-terminal-empty-manager
-                >
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setManagerOpen(true)} data-ide-terminal-empty-manager>
+                  <MonitorCog />
                   打开终端管理器
-                </button>
-              </div>
-            </div>
-          </div>
+                </Button>
+              </>
+            )}
+          />
         )}
       </div>
       <TerminalManagerDialog

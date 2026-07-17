@@ -6,7 +6,6 @@ import {
   FileSearch,
   Files,
   GitBranch,
-  Loader2,
   Save,
   Server,
   Search,
@@ -18,6 +17,8 @@ import { Button } from "@/design/ui/button";
 import { Input } from "@/design/ui/input";
 import { editorTitleForPath } from "@/shared/editor-core";
 import { normalizeExplorerPath } from "@/shared/explorer-core";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { LoadingState } from "@/shared/states/LoadingState";
 import { requestLspWorkspaceSymbols } from "../lsp/lspInteractionClient";
 import type { IdeWorkbenchEditorRevealRange, IdeWorkbenchEditorTab, WorkbenchActivityId } from "../types";
 import type { LspWorkspaceSymbolItem } from "../../../../../../types/lsp";
@@ -256,7 +257,7 @@ export function IdeCommandPalette({
       data-ide-command-palette-overlay
     >
       <div
-        className="grid w-full max-w-2xl overflow-hidden rounded-xl border border-line bg-panel text-ink shadow-2xl"
+        className="grid w-full max-w-2xl overflow-hidden rounded-xl border border-line bg-panel text-ink shadow-lg"
         role="dialog"
         aria-modal="true"
         aria-label="IDE 命令面板"
@@ -303,7 +304,7 @@ export function IdeCommandPalette({
         </div>
         <div className="max-h-[56vh] overflow-auto p-2 [scrollbar-width:thin]" data-ide-command-palette-results>
           <div className="mb-2 flex items-center justify-between gap-2 px-2 text-2xs text-subtle">
-            <span className="truncate">{rootLabel || rootId || "Workspace"} · /{normalizeExplorerPath(directoryPath)}</span>
+            <span className="truncate">{rootLabel || rootId || "工作区"} · /{normalizeExplorerPath(directoryPath)}</span>
             <span className="shrink-0">F1 / Ctrl+Shift+P</span>
           </div>
           {items.length === 0 && symbolLoading ? (
@@ -428,13 +429,9 @@ function SymbolRow({
 }
 
 function PaletteEmpty({ title, description, loading = false }: { title: string; description: string; loading?: boolean }) {
-  return (
-    <div className="grid min-h-32 place-items-center rounded-lg border border-dashed border-line bg-canvas p-5 text-center text-sm text-muted">
-      <div>
-        {loading ? <Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" aria-hidden /> : null}
-        <div className="font-semibold text-ink-strong">{title}</div>
-        <div className="mt-1 text-xs">{description}</div>
-      </div>
-    </div>
-  );
+  const className = "min-h-32 rounded-lg border border-dashed border-line bg-canvas";
+  if (loading) {
+    return <LoadingState title={title} description={description} className={className} />;
+  }
+  return <EmptyState title={title} description={description} className={className} />;
 }

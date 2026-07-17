@@ -439,9 +439,9 @@ const APP_SCOPE_LABEL: Record<ModelGatewayAppScope, string> = {
 
 function healthLabel(health: ModelGatewayProviderView["health"] | undefined): { label: string; className: string } {
   if (!health) return { label: "未知", className: "text-muted" };
-  if (health.circuitState === "open") return { label: "熔断", className: "text-red" };
-  if (health.lastError || health.consecutiveFailures > 0) return { label: "异常", className: "text-amber" };
-  if (health.lastSuccessAt) return { label: "最近通过", className: "text-green" };
+  if (health.circuitState === "open") return { label: "熔断", className: "text-danger" };
+  if (health.lastError || health.consecutiveFailures > 0) return { label: "异常", className: "text-warning" };
+  if (health.lastSuccessAt) return { label: "最近通过", className: "text-success" };
   return { label: "未测试", className: "text-muted" };
 }
 
@@ -906,7 +906,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
                 {provider.id !== route.resolvedProviderId ? "（当前页 Provider 未承接这条实际请求）" : ""}
               </p>
               {route.warning && (
-                <p className="flex items-start gap-1.5 text-sm text-amber">
+                <p className="flex items-start gap-1.5 text-sm text-warning">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   {route.warning}
                 </p>
@@ -933,9 +933,9 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
           })}
         </div>
         {configWarnings.length ? (
-          <div className="grid gap-1 rounded-sm border border-amber/30 bg-amber-soft/40 p-3">
+          <div className="grid gap-1 rounded-sm border border-warning/30 bg-warning-soft/40 p-3">
             {configWarnings.map((warning) => (
-              <p key={warning} className="flex items-start gap-1.5 text-sm text-amber">
+              <p key={warning} className="flex items-start gap-1.5 text-sm text-warning">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 {warning}
               </p>
@@ -1290,7 +1290,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
               type="button"
               variant="ghost"
               size="sm"
-              className="ml-auto text-red hover:bg-red-soft"
+              className="ml-auto text-danger hover:bg-danger-soft"
               onClick={() => setConfirmDelete(true)}
             >
               <Trash2 />
@@ -1438,7 +1438,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
       {/* Save bar */}
       <div className="sticky bottom-0 flex flex-wrap items-center gap-3 rounded-md border border-line bg-panel/95 px-4 py-3 shadow-sm backdrop-blur">
         {showErrors && validation.errors.length > 0 ? (
-          <span className="flex items-center gap-1.5 text-sm text-red">
+          <span className="flex items-center gap-1.5 text-sm text-danger">
             <AlertTriangle className="size-4" />
             {validation.errors[0]}
           </span>
@@ -1462,7 +1462,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-danger-soft text-danger [&_svg]:size-4">
               <Trash2 />
             </span>
             <DialogTitle>删除 Provider</DialogTitle>
@@ -1485,7 +1485,7 @@ export function ProviderConfigView({ goToView, selectedProvider, createMode }: M
       <Dialog open={confirmLeave} onOpenChange={setConfirmLeave}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-warning-soft text-warning [&_svg]:size-4">
               <AlertTriangle />
             </span>
             <DialogTitle>有未保存的更改</DialogTitle>

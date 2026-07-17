@@ -6,7 +6,8 @@ import { Button } from "@/design/ui/button";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { Skeleton } from "@/shared/states/Skeleton";
 import { useSystemDiagnosticsQuery } from "@/lib/query/platform-read";
-import { BoundaryBadge, DetailRail, EvidenceRow, RefreshButton, ResponsiveTable, SelectableRow, StatusPill, WorkbenchToolbar, useSelectedKey } from "../components";
+import { BoundaryBadge, boolText, DetailRail, EvidenceRow, RefreshButton, ResponsiveTable, SelectableRow, StatusPill, WorkbenchToolbar, useSelectedKey } from "../components";
+import { deriveControlUiUrl } from "../../usePlatformsAggregate";
 import { StatTile } from "../../_shared";
 
 function levelLabel(level: string | undefined): string {
@@ -20,6 +21,7 @@ export function DiagnosticsPage() {
   const [includeCommands, setIncludeCommands] = React.useState(false);
   const diagnostics = useSystemDiagnosticsQuery({ retry: false, staleTime: includeCommands ? 30_000 : 15_000 }, { includeCommands });
   const data = diagnostics.data;
+  const controlUiUrl = deriveControlUiUrl(data);
   const commandEntries = Object.entries(data?.commands ?? {});
   const checks = data?.bootstrap?.checks ?? [];
   const problemChecks = checks.filter((check) => check.level !== "ok");
@@ -32,14 +34,14 @@ export function DiagnosticsPage() {
     <section className="rounded-md border border-line bg-panel shadow-sm">
       <WorkbenchToolbar title="诊断检查" description="安全、bootstrap、设备信任和命令证据。诊断页只定位问题，修复进入守护页。"><Button variant="outline" size="sm" asChild><Link to="/platforms/openclaw/guard"><Activity />守护修复</Link></Button><Button variant="outline" size="sm" onClick={() => setIncludeCommands(true)} disabled={includeCommands && diagnostics.isFetching}><ListChecks />加载命令证据</Button><RefreshButton loading={diagnostics.isFetching} onClick={() => { void diagnostics.refetch(); }} /><BoundaryBadge /></WorkbenchToolbar>
       <div className="grid gap-3 p-3">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><StatTile label="严重安全项" value={data?.status?.securityCritical ?? 0} sub="security critical" /><StatTile label="安全警告" value={data?.status?.securityWarn ?? 0} sub="security warning" /><StatTile label="Bootstrap" value={data?.bootstrap?.ready ? "ready" : "not ready"} sub={`${checks.length} checks`} /><StatTile label="设备信任" value={data?.deviceTrust?.helper?.paired ? "paired" : "unpaired"} sub={`${data?.deviceTrust?.pending?.length ?? 0} pending`} /></div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><StatTile label="严重安全项" value={data?.status?.securityCritical ?? 0} sub="需立即处理" /><StatTile label="安全警告" value={data?.status?.securityWarn ?? 0} sub="建议尽快处理" /><StatTile label="Bootstrap" value={data?.bootstrap?.ready ? "就绪" : "未就绪"} sub={`${checks.length} 项检查`} /><StatTile label="设备信任" value={data?.deviceTrust?.helper?.paired ? "已配对" : "未配对"} sub={`${data?.deviceTrust?.pending?.length ?? 0} 待处理`} /></div>
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="min-w-0 rounded-md border border-line bg-panel">
-            <ResponsiveTable columns={["检查项", "状态", "说明"]} rows={visibleChecks.map((check) => <SelectableRow key={check.id} id={check.id} selected={selectedCheckId === check.id} onSelect={setSelectedCheckId}><td className="max-w-[320px] px-4 py-3"><div className="truncate font-medium text-ink-strong">{check.label}</div><div className="truncate text-xs text-muted">{check.id}</div></td><td className="px-4 py-3"><StatusPill tone={check.level === "ok" ? "ok" : check.level === "error" ? "bad" : "warn"}>{levelLabel(check.level)}</StatusPill></td><td className="max-w-[460px] truncate px-4 py-3 text-muted">{check.detail || check.summary || "—"}</td></SelectableRow>)} empty="无 bootstrap checks" />
+            <ResponsiveTable columns={["检查项", "状态", "说明"]} rows={visibleChecks.map((check) => <SelectableRow key={check.id} id={check.id} selected={selectedCheckId === check.id} onSelect={setSelectedCheckId}><td className="max-w-[320px] px-4 py-3"><div className="truncate font-medium text-ink-strong">{check.label}</div><div className="truncate text-xs text-muted">{check.id}</div></td><td className="px-4 py-3"><StatusPill tone={check.level === "ok" ? "ok" : check.level === "error" ? "bad" : "warn"}>{levelLabel(check.level)}</StatusPill></td><td className="max-w-[460px] truncate px-4 py-3 text-muted">{check.detail || check.summary || "—"}</td></SelectableRow>)} empty="暂无 bootstrap 检查项" />
           </div>
           <DetailRail title={selectedCheck?.label ?? "运行时证据"} subtitle={selectedCheck?.detail ?? "Tracevane local HTTP bridge"}>
             <EvidenceRow label="检查状态" value={selectedCheck ? <StatusPill tone={selectedCheck.level === "ok" ? "ok" : selectedCheck.level === "error" ? "bad" : "warn"}>{levelLabel(selectedCheck.level)}</StatusPill> : "—"} />
-            <EvidenceRow label="可自动修复" value={selectedCheck ? String(selectedCheck.fixable) : "—"} />
+            <EvidenceRow label="可自动修复" value={selectedCheck ? boolText(selectedCheck.fixable) : "—"} />
             <EvidenceRow label="PID" value={data?.runtime?.pid ?? "—"} />
             <EvidenceRow label="Node" value={data?.runtime?.nodeVersion ?? "—"} />
             <EvidenceRow label="主机" value={data?.runtime?.hostname ?? "—"} />
@@ -53,6 +55,6 @@ export function DiagnosticsPage() {
 
     <section className="rounded-md border border-line bg-panel shadow-sm"><WorkbenchToolbar title="命令证据" description="命令证据按需加载，避免进入诊断页时被 doctor/status 慢命令阻塞。"><ListChecks className="size-4 text-muted" /></WorkbenchToolbar><ResponsiveTable columns={["命令", "结果", "耗时"]} rows={commandEntries.map(([key, command]) => <tr key={key}><td className="max-w-[360px] truncate px-4 py-3 font-medium text-ink-strong">{key}</td><td className="px-4 py-3"><StatusPill tone={command.ok ? "ok" : "bad"}>{command.ok ? "正常" : "失败"}</StatusPill></td><td className="px-4 py-3 text-muted">{command.durationMs}ms</td></tr>)} empty={includeCommands ? "无命令证据" : "点击上方“加载命令证据”后再运行 doctor/status"} /></section>
 
-    <div className="flex flex-wrap gap-2"><Button variant="outline" asChild><Link to="/platforms/openclaw/guard"><Activity />守护诊断与修复</Link></Button><Button variant="ghost" asChild><a href={data?.config?.gatewayControlUiBasePath || "#/platforms/openclaw"} target="_blank" rel="noreferrer"><ExternalLink />Control UI evidence</a></Button>{data?.status?.securityCritical ? <Badge variant="bad" className="gap-1.5"><AlertTriangle className="size-3.5" />需要处理严重安全项</Badge> : null}<Badge variant="mute" className="gap-1.5"><ServerCog className="size-3.5" />diagnostics only</Badge></div>
+    <div className="flex flex-wrap gap-2"><Button variant="outline" asChild><Link to="/platforms/openclaw/guard"><Activity />守护诊断与修复</Link></Button><Button variant="ghost" asChild><a href={controlUiUrl ?? "#/platforms/openclaw"} target="_blank" rel="noreferrer"><ExternalLink />OpenClaw 控制台</a></Button>{data?.status?.securityCritical ? <Badge variant="bad" className="gap-1.5"><AlertTriangle className="size-3.5" />需要处理严重安全项</Badge> : null}<Badge variant="mute" className="gap-1.5"><ServerCog className="size-3.5" />只读诊断</Badge></div>
   </div>;
 }

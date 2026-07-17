@@ -1,10 +1,12 @@
 import * as React from "react";
-import { AlertCircle, FileDiff, Loader2 } from "lucide-react";
+import { AlertCircle, FileDiff } from "lucide-react";
 
-import { cn } from "@/design/lib/utils";
 import { CodeBlock, MonacoDiffPanel } from "@/shared/diff";
 import { languageForPath } from "@/shared/editor-core";
 import { getGitDiff } from "@/lib/api/git";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { ErrorState } from "@/shared/states/ErrorState";
+import { LoadingState } from "@/shared/states/LoadingState";
 import { appendWorkbenchOutput } from "../output";
 import type { IdeWorkbenchEditorTab } from "../types";
 import type { GitDiffPayload } from "../../../../../../types/git";
@@ -75,7 +77,7 @@ export function GitDiffEditorPanel({ tab }: GitDiffEditorPanelProps) {
             </div>
           </div>
           {payload?.truncated || payload?.contentTruncated ? (
-            <span className="rounded border border-amber/40 bg-amber-soft px-2 py-0.5 text-2xs font-medium text-amber">已截断</span>
+            <span className="rounded border border-warning/40 bg-warning-soft px-2 py-0.5 text-2xs font-medium text-warning">已截断</span>
           ) : null}
         </div>
       </div>
@@ -118,17 +120,12 @@ function GitDiffState({
   loading?: boolean;
   tone?: "default" | "muted" | "danger";
 }) {
-  return (
-    <div className="grid h-full min-h-0 place-items-center rounded-lg border border-dashed border-line bg-panel p-6 text-center text-sm text-muted" data-ide-git-diff-state>
-      <div className="max-w-md">
-        {loading ? (
-          <Loader2 className="mx-auto mb-3 size-6 animate-spin text-primary" />
-        ) : (
-          <AlertCircle className={cn("mx-auto mb-3 size-6", tone === "danger" ? "text-danger" : "text-subtle")} />
-        )}
-        <div className="font-semibold text-ink-strong">{title}</div>
-        {description ? <div className="mt-2 text-xs text-subtle">{description}</div> : null}
-      </div>
-    </div>
-  );
+  const className = "h-full min-h-0 rounded-lg border border-dashed border-line bg-panel";
+  if (loading) {
+    return <LoadingState title={title} description={description} className={className} data-ide-git-diff-state />;
+  }
+  if (tone === "danger") {
+    return <ErrorState title={title} description={description} className={className} data-ide-git-diff-state />;
+  }
+  return <EmptyState icon={<AlertCircle />} title={title} description={description} className={className} data-ide-git-diff-state />;
 }

@@ -1,7 +1,6 @@
 import type { UploadJob } from "./uploadManager";
 import type { UploadTaskSnapshot } from "./UploadTaskStrip";
 
-export const WORKSPACE_UPLOAD_TASK_SNAPSHOT_KEY = "tracevane.workspace.upload.tasks.v1";
 export const FILE_MANAGER_UPLOAD_TASK_SNAPSHOT_KEY = "tracevane.file-manager.upload.tasks.v1";
 const MAX_UPLOAD_TASK_SNAPSHOTS = 100;
 const UPLOAD_TASK_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 60 * 1000;

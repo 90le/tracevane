@@ -1,10 +1,11 @@
 import type { LspDiagnosticsRequest, LspDiagnosticsResponse } from "../../../../../../types/lsp";
+import { resolveApiUrl } from "@/lib/runtime";
 
 export async function requestLspDiagnostics(
   request: LspDiagnosticsRequest,
   options: { signal?: AbortSignal } = {},
 ): Promise<LspDiagnosticsResponse> {
-  const response = await fetch("/api/lsp/diagnostics", {
+  const response = await fetch(resolveApiUrl("/api/lsp/diagnostics"), {
     method: "POST",
     headers: {
       Accept: "application/json",

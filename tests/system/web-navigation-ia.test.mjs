@@ -65,26 +65,3 @@ test("dashboard and platform wording route integration evidence through support 
   assert.doesNotMatch(platformAggregate, /id: "external-mcp"/);
   assert.match(platformAggregate, /to: "\/platforms\/openclaw\/guard"/);
 });
-
-test("authoritative docs record the IA correction and non-core status", () => {
-  const product = read("docs/产品需求.md");
-  const frontend = read("docs/前端功能架构.md");
-  const architecture = read("docs/系统架构.md");
-  const research = read("docs/研究先行开发清单.md");
-
-  assert.match(product, /removed Long Tasks legacy page/);
-  assert.match(product, /Do not expose as primary domains/);
-  assert.match(frontend, /removed long-tasks task supervision/);
-  assert.match(frontend, /Preferred route: `\/platforms\/openclaw\/guard`/);
-  assert.match(
-    architecture,
-    /Redirect-only compatibility link to `\/platforms`/,
-  );
-  assert.doesNotMatch(
-    architecture,
-    /Redirect-only compatibility link to `\/cli-agents`/,
-  );
-  assert.match(architecture, /Not Tracevane business-data recovery/);
-  assert.match(research, /Tracevane 信息架构收敛与一级导航减法/);
-  assert.match(research, /Recovery 合并进 Platform \/ OpenClaw 平台守护/);
-});

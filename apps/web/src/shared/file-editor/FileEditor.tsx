@@ -147,7 +147,7 @@ export function FileEditor({
       ) : showReadOnlyBlock ? (
         <div className="grid min-h-0 gap-2 p-3">
           {file.truncated ? (
-            <div className="rounded-sm border border-amber/30 bg-amber-soft px-3 py-1.5 text-xs text-amber">
+            <div className="rounded-sm border border-warning/30 bg-warning-soft px-3 py-1.5 text-xs text-warning">
               内容超出上限，已截断显示，仅提供只读预览。
             </div>
           ) : (

@@ -26,6 +26,7 @@ import { NAV_ITEMS } from "@/app/navigation";
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/design/ui/dialog";
+import { EmptyState } from "@/design/ui/state";
 import { useFilesSummaryQuery } from "@/lib/query/files";
 import { editorDocumentId, editorTitleForPath } from "@/shared/editor-core";
 import type { EditorSaveState } from "@/shared/editor-core";
@@ -620,7 +621,7 @@ export function IdeWorkbenchPage() {
 
   return (
     <div className="grid h-dvh min-h-0 w-screen max-w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-canvas text-ink" data-ide-workbench>
-      <DebugGatewayBridge rootId={rootId} cwd={directoryPath} enabled={Boolean(rootId)} />
+      <DebugGatewayBridge enabled={Boolean(rootId)} />
       <WorkbenchHeader
         rootLabel={(root?.labelZh ?? root?.labelEn ?? rootId) || "未选择工作区"}
         rootPath={root?.absolutePath ?? "等待文件根目录加载"}
@@ -859,10 +860,10 @@ function LspExternalProviderStatusDialog({
             <section className="grid gap-2" data-ide-lsp-external-provider-section>
               <div className="flex items-center justify-between gap-2 text-xs">
                 <div>
-                  <div className="font-semibold text-ink">Bundled / external providers</div>
-                  <div className="text-muted">Server-side allowlist providers with runtime lifecycle status.</div>
+                  <div className="font-semibold text-ink">内置 / 外部 Provider</div>
+                  <div className="text-muted">服务端 allowlist 中的 provider 及其运行时生命周期状态。</div>
                 </div>
-                <span className="rounded border border-line bg-panel-2 px-2 py-0.5 text-2xs text-subtle">{profiles.length} profiles</span>
+                <span className="rounded border border-line bg-panel-2 px-2 py-0.5 text-2xs text-subtle">{profiles.length} 个 profile</span>
               </div>
               {profiles.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-line bg-canvas p-5 text-center text-sm text-muted" data-ide-lsp-provider-status-empty>
@@ -939,12 +940,12 @@ function ExternalProviderStatusRow({
             {!profile.enabled ? <span className="rounded bg-disabled/10 px-1.5 py-0.5 text-2xs text-disabled">disabled</span> : null}
           </div>
           <div className="mt-1 text-xs text-muted">
-            languages: {profile.languages.join(", ") || "--"} · capabilities: {formatLspCapabilities(profile.capabilities)}
+            语言：{profile.languages.join(", ") || "--"} · 能力：{formatLspCapabilities(profile.capabilities)}
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5 text-2xs" data-ide-lsp-provider-install-summary>
             <span className={cn("rounded border px-1.5 py-0.5", lspInstallStatusTone(installStatus).className)} data-ide-lsp-provider-install-status>{installStatus}</span>
-            {version ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-version>version {version}</span> : null}
-            {pinnedVersion ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-pinned-version>pin {pinnedVersion}</span> : null}
+            {version ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-version>版本 {version}</span> : null}
+            {pinnedVersion ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-pinned-version>锁定 {pinnedVersion}</span> : null}
             {source ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-source>{source}</span> : null}
             {packageName ? <span className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-subtle" data-ide-lsp-provider-package>{packageName}</span> : null}
           </div>
@@ -957,7 +958,7 @@ function ExternalProviderStatusRow({
       {runtimeStatus?.reason ? <div className="text-xs text-muted">{runtimeStatus.reason}</div> : null}
       {metadata?.audit?.summary ? (
         <div className="rounded border border-warning/30 bg-warning/10 p-2 text-xs text-muted" data-ide-lsp-provider-audit-note>
-          Audit: {metadata.audit.summary}
+          审计：{metadata.audit.summary}
         </div>
       ) : null}
       {metadata?.policy?.notes?.length ? (
@@ -1009,7 +1010,7 @@ function ToolchainProviderStatusRow({ candidate }: { candidate: ToolchainLspProv
             <span className={cn("rounded px-1.5 py-0.5 text-2xs font-medium", toolchainStatusTone(candidate.status).className)} data-ide-lsp-toolchain-provider-status-chip>{candidate.status}</span>
           </div>
           <div className="mt-1 text-xs text-muted">
-            languages: {candidate.languages.join(", ") || "--"} · capabilities: {candidate.capabilities.join(", ") || "--"}
+            语言：{candidate.languages.join(", ") || "--"} · 能力：{candidate.capabilities.join(", ") || "--"}
           </div>
         </div>
         <div className="grid gap-1 text-right font-mono text-2xs text-subtle">
@@ -1030,7 +1031,7 @@ function ToolchainProviderStatusRow({ candidate }: { candidate: ToolchainLspProv
         <div className="grid gap-2 rounded border border-line bg-canvas p-2 text-xs text-muted" data-ide-lsp-toolchain-setup-guidance>
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="font-semibold text-ink">Setup guidance</div>
+              <div className="font-semibold text-ink">配置指引</div>
               <div className="mt-1" data-ide-lsp-toolchain-setup-summary>{setup.summary}</div>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={handleCopySetup} data-ide-lsp-toolchain-copy-guidance>
@@ -1039,13 +1040,13 @@ function ToolchainProviderStatusRow({ candidate }: { candidate: ToolchainLspProv
           </div>
           <div className="grid gap-1 md:grid-cols-2">
             <div data-ide-lsp-toolchain-required-runtime>
-              <div className="font-medium text-ink">Required runtime</div>
+              <div className="font-medium text-ink">所需运行时</div>
               <ul className="mt-1 list-disc space-y-1 pl-5">
                 {setup.requiredRuntime.map((item) => <li key={item}>{item}</li>)}
               </ul>
             </div>
             <div data-ide-lsp-toolchain-workspace-markers>
-              <div className="font-medium text-ink">Workspace markers</div>
+              <div className="font-medium text-ink">工作区标记</div>
               <div className="mt-1 flex flex-wrap gap-1">
                 {setup.workspaceMarkers.map((marker) => <span key={marker} className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-2xs text-subtle">{marker}</span>)}
               </div>
@@ -1053,7 +1054,7 @@ function ToolchainProviderStatusRow({ candidate }: { candidate: ToolchainLspProv
           </div>
           <pre className="max-h-36 overflow-auto whitespace-pre-wrap rounded border border-line bg-panel-2 p-2 font-mono text-2xs text-subtle [scrollbar-width:thin]" data-ide-lsp-toolchain-config-hint>{setup.configurationHint}</pre>
           <div className="grid gap-1" data-ide-lsp-toolchain-degraded-reasons>
-            <div className="font-medium text-ink">Degraded reasons</div>
+            <div className="font-medium text-ink">降级原因</div>
             {setup.degradedReasons.map((item) => (
               <div key={`${item.status}-${item.reason}`} className="rounded border border-line bg-panel-2 p-1.5">
                 <span className="font-mono text-2xs text-subtle">{item.status}</span>: {item.reason} <span className="text-ink">{item.action}</span>
@@ -1324,11 +1325,12 @@ function ActivityBar({
 function IdePendingActivityView({ hidden, title }: { hidden: boolean; title: string }) {
   if (hidden) return <aside className="min-w-0 overflow-hidden" aria-hidden="true" data-ide-sidebar-hidden />;
   return (
-    <aside className="grid min-h-0 min-w-0 place-items-center border-r border-line bg-panel p-4" data-ide-sidebar data-ide-pending-activity>
-      <div className="rounded-lg border border-dashed border-line bg-canvas px-4 py-3 text-center text-sm text-muted">
-        <div className="font-semibold text-ink-strong">{title}</div>
-        <div className="mt-1 text-xs">该视图暂不可用。</div>
-      </div>
+    <aside className="grid min-h-0 min-w-0 border-r border-line bg-panel" data-ide-sidebar data-ide-pending-activity>
+      <EmptyState
+        className="h-full"
+        title={title}
+        description="该视图暂不可用。"
+      />
     </aside>
   );
 }
@@ -1728,7 +1730,7 @@ function WorkbenchStatusBar({
       <button
         type="button"
         className={cn(
-          "inline-flex max-w-[12rem] shrink-0 items-center gap-1 truncate rounded px-1 py-0.5 hover:bg-panel-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+          "inline-flex max-w-[12rem] shrink-0 items-center gap-1 truncate rounded px-1 py-0.5 outline-none hover:bg-panel-3 focus-visible:shadow-[var(--ring)]",
           lspSummary.tone === "available" && "text-success",
           lspSummary.tone === "attention" && "text-danger",
           lspSummary.tone === "stopped" && "text-muted",
@@ -1749,7 +1751,7 @@ function WorkbenchStatusBar({
           {metadata?.language ? <span className="shrink-0">{metadata.language}</span> : null}
           {metadata?.mimeType && metadata.previewKind !== "text" ? <span className="shrink-0">{metadata.mimeType}</span> : null}
           {typeof metadata?.size === "number" ? <span className="shrink-0">{formatStatusBytes(metadata.size)}</span> : null}
-          {metadata?.readonly ? <span className="shrink-0 text-amber">readonly</span> : null}
+          {metadata?.readonly ? <span className="shrink-0 text-warning">readonly</span> : null}
           {activeTab.preview && !activeTab.pinned ? <span className="shrink-0">preview</span> : null}
         </span>
       ) : (

@@ -3,6 +3,7 @@ import { Eraser, Lock, LockOpen } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { EmptyState } from "@/shared/states/EmptyState";
 import { clearWorkbenchOutput, type WorkbenchOutputLevel, useWorkbenchOutput } from "./outputStore";
 
 export function IdeOutputPanel() {
@@ -57,12 +58,12 @@ export function IdeOutputPanel() {
             <span className="whitespace-pre-wrap break-words text-ink">{event.text}</span>
           </div>
         )) : (
-          <div className="grid h-full min-h-40 place-items-center text-center text-sm text-muted" data-ide-output-empty>
-            <div className="rounded-md border border-dashed border-line bg-panel px-4 py-3">
-              <div className="font-medium text-ink-strong">当前 Output channel 没有日志</div>
-              <div className="mt-1 text-xs">还没有输出日志。运行任务、语言服务、Git 或调试操作后会在这里显示。</div>
-            </div>
-          </div>
+          <EmptyState
+            className="h-full min-h-40 font-sans"
+            title="当前 Output channel 没有日志"
+            description="运行任务、语言服务、Git 或调试操作后会在这里显示。"
+            data-ide-output-empty
+          />
         )}
       </div>
     </section>
@@ -70,8 +71,8 @@ export function IdeOutputPanel() {
 }
 
 function levelClassName(level: WorkbenchOutputLevel) {
-  if (level === "error") return "text-red";
-  if (level === "warn") return "text-amber";
+  if (level === "error") return "text-danger";
+  if (level === "warn") return "text-warning";
   if (level === "debug") return "text-subtle";
   return "text-primary";
 }

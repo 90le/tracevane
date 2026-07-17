@@ -132,7 +132,6 @@ export function FileSurfacePreviewPanel({
             attachmentUrl={attachmentUrl}
             name={entry.name}
             size={read?.size ?? entry.size ?? 0}
-            embedded={embedded}
           />
         )}
       </div>
@@ -163,13 +162,11 @@ function HexPreviewEditor({
   attachmentUrl,
   name,
   size,
-  embedded,
 }: {
   src: string;
   attachmentUrl: string;
   name: string;
   size: number;
-  embedded: boolean;
 }) {
   const [bytes, setBytes] = React.useState<Uint8Array | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -230,8 +227,7 @@ function HexPreviewEditor({
   return (
     <div
       className={cn(
-        "grid h-full min-h-0 overflow-hidden rounded-md border border-line bg-panel-2",
-        embedded ? "grid-rows-[auto_minmax(0,1fr)]" : "grid-rows-[auto_minmax(0,1fr)]",
+        "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-line bg-panel-2",
       )}
       data-file-surface-binary
       data-file-surface-hex-editor
@@ -245,7 +241,7 @@ function HexPreviewEditor({
           <span className="truncate">Hex Editor</span>
         </span>
         <span className="min-w-0 flex-1 truncate font-mono text-subtle">{name}</span>
-        <span className="rounded border border-amber-line bg-amber-soft px-1.5 py-0.5 text-amber">只读基础</span>
+        <span className="rounded border border-warning/30 bg-warning-soft px-1.5 py-0.5 text-warning">只读基础</span>
         <Button variant="ghost" size="sm" onClick={copyHex} disabled={!bytes || loading} data-file-surface-hex-copy>
           <Copy className="size-3.5" />
           复制 Hex

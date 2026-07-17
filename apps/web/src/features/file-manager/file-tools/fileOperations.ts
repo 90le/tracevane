@@ -8,8 +8,6 @@ import {
   useMoveFileMutation,
   useRenameFileMutation,
   useUnarchiveFileMutation,
-  useUploadFilesMutation,
-  useWriteFileContentMutation,
 } from "@/lib/query/files";
 import type {
   FilesCreateDirectoryPayload,
@@ -18,16 +16,13 @@ import type {
   FilesMutationResponse,
   FilesRenamePayload,
   FilesTransferPayload,
-  FilesUploadItemPayload,
-  FilesWritePayload,
 } from "../../../../../../types/files";
 
 /**
  * Reusable file-operations primitive — a single orchestration hook that wraps
  * every Files write mutation in {@link @/lib/query/files} and surfaces unified
- * success/error evidence (sonner toasts) so UI surfaces (the Workspace Explorer
- * and Workspace file manager) don't each reimplement the
- * toast plumbing.
+ * success/error evidence (sonner toasts) so UI surfaces (the file manager and
+ * the shared explorer surfaces) don't each reimplement the toast plumbing.
  *
  * Every exposed function:
  *  - accepts a small, ergonomic ctx object + the user-facing inputs;
@@ -113,7 +108,6 @@ function withEvidence<T extends FilesMutationResponse>(
  * {@link FilesMutationResponse}.
  */
 export function useFileOperations() {
-  const writeM = useWriteFileContentMutation();
   const mkdirM = useCreateDirectoryMutation();
   const createFileM = useCreateFileMutation();
   const renameM = useRenameFileMutation();
@@ -122,7 +116,6 @@ export function useFileOperations() {
   const deleteM = useDeleteFilesMutation();
   const archiveM = useArchiveFilesMutation();
   const unarchiveM = useUnarchiveFileMutation();
-  const uploadM = useUploadFilesMutation();
 
   /** Create a directory under a root (+ optional parent path). */
   function createDirectory(
@@ -250,36 +243,6 @@ export function useFileOperations() {
     );
   }
 
-  /** Overwrite a file's content (the Workspace save path). */
-  function saveContent(
-    ctx: PathCtx,
-    content: string,
-  ): Promise<FilesMutationResponse> {
-    const payload: FilesWritePayload = {
-      rootId: ctx.rootId,
-      path: ctx.path,
-      content,
-    };
-    return withEvidence("保存", ctx.path, () => writeM.mutateAsync(payload));
-  }
-
-  /** Upload one or more base64-encoded files under a root (+ optional path). */
-  function upload(
-    ctx: DirectoryCtx,
-    items: FilesUploadItemPayload[],
-  ): Promise<FilesMutationResponse> {
-    const payload = {
-      rootId: ctx.rootId,
-      directoryPath: ctx.directoryPath,
-      files: items,
-    };
-    return withEvidence(
-      "上传",
-      items[0]?.fileName ?? "",
-      () => uploadM.mutateAsync(payload),
-    );
-  }
-
   return {
     createDirectory,
     createFile,
@@ -289,7 +252,5 @@ export function useFileOperations() {
     remove,
     archive,
     unarchive,
-    saveContent,
-    upload,
   };
 }

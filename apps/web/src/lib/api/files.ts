@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import { ApiError, normalizeApiError } from "./errors";
+import { resolveApiUrl } from "../runtime";
 import type {
   FilesArchivePayload,
   FilesArchiveDryRunResponse,
@@ -552,7 +553,9 @@ export function uploadFileChunk(
     const xhr = new XMLHttpRequest();
     xhr.open(
       "PUT",
-      `/api/files/uploads/${encodeURIComponent(uploadId)}/chunks/${chunkIndex}`,
+      resolveApiUrl(
+        `/api/files/uploads/${encodeURIComponent(uploadId)}/chunks/${chunkIndex}`,
+      ),
     );
     xhr.setRequestHeader("Accept", "application/json");
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
@@ -616,7 +619,7 @@ export function uploadFilesWithProgress(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const body = JSON.stringify(payload);
-    xhr.open("POST", "/api/files/upload");
+    xhr.open("POST", resolveApiUrl("/api/files/upload"));
     xhr.setRequestHeader("Accept", "application/json");
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.upload.onprogress = (event) => {

@@ -40,7 +40,7 @@ import {
   useExplorerDirectory,
   useExplorerTreeState,
 } from "@/shared/explorer-core";
-import type { ExplorerEntry, ExplorerLocation } from "@/shared/explorer-core";
+import type { ExplorerEntry } from "@/shared/explorer-core";
 import {
   ExplorerContextMenuBase,
   ExplorerEmptyState,
@@ -563,7 +563,7 @@ function MiniExplorerBranch({
           ) : children.isError ? (
             <button
               type="button"
-              className="mx-8 my-1 rounded-sm border border-line bg-panel-2 px-2 py-1 text-left text-xs text-red hover:bg-red-soft focus-visible:shadow-[var(--ring)]"
+              className="mx-8 my-1 rounded-sm border border-line bg-panel-2 px-2 py-1 text-left text-xs text-danger hover:bg-danger-soft focus-visible:shadow-[var(--ring)]"
               onClick={() => void children.refresh()}
             >
               子目录读取失败，点击重试
@@ -697,15 +697,15 @@ function DeleteDialog({
           <DialogDescription>{entry.path}</DialogDescription>
         </DialogHeader>
         <DialogBody className="grid gap-3 text-sm">
-          <div className="rounded border border-red/20 bg-red-soft p-3 text-red">
+          <div className="rounded border border-danger-line bg-danger-soft p-3 text-danger">
             <div className="font-semibold">危险操作</div>
             <div className="mt-1 text-xs">
               默认移入回收站；勾选永久删除才会直接从文件系统移除。
             </div>
           </div>
           {openedTabs.length ? (
-            <div className="rounded border border-amber/30 bg-amber-soft p-3 text-xs text-amber" data-online-editor-mini-explorer-open-tab-delete-warning>
-              此项目命中 {openedTabs.length} 个已打开标签，其中 {dirtyCount} 个存在未保存修改。删除后标签不会静默关闭；dirty 内容会保留，并标记为文件已删除。
+            <div className="rounded border border-warning/30 bg-warning-soft p-3 text-xs text-warning" data-online-editor-mini-explorer-open-tab-delete-warning>
+              此项目命中 {openedTabs.length} 个已打开标签，其中 {dirtyCount} 个存在未保存修改。删除后标签不会静默关闭；未保存内容会保留，并标记为文件已删除。
             </div>
           ) : null}
           <label className="grid gap-1 text-xs text-muted">
@@ -723,10 +723,10 @@ function DeleteDialog({
               type="checkbox"
               checked={permanent}
               onChange={(event) => setPermanent(event.target.checked)}
-              className="mt-0.5 size-3 accent-red"
+              className="mt-0.5 size-3 accent-danger"
               data-online-editor-mini-explorer-delete-permanent
             />
-            <span><strong className="text-red">永久删除</strong>：跳过回收站。</span>
+            <span><strong className="text-danger">永久删除</strong>：跳过回收站。</span>
           </label>
         </DialogBody>
         <DialogFooter>
@@ -775,8 +775,4 @@ async function copyExplorerPath(text: string, mode: "relative" | "absolute"): Pr
   } catch (error) {
     toast.error("复制路径失败", { description: error instanceof Error ? error.message : String(error) });
   }
-}
-
-export function directoryForOnlineEditorPath(path: string): ExplorerLocation["directoryPath"] {
-  return explorerDirname(path);
 }

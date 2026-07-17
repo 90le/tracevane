@@ -47,8 +47,8 @@ export function V3PlanDialog({
           {!plan ? (
             <p>正在计算账号连接、分发规则与 Agent 工作区的变更范围…</p>
           ) : plan.validationIssues.length > 0 ? (
-            <div className="rounded-sm border border-red/30 bg-red-soft p-3">
-              <div className="flex items-center gap-2 font-medium text-red">
+            <div className="rounded-sm border border-danger/30 bg-danger-soft p-3">
+              <div className="flex items-center gap-2 font-medium text-danger">
                 <AlertTriangle className="size-4" />
                 配置未通过校验
               </div>
@@ -61,7 +61,7 @@ export function V3PlanDialog({
           ) : (
             <>
               <div className="flex items-center gap-2 text-ink-strong">
-                <CheckCircle2 className="size-4 text-green" />
+                <CheckCircle2 className="size-4 text-success" />
                 校验通过，应用后由消息守护热加载
               </div>
               <dl className="grid overflow-hidden rounded-sm border border-line sm:grid-cols-4">

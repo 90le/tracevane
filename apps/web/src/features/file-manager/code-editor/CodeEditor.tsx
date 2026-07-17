@@ -805,9 +805,6 @@ async function ensureMonacoLanguage(language: string): Promise<string> {
   }
 }
 
-export const languageExtensionForPath = languageForPath;
-export { languageForPath };
-
 export default CodeEditor;
 
 function configureMonacoWorkers(): void {

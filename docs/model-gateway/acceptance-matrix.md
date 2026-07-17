@@ -39,6 +39,6 @@
 5. 视频默认按文件 path-handoff/summary 处理，除非新增视频 API 合同。
 6. 音频 API 仅在直接上传文件时声称支持；Codex account audio 保持 unsupported-explicit。
 7. Windows/WSL 路径上的 secrets 需要单独安全说明；自动化 chmod 断言必须运行在支持 Unix mode 的测试根。
-8. 任意新增 provider/endpoint profile 必须更新 `docs/研究先行开发清单.md` 和本矩阵。
+8. 任意新增 provider/endpoint profile 必须更新本矩阵。
 9. live smoke 失败必须暴露脱敏 `diagnostics.network`，至少能区分上游不可达、代理不可达、超时和 HTTP 非 2xx。
 10. release signoff 必须保存 protocol matrix JSON/Markdown 报告，并包含 route、tool、MCP/compatibility、附件/降级边界。

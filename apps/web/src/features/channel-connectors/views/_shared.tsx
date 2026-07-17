@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
 
-/** Panel shell matching the prototype `.panel` block. */
+/** Bordered panel shell shared by the channel-connectors views. */
 export function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
     <section className={cn("rounded-md border border-line bg-panel shadow-sm", className)}>
@@ -31,7 +31,7 @@ export function PanelHead({
   );
 }
 
-/** A single icon + two-line copy + trailing slot row (prototype `.route-row`). */
+/** A single icon + two-line copy + trailing slot row. */
 export function Row({
   icon,
   iconClass,

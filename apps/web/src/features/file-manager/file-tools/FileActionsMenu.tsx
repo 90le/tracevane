@@ -5,16 +5,13 @@ import {
   Copy,
   Code2,
   Download,
-  FileSymlink,
   Eye,
   FilePlus,
   FolderPlus,
   FolderInput,
   Info,
-  MessageSquarePlus,
   Package,
   Pencil,
-  TerminalSquare,
   Upload,
 } from "lucide-react";
 
@@ -72,16 +69,6 @@ export interface FileActionsMenuProps {
   onEditRequest?: (target: FileActionsMenuTarget) => void;
   /** Optional properties dialog entry point used by full file-manager surfaces. */
   onPropertiesRequest?: (target: FileActionsMenuTarget) => void;
-  /** Optional copy-name hook for Workspace/file-manager surfaces. */
-  onCopyNameRequest?: (target: FileActionsMenuTarget) => void;
-  /** Optional copy-path hook for Workspace/file-manager surfaces. */
-  onCopyPathRequest?: (target: FileActionsMenuTarget, mode: "relative" | "absolute") => void;
-  /** Optional AI context hook for Workspace/file-manager surfaces. */
-  onCopyAiFileContextRequest?: (target: FileActionsMenuTarget) => void;
-  /** Optional terminal bridge used by Workspace surfaces. */
-  onInsertPathToTerminalRequest?: (target: FileActionsMenuTarget) => void;
-  /** Optional IDE open-folder/default-directory action. */
-  onSetDefaultDirectoryRequest?: (target: FileActionsMenuTarget | null) => void;
   /**
    * Optional direct-entry flow for keyboard/command surfaces.
    * Context-menu callers leave this as "menu"; F2/Delete can jump straight
@@ -138,12 +125,12 @@ function parentOf(path: string): string {
 // ---------------------------------------------------------------------------
 
 /**
- * `FileActionsMenu` — the right-click context menu for the Workspace file
- * tree. Renders a controlled floating menu anchored at `(x, y)` plus the
- * inline action flows (rename / copy / move / archive / delete / new). All
- * mutations go through {@link useFileOperations} which already surfaces the
- * success/error toasts; on success we additionally invoke
- * {@link FileActionsMenuProps.onAfterMutation} so the tree can refetch.
+ * `FileActionsMenu` — the right-click context menu for the file manager list.
+ * Renders a controlled floating menu anchored at `(x, y)` plus the inline
+ * action flows (rename / copy / move / archive / delete / new). All mutations
+ * go through {@link useFileOperations} which already surfaces the success/error
+ * toasts; on success we additionally invoke
+ * {@link FileActionsMenuProps.onAfterMutation} so the list can refetch.
  *
  * Aurora design: built from `@/design/ui/*`, lucide icons, destructive items
  * use the `danger` button variant + `AlertTriangle`.
@@ -160,11 +147,6 @@ export function FileActionsMenu({
   onPreviewRequest,
   onEditRequest,
   onPropertiesRequest,
-  onCopyNameRequest,
-  onCopyPathRequest,
-  onCopyAiFileContextRequest,
-  onInsertPathToTerminalRequest,
-  onSetDefaultDirectoryRequest,
   initialFlow = "menu",
 }: FileActionsMenuProps) {
   const ops = useFileOperations();
@@ -293,17 +275,6 @@ export function FileActionsMenu({
           />
         )}
 
-        {onSetDefaultDirectoryRequest && (
-          <MenuItem
-            icon={<FolderInput />}
-            label={isDirTarget ? "设为工作区主目录" : "将当前目录设为工作区主目录"}
-            onClick={() => {
-              onSetDefaultDirectoryRequest(isDirTarget ? target : null);
-              closeAll();
-            }}
-          />
-        )}
-
         {target && (
           <>
             <MenuDivider />
@@ -333,56 +304,6 @@ export function FileActionsMenu({
                 label="属性"
                 onClick={() => {
                   onPropertiesRequest(target);
-                  closeAll();
-                }}
-              />
-            ) : null}
-            {onCopyNameRequest ? (
-              <MenuItem
-                icon={<Copy />}
-                label="复制文件名"
-                onClick={() => {
-                  onCopyNameRequest(target);
-                  closeAll();
-                }}
-              />
-            ) : null}
-            {onCopyPathRequest ? (
-              <>
-                <MenuItem
-                  icon={<FileSymlink />}
-                  label="复制相对路径"
-                  onClick={() => {
-                    onCopyPathRequest(target, "relative");
-                    closeAll();
-                  }}
-                />
-                <MenuItem
-                  icon={<FileSymlink />}
-                  label="复制绝对路径"
-                  onClick={() => {
-                    onCopyPathRequest(target, "absolute");
-                    closeAll();
-                  }}
-                />
-              </>
-            ) : null}
-            {onCopyAiFileContextRequest ? (
-              <MenuItem
-                icon={<MessageSquarePlus />}
-                label="复制 @file 上下文"
-                onClick={() => {
-                  onCopyAiFileContextRequest(target);
-                  closeAll();
-                }}
-              />
-            ) : null}
-            {onInsertPathToTerminalRequest ? (
-              <MenuItem
-                icon={<TerminalSquare />}
-                label="插入路径到终端"
-                onClick={() => {
-                  onInsertPathToTerminalRequest(target);
                   closeAll();
                 }}
               />
@@ -468,10 +389,10 @@ export function FileActionsMenu({
         role="menuitem"
         onClick={onClick}
         className={cn(
-          "flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-base transition-colors outline-none",
+          "flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm transition-colors outline-none",
           "focus-visible:shadow-[var(--ring)]",
           tone === "danger"
-            ? "text-red hover:bg-[color-mix(in_srgb,var(--red)_10%,transparent)]"
+            ? "text-danger hover:bg-danger/10"
             : "text-ink hover:bg-panel-2",
         )}
       >
@@ -902,7 +823,7 @@ function UnarchiveDialog({
           </label>
           <UnarchiveDryRunSummary dryRun={dryRun} busy={dryRunBusy} />
           {overwriteRequired ? (
-            <label className="grid gap-1 rounded border border-amber/30 bg-amber-soft p-2 text-xs text-amber">
+            <label className="grid gap-1 rounded border border-warning/30 bg-warning-soft p-2 text-xs text-warning">
               覆盖会替换 {dryRun?.counts.overwrite ?? 0} 个同名目标。请输入 OVERWRITE 确认。
               <Input
                 value={overwriteConfirm}
@@ -950,13 +871,13 @@ function UnarchiveDryRunSummary({
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-ink-strong">解压预检</span>
         <span className="rounded-full bg-panel px-2 py-0.5 text-muted">{counts.total} 项</span>
-        <span className="rounded-full bg-green-soft px-2 py-0.5 text-green">{counts.ready} 就绪</span>
+        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">{counts.ready} 就绪</span>
         {counts.rename ? <span className="rounded-full bg-primary-soft px-2 py-0.5 text-primary">{counts.rename} 重命名</span> : null}
         {counts.skip ? <span className="rounded-full bg-panel px-2 py-0.5 text-muted">{counts.skip} 跳过</span> : null}
-        {risky ? <span className="rounded-full bg-amber-soft px-2 py-0.5 text-amber">{risky} 风险</span> : null}
+        {risky ? <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning">{risky} 风险</span> : null}
       </div>
       {counts.conflicts || counts.errors ? (
-        <div className="rounded border border-red/20 bg-red-soft px-2 py-1 text-red">
+        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
           存在阻塞冲突或不安全条目，请调整冲突策略或检查归档。
         </div>
       ) : null}
@@ -1146,7 +1067,7 @@ function TransferDialog({
           </label>
           <TransferDryRunSummary dryRun={dryRun} busy={dryRunBusy} errorMessage={dryRunError} />
           {overwriteRequired ? (
-            <label className="grid gap-1 rounded border border-amber/30 bg-amber-soft p-2 text-xs text-amber">
+            <label className="grid gap-1 rounded border border-warning/30 bg-warning-soft p-2 text-xs text-warning">
               覆盖会替换 {dryRun?.counts.overwrite ?? 0} 个目标。请输入 OVERWRITE 确认。
               <Input
                 value={overwriteConfirm}
@@ -1191,7 +1112,7 @@ function TransferDryRunSummary({
   }
   if (errorMessage) {
     return (
-      <div className="rounded border border-red/20 bg-red-soft px-2 py-1 text-xs text-red">
+      <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-xs text-danger">
         预检失败：{errorMessage}
       </div>
     );
@@ -1212,7 +1133,7 @@ function TransferDryRunSummary({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-ink-strong">转移预检</span>
-        <span className="rounded-full bg-green-soft px-2 py-0.5 text-green">
+        <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">
           {dryRun.counts.ready} 就绪
         </span>
         {dryRun.counts.rename ? (
@@ -1226,7 +1147,7 @@ function TransferDryRunSummary({
           </span>
         ) : null}
         {risky ? (
-          <span className="rounded-full bg-amber-soft px-2 py-0.5 text-amber">
+          <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning">
             {risky} 风险
           </span>
         ) : null}
@@ -1243,7 +1164,7 @@ function TransferDryRunSummary({
         </div>
       ) : null}
       {dryRun.counts.conflicts || dryRun.counts.errors ? (
-        <div className="rounded border border-red/20 bg-red-soft px-2 py-1 text-red">
+        <div className="rounded border border-danger/20 bg-danger-soft px-2 py-1 text-danger">
           存在阻塞冲突或无效来源，不能执行。
         </div>
       ) : null}
@@ -1292,7 +1213,7 @@ function DeleteDialog({
     <Dialog open onOpenChange={(o) => { if (!o) onCancel(); }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red">
+          <DialogTitle className="flex items-center gap-2 text-danger">
             <AlertTriangle />
             移入回收站
           </DialogTitle>

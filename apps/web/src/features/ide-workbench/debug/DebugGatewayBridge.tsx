@@ -1,11 +1,20 @@
 import * as React from "react";
 
+import { isGatewayExposure } from "@/lib/runtime";
 import { applyDebugGatewayEvent, setDebugGatewayConnectionState } from "./debugStore";
-import { createDebugWebSocketUrl, parseDebugGatewayEvent } from "./debugClient";
+import { createDebugWebSocketUrl, DEBUG_GATEWAY_UNAVAILABLE_MESSAGE, parseDebugGatewayEvent } from "./debugClient";
 
-export function DebugGatewayBridge({ enabled }: { rootId: string; cwd: string; enabled: boolean }) {
+export function DebugGatewayBridge({ enabled }: { enabled: boolean }) {
   React.useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
+    if (isGatewayExposure()) {
+      // Debug realtime rides a raw WebSocket (/ws/debug); OpenClaw gateway
+      // single-port mode never forwards WS upgrades to plugin routes, and no
+      // gateway RPC bridge exists for debug. Report unavailable instead of
+      // looping on a connection that can never succeed.
+      setDebugGatewayConnectionState("unavailable", DEBUG_GATEWAY_UNAVAILABLE_MESSAGE);
+      return;
+    }
     let socket: WebSocket | null = null;
     let disposed = false;
     setDebugGatewayConnectionState("connecting", "正在连接 Debug Gateway…");

@@ -317,7 +317,7 @@ export function ModelCatalogEditor({
                 key={index}
                 className={cn(
                   "grid gap-2.5 rounded-sm border bg-panel-2 p-3",
-                  rowError ? "border-red" : "border-line",
+                  rowError ? "border-danger" : "border-line",
                 )}
               >
                 <div className="grid gap-2.5 sm:grid-cols-2">
@@ -385,7 +385,7 @@ export function ModelCatalogEditor({
                     移除
                   </Button>
                 </div>
-                {rowError && <span className="text-sm text-red">{rowError}</span>}
+                {rowError && <span className="text-sm text-danger">{rowError}</span>}
               </div>
             );
           })}

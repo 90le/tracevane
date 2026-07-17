@@ -110,7 +110,7 @@ export function OverviewView() {
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
           <StatTile label="真实平台" value={cards.length} sub="当前仅 OpenClaw" />
-          <StatTile label="正常" value={connected} sub="platform ok" />
+          <StatTile label="正常" value={connected} sub="健康检查通过" />
           <StatTile label="需关注" value={attention} sub={`${failed} 异常`} />
           <StatTile label="最近检查" value={fmtTime(lastChecked)} sub="系统 / 守护证据" />
         </div>

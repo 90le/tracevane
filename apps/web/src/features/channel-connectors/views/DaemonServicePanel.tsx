@@ -135,7 +135,7 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
             <SkeletonRow />
           ) : serviceQuery.error ? (
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-red">{serviceQuery.error.message}</span>
+              <span className="text-sm text-danger">{serviceQuery.error.message}</span>
               <Button variant="outline" size="sm" onClick={() => void serviceQuery.refetch()}>
                 <RefreshCw />
                 重试
@@ -163,7 +163,7 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
                 </div>
               </dl>
               {manager?.lastError && (
-                <p className="flex items-start gap-1.5 text-sm text-amber">
+                <p className="flex items-start gap-1.5 text-sm text-warning">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   {manager.lastError}
                 </p>
@@ -207,8 +207,8 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
               )}
 
               {/* Danger area — stop takes all channels offline. */}
-              <div className="grid gap-2 rounded-sm border border-red bg-red-soft p-3">
-                <div className="flex items-center gap-1.5 text-sm font-semibold text-red">
+              <div className="grid gap-2 rounded-sm border border-danger/30 bg-danger-soft p-3">
+                <div className="flex items-center gap-1.5 text-sm font-semibold text-danger">
                   <AlertTriangle className="size-4" />
                   危险操作
                 </div>
@@ -218,7 +218,7 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="justify-self-start text-red hover:bg-red-soft"
+                  className="justify-self-start text-danger hover:bg-danger-soft"
                   onClick={() => setConfirm("stop")}
                   disabled={pending}
                 >
@@ -234,7 +234,7 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
       <Dialog open={confirm === "restart"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-amber-soft text-amber [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-warning-soft text-warning [&_svg]:size-4">
               <RotateCw />
             </span>
             <DialogTitle>重启守护服务</DialogTitle>
@@ -262,7 +262,7 @@ export function DaemonServicePanel({ onMutated }: { onMutated?: () => void }) {
       <Dialog open={confirm === "stop"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <span className="grid size-8 place-items-center rounded-[9px] bg-red-soft text-red [&_svg]:size-4">
+            <span className="grid size-8 place-items-center rounded-[9px] bg-danger-soft text-danger [&_svg]:size-4">
               <AlertTriangle />
             </span>
             <DialogTitle>停止守护服务</DialogTitle>

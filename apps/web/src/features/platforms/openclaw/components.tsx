@@ -1,10 +1,10 @@
 import * as React from "react";
-import { Link } from "react-router-dom";
-import { ArrowRight, RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 
 import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
+import { EmptyState } from "@/shared/states/EmptyState";
 
 import { EvidenceRow, Panel, PanelHead, SectionNotice, ToneBadge } from "../_shared";
 import type { PlatformTone } from "../types";
@@ -65,31 +65,6 @@ export function ReadOnlyStrip({ tone = "info", children = "当前只展示真实
   return <SectionNotice tone={tone}>{children}</SectionNotice>;
 }
 
-export function OwnerHandoff({
-  title,
-  description,
-  to,
-  action = "打开 owner 域",
-}: {
-  title: string;
-  description: string;
-  to: string;
-  action?: string;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-2 rounded-sm border border-line bg-panel-2 px-4 py-3 sm:flex-row sm:items-center">
-      <div className="min-w-0 flex-1">
-        <strong className="block truncate text-base text-ink-strong">{title}</strong>
-        <span className="block text-sm text-muted">{description}</span>
-      </div>
-      <Button variant="outline" size="sm" asChild>
-        <Link to={to}>{action}<ArrowRight /></Link>
-      </Button>
-    </div>
-  );
-}
-
-
 export function useSelectedKey(keys: string[]): [string | null, React.Dispatch<React.SetStateAction<string | null>>] {
   const [selectedKey, setSelectedKey] = React.useState<string | null>(keys[0] ?? null);
   const joinedKeys = keys.join("\u001f");
@@ -126,8 +101,8 @@ export function SelectableRow({
       onClick={() => onSelect(id)}
       onKeyDown={handleKeyDown}
       className={cn(
-        "cursor-pointer outline-none transition hover:bg-panel-2 focus:bg-panel-2 focus:ring-2 focus:ring-accent-soft",
-        selected && "bg-accent-soft/60"
+        "cursor-pointer outline-none transition hover:bg-panel-2 focus:bg-panel-2",
+        selected && "bg-primary-soft/60"
       )}
     >
       {children}
@@ -159,7 +134,7 @@ export function ResponsiveTable({
         <thead className="border-b border-line bg-panel-2 text-xs uppercase tracking-[0.08em] text-subtle">
           <tr>{columns.map((column) => <th key={column} className="px-4 py-2 font-semibold">{column}</th>)}</tr>
         </thead>
-        <tbody className="divide-y divide-line">{rows.length ? rows : <tr><td className="px-4 py-8 text-center text-muted" colSpan={columns.length}>{empty}</td></tr>}</tbody>
+        <tbody className="divide-y divide-line">{rows.length ? rows : <tr><td colSpan={columns.length}>{typeof empty === "string" ? <EmptyState title={empty} /> : empty}</td></tr>}</tbody>
       </table>
     </div>
   );
@@ -183,10 +158,6 @@ export function statusTone(status: string | undefined): PlatformTone {
   if (["blocked", "failed", "error", "critical", "offline"].some((item) => value.includes(item))) return "bad";
   if (["warn", "setup", "pending", "stale", "disabled", "missing"].some((item) => value.includes(item))) return "warn";
   return "info";
-}
-
-export function JsonSnippet({ value }: { value: unknown }) {
-  return <code className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-sm bg-panel-2 px-2 py-1 text-xs text-muted">{JSON.stringify(value)}</code>;
 }
 
 export function BoundaryBadge() {

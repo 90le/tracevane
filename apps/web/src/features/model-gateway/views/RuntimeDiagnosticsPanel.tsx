@@ -5,6 +5,7 @@ import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
+import { ErrorState } from "@/shared/states/ErrorState";
 import { SkeletonRow } from "@/shared/states/Skeleton";
 
 import { useModelGatewayRuntimeQuery } from "@/lib/query/model-gateway";
@@ -111,19 +112,19 @@ export function RuntimeDiagnosticsPanel({
               <SkeletonRow />
             </div>
           ) : runtimeQuery.error ? (
-            <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <span className="text-sm text-red">
-                {runtimeQuery.error.message}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void runtimeQuery.refetch()}
-              >
-                <RefreshCw />
-                重试
-              </Button>
-            </div>
+            <ErrorState
+              title="无法加载最近请求"
+              description={runtimeQuery.error.message}
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void runtimeQuery.refetch()}
+                >
+                  重试
+                </Button>
+              }
+            />
           ) : recent.length === 0 ? (
             <EmptyState
               title="暂无请求记录"

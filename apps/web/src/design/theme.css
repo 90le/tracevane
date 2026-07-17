@@ -128,6 +128,21 @@
   --color-violet: var(--violet);
   --color-violet-soft: var(--violet-soft);
 
+  /* Semantic aliases — features reference danger/warning/success/info names;
+     keep them mapped to the Aurora semantic palette so both naming styles
+     resolve to the same colors in light and dark. */
+  --color-danger: var(--red);
+  --color-danger-soft: var(--red-soft);
+  --color-danger-line: color-mix(in srgb, var(--red) 30%, transparent);
+  --color-warning: var(--amber);
+  --color-warning-soft: var(--amber-soft);
+  --color-warning-line: color-mix(in srgb, var(--amber) 30%, transparent);
+  --color-success: var(--green);
+  --color-success-soft: var(--green-soft);
+  --color-success-line: color-mix(in srgb, var(--green) 30%, transparent);
+  --color-info: var(--primary);
+  --color-info-soft: var(--primary-soft);
+
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius);
   --radius-lg: var(--radius-lg);
@@ -183,77 +198,7 @@
   *, *::after, *::before { animation: none !important; }
 }
 
-/* ============================================================
-   layout primitives — ported from Aurora styles.css so the
-   React layout wrappers (src/shared/layouts/*) stay thin.
-   Class names match the prototype.
-   ============================================================ */
 @layer components {
-  .tv-monaco-search-inline {
-    background: color-mix(in srgb, var(--primary) 32%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, var(--primary) 72%, transparent);
-  }
-  .tv-monaco-search-inline-active {
-    background: color-mix(in srgb, var(--amber) 48%, transparent);
-    outline: 1px solid color-mix(in srgb, var(--amber) 82%, transparent);
-  }
-  .tv-monaco-search-match,
-  .tv-monaco-search-match-active {
-    border-radius: 2px;
-  }
-
-  /* full-bleed page wrapper (fills height for workbench/console) */
-  .tv-fillbox { height: 100%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 14px; }
-
-  /* list-detail split */
-  .tv-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: 16px; align-items: start; }
-  .tv-detail { position: sticky; top: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow-sm); overflow: hidden; }
-  @media (max-width: 1080px) {
-    .tv-split { grid-template-columns: 1fr; }
-    .tv-split .tv-detail {
-      position: fixed; top: 0; right: 0; z-index: 45; height: 100dvh; width: min(420px, 92vw);
-      border-radius: 0; border-left: 1px solid var(--line); box-shadow: var(--shadow-lg); overflow: auto;
-      transform: translateX(100%); transition: transform .24s ease;
-    }
-    .tv-split[data-detail-open="true"] .tv-detail { transform: none; }
-    .tv-split[data-detail-open="true"]::after { content: ""; position: fixed; inset: 0; z-index: 44; background: rgba(8, 12, 22, .42); }
-  }
-
-  /* rows + inspector (same split structure, inspector right column) */
-  .tv-rows-inspector { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 18px; align-items: start; }
-  .tv-inspector { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow-sm); overflow: hidden; }
-  @media (max-width: 1080px) {
-    .tv-rows-inspector { grid-template-columns: 1fr; }
-    .tv-rows-inspector .tv-inspector {
-      position: fixed; top: 0; right: 0; z-index: 45; height: 100dvh; width: min(360px, 92vw);
-      border-radius: 0; border-left: 1px solid var(--line); box-shadow: var(--shadow-lg); overflow: auto;
-      transform: translateX(100%); transition: transform .24s ease;
-    }
-    .tv-rows-inspector[data-inspector-open="true"] .tv-inspector { transform: none; }
-    .tv-rows-inspector[data-inspector-open="true"]::after { content: ""; position: fixed; inset: 0; z-index: 44; background: rgba(8, 12, 22, .42); }
-  }
-
-  /* workbench: activity rail + tree + editor + bottom panel */
-  .tv-workbench { display: grid; grid-template-columns: 52px 240px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 210px; height: 100%; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel); box-shadow: var(--shadow-sm); }
-  .tv-wb-activity { grid-row: 1 / span 2; border-right: 1px solid var(--line); background: var(--panel-2); display: grid; align-content: start; gap: 4px; padding: 10px 8px; }
-  .tv-wb-tree { grid-row: 1 / span 2; border-right: 1px solid var(--line); overflow: auto; padding: 10px; background: color-mix(in srgb, var(--panel) 70%, var(--canvas)); }
-  .tv-wb-editor { grid-row: 1; display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; }
-  .tv-wb-panel { grid-column: 3; grid-row: 2; border-top: 1px solid var(--line); display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; }
-  @media (max-width: 1080px) {
-    .tv-workbench { grid-template-columns: 48px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 190px; }
-    .tv-wb-tree { display: none; }
-    .tv-wb-activity { grid-row: 1 / span 2; }
-    .tv-wb-editor { grid-column: 2; grid-row: 1; }
-    .tv-wb-panel { grid-column: 2; grid-row: 2; }
-  }
-  @media (max-width: 680px) {
-    .tv-workbench { display: flex; flex-direction: column; height: auto; min-height: 0; }
-    .tv-wb-activity { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--line); padding: 7px 8px; gap: 6px; overflow-x: auto; }
-    .tv-wb-editor { min-height: 300px; }
-    .tv-wb-panel { border-top: 1px solid var(--line); min-height: 200px; }
-  }
-
-
   /* Responsive dense tables: desktop stays a real table; phone uses stacked rows so the page never relies on horizontal dragging. */
   @media (max-width: 640px) {
     .tv-table-wrap { min-width: 0; overflow-x: hidden; }

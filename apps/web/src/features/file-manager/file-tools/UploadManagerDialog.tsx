@@ -235,10 +235,10 @@ function UploadFileTable({
                 ) : null}
               </span>
               <span className="text-muted">{formatBytes(row.size)}</span>
-              <span className={cn("grid gap-1 text-muted", row.status === "error" && "text-red")} title={"error" in row && row.error ? row.error : undefined}>
+              <span className={cn("grid gap-1 text-muted", row.status === "error" && "text-danger")} title={"error" in row && row.error ? row.error : undefined}>
                 <span>{uploadStatusLabel(row.status)}{row.status === "uploading" ? ` · ${formatBytes(row.speedBps)}/s` : ""}</span>
                 <span className="h-1 overflow-hidden rounded-full bg-panel-2">
-                  <span className={cn("block h-full transition-all", row.status === "error" ? "bg-red" : "bg-primary")} style={{ width: `${uploadProgressPercent(row)}%` }} />
+                  <span className={cn("block h-full transition-all", row.status === "error" ? "bg-danger" : "bg-primary")} style={{ width: `${uploadProgressPercent(row)}%` }} />
                 </span>
               </span>
               <button type="button" disabled={disabled} onClick={() => onRemoveFile(index)} className="text-left text-primary disabled:cursor-not-allowed disabled:opacity-40">
@@ -290,7 +290,7 @@ function UploadProgressPanel({
           {active ? <PauseCircle className="size-4" /> : <PlayCircle className="size-4" />}
           {active ? "暂停" : "继续/重试"}
         </button>
-        <button type="button" className="text-primary hover:text-red" onClick={onCancel} title="取消">
+        <button type="button" className="text-primary hover:text-danger" onClick={onCancel} title="取消">
           <XCircle className="size-4" />
         </button>
       </div>
@@ -337,7 +337,7 @@ function UploadFailureSummary({ jobs }: { jobs: UploadJob[] }) {
   const failures = jobs.filter((job) => job.status === "error" || job.status === "canceled");
   if (!failures.length) return null;
   return (
-    <div className="mt-2 rounded border border-red/20 bg-red-soft p-2 text-2xs text-red" data-upload-manager-failure-summary>
+    <div className="mt-2 rounded border border-danger/20 bg-danger-soft p-2 text-2xs text-danger" data-upload-manager-failure-summary>
       <div className="font-semibold">失败/取消任务 {failures.length} 个</div>
       <div className="mt-1 grid max-h-20 gap-1 overflow-auto">
         {failures.slice(0, 4).map((job) => (

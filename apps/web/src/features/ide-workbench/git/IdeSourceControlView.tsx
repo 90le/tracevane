@@ -4,8 +4,11 @@ import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, CloudDownload, Cl
 import { cn } from "@/design/lib/utils";
 import { ConfirmDialog, TextInputDialog } from "@/design/ui/action-dialog";
 import { Button } from "@/design/ui/button";
+import { Input } from "@/design/ui/input";
 import { toast } from "@/design/ui/sonner";
 import { applyGitStash, checkoutBranch, commitFiles, createBranch, deleteBranch, discardFiles, dropGitStash, fetchBranch, generateGitCommitMessage, getGitBlame, getGitCommitDetail, getGitGraph, getGitStashes, popGitStash, publishBranch, pullBranch, pushBranch, renameBranch, revertCommit, saveGitStash, setBranchUpstream, stageFiles, syncBranch, unstageFiles } from "@/lib/api/git";
+import { EmptyState } from "@/shared/states/EmptyState";
+import { LoadingState } from "@/shared/states/LoadingState";
 import { appendWorkbenchOutput } from "../output";
 import type { GitBlamePayload, GitCommitDetailPayload, GitGraphPayload, GitStashEntry } from "../../../../../../types/git";
 import { labelForGitKind, toneForGitKind, type IdeGitDecoratedChange, type IdeGitDecorationSnapshot } from "./gitDecorations";
@@ -634,7 +637,6 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
         setHistoryBranchAction({ commit, value: defaultName });
         return;
       }
-      if (!name) return;
       const validationError = validateBranchName(name);
       if (validationError) {
         toast.error("分支名称不可用", { description: validationError });
@@ -728,7 +730,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold text-ink-strong">源代码管理</div>
-            <div className="truncate text-xs text-subtle">{rootLabel || "Workspace Git"}</div>
+            <div className="truncate text-xs text-subtle">{rootLabel || "工作区 Git"}</div>
           </div>
           <Button variant="ghost" size="icon" onClick={git.refresh} aria-label="刷新 Git 状态" title="刷新 Git 状态" data-ide-source-control-refresh>
             {git.loading ? <Loader2 className="animate-spin" /> : <RefreshCcw />}
@@ -937,8 +939,8 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
                   </div>
                 </div>
                 <div className="flex min-w-0 items-center gap-1">
-                  <input
-                    className="min-w-0 flex-1 rounded border border-line bg-canvas px-2 py-1 text-xs text-ink-strong outline-none placeholder:text-muted focus:border-primary-line focus:shadow-[var(--ring)]"
+                  <Input
+                    className="h-7 min-w-0 flex-1 bg-canvas px-2 py-1 text-xs"
                     value={branchName}
                     onChange={(event) => setBranchName(event.target.value)}
                     placeholder="新分支名"
@@ -1073,8 +1075,8 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
                 </div>
                 <div className="grid gap-1 border-t border-line pt-2" data-ide-source-control-blame>
                   <div className="flex min-w-0 items-center gap-1">
-                    <input
-                      className="min-w-0 flex-1 rounded border border-line bg-canvas px-2 py-1 text-xs text-ink-strong outline-none placeholder:text-muted focus:border-primary-line focus:shadow-[var(--ring)]"
+                    <Input
+                      className="h-7 min-w-0 flex-1 bg-canvas px-2 py-1 text-xs"
                       value={blameFile}
                       onChange={(event) => setBlameFile(event.target.value)}
                       placeholder="Blame 文件路径"
@@ -1116,8 +1118,8 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
                     <div className="mt-1">常用于切换分支、拉取更新或临时处理别的任务。应用会恢复改动并保留记录；弹出会恢复改动后删除记录。</div>
                   </div>
                   <div className="flex min-w-0 items-center gap-1">
-                    <input
-                      className="min-w-0 flex-1 rounded border border-line bg-canvas px-2 py-1 text-xs text-ink-strong outline-none placeholder:text-muted focus:border-primary-line focus:shadow-[var(--ring)]"
+                    <Input
+                      className="h-7 min-w-0 flex-1 bg-canvas px-2 py-1 text-xs"
                       value={stashMessage}
                       onChange={(event) => setStashMessage(event.target.value)}
                       placeholder="说明（可选，例如：切分支前保存当前工作）"
@@ -1165,7 +1167,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
       </div>
       {changeMenu ? (
         <div
-          className="fixed z-50 w-52 rounded-sm border border-line bg-panel p-1 text-xs text-ink-strong shadow-xl"
+          className="fixed z-50 w-52 rounded-sm border border-line bg-panel p-1 text-xs text-ink-strong shadow-lg"
           style={contextMenuStyle(changeMenu.x, changeMenu.y, 208, 210)}
           role="menu"
           data-ide-source-control-change-menu
@@ -1194,7 +1196,7 @@ export function IdeSourceControlView({ hidden, rootId, rootLabel, git, onOpenDif
       ) : null}
       {selectedBranchForMenu && openBranchMenu ? (
         <div
-          className="fixed z-50 w-52 rounded-sm border border-line bg-panel p-1 text-xs text-ink-strong shadow-xl"
+          className="fixed z-50 w-52 rounded-sm border border-line bg-panel p-1 text-xs text-ink-strong shadow-lg"
           style={contextMenuStyle(openBranchMenu.x, openBranchMenu.y, 208, 220)}
           role="menu"
           data-ide-source-control-branch-menu
@@ -1299,7 +1301,6 @@ function SourceControlSection({
   icon,
   summary,
   defaultOpen = true,
-  openWhen = false,
   dataAttr,
   children,
 }: {
@@ -1307,33 +1308,19 @@ function SourceControlSection({
   icon: React.ReactNode;
   summary: string;
   defaultOpen?: boolean;
-  openWhen?: boolean;
   dataAttr: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
-  const contained = dataAttr === "commit" || dataAttr === "changes";
-  const primary = dataAttr === "changes";
-  React.useEffect(() => {
-    if (openWhen) setOpen(true);
-  }, [openWhen]);
   return (
     <section
-      className={cn(
-        "min-w-0 overflow-hidden",
-        contained ? "rounded-sm border border-line bg-panel" : "border-b border-line/70 last:border-b-0",
-        primary && "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]",
-      )}
+      className="min-w-0 overflow-hidden border-b border-line/70 last:border-b-0"
       data-ide-source-control-section={dataAttr}
       data-ide-source-control-section-open={open ? "true" : "false"}
     >
       <button
         type="button"
-        className={cn(
-          "flex w-full min-w-0 items-center gap-2 px-2 py-1.5 text-left outline-none hover:bg-primary-soft/40 focus-visible:shadow-[var(--ring)]",
-          contained && "border-b border-line/70 bg-panel-2",
-          contained && !open && "border-b-0",
-        )}
+        className="flex w-full min-w-0 items-center gap-2 px-2 py-1.5 text-left outline-none hover:bg-primary-soft/40 focus-visible:shadow-[var(--ring)]"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         data-ide-source-control-section-toggle={dataAttr}
@@ -1346,7 +1333,7 @@ function SourceControlSection({
         <span className="shrink-0 rounded border border-line bg-panel px-1.5 py-0.5 text-2xs text-subtle">{summary}</span>
       </button>
       {open ? (
-        <div className={cn("min-w-0", contained ? "p-2" : "px-2 pb-2 pt-1", primary && "min-h-0 overflow-hidden")}>
+        <div className="min-w-0 px-2 pb-2 pt-1">
           {children}
         </div>
       ) : null}
@@ -1421,7 +1408,7 @@ function SourceControlChangeRow({
         </button>
         <button
           type="button"
-          className="grid size-7 place-items-center rounded border border-line bg-panel-2 text-subtle outline-none hover:border-amber/40 hover:bg-amber-soft hover:text-amber disabled:cursor-not-allowed disabled:opacity-40"
+          className="grid size-7 place-items-center rounded border border-line bg-panel-2 text-subtle outline-none hover:border-warning/40 hover:bg-warning-soft hover:text-warning disabled:cursor-not-allowed disabled:opacity-40"
           title="取消暂存"
           aria-label={`取消暂存 ${change.rootPath}`}
           disabled={busyKey !== null || actionBusy || !change.staged}
@@ -1447,7 +1434,7 @@ function SourceControlChangeRow({
             "grid size-7 place-items-center rounded border border-line bg-panel-2 text-subtle outline-none disabled:cursor-not-allowed disabled:opacity-40",
             change.kind === "untracked"
               ? "hover:border-danger/40 hover:bg-danger-soft hover:text-danger"
-              : "hover:border-amber/40 hover:bg-amber-soft hover:text-amber",
+              : "hover:border-warning/40 hover:bg-warning-soft hover:text-warning",
           )}
           title={discardActionLabel(change)}
           aria-label={`${discardActionLabel(change)} ${change.rootPath}`}
@@ -1462,13 +1449,13 @@ function SourceControlChangeRow({
   );
 }
 
-export function GitBadge({ label, tone }: { label: string; tone: IdeGitDecoratedChange["tone"] }) {
+function GitBadge({ label, tone }: { label: string; tone: IdeGitDecoratedChange["tone"] }) {
   return (
     <span
       className={cn(
         "grid min-w-5 place-items-center rounded border px-1 py-0.5 text-2xs font-semibold leading-none",
         tone === "added" && "border-green/40 bg-green-soft text-green",
-        tone === "modified" && "border-amber/40 bg-amber-soft text-amber",
+        tone === "modified" && "border-warning/40 bg-warning-soft text-warning",
         tone === "deleted" && "border-danger/40 bg-danger-soft text-danger",
         tone === "renamed" && "border-primary-line bg-primary-soft text-primary",
         tone === "untracked" && "border-primary-line bg-primary-soft text-primary",
@@ -1555,7 +1542,7 @@ function HistoryCommitDetailPanel({
         ) : !loading && !error ? (
           <div className="rounded-sm border border-line bg-canvas px-2 py-1 text-2xs text-subtle">悬停后会读取完整提交详情和文件列表。</div>
         ) : null}
-        {detail?.truncated ? <div className="text-2xs text-amber">提交 diff 已截断，文件列表仍可用于快速判断范围。</div> : null}
+        {detail?.truncated ? <div className="text-2xs text-warning">提交 diff 已截断，文件列表仍可用于快速判断范围。</div> : null}
       </div>
 
       <div className="flex min-w-0 flex-wrap gap-1.5 border-t border-line pt-2" data-ide-source-control-history-actions>
@@ -1624,14 +1611,18 @@ function BranchMenuButton({ children, disabled = false, danger = false, icon, on
 }
 
 function SourceControlState({ title, description, tone = "default", loading = false }: { title: string; description?: string; tone?: "default" | "muted"; loading?: boolean }) {
+  const className = "min-h-40 rounded-lg border border-dashed border-line bg-canvas";
+  if (loading) {
+    return <LoadingState title={title} description={description} className={className} data-ide-source-control-empty />;
+  }
   return (
-    <div className="grid min-h-40 place-items-center rounded-lg border border-dashed border-line bg-canvas p-4 text-center text-sm text-muted" data-ide-source-control-empty>
-      <div>
-        {loading ? <Loader2 className="mx-auto mb-2 size-5 animate-spin text-primary" /> : tone === "muted" ? <AlertCircle className="mx-auto mb-2 size-5 text-subtle" /> : <FileDiff className="mx-auto mb-2 size-5 text-primary" />}
-        <div className="font-medium text-ink-strong">{title}</div>
-        {description ? <div className="mt-1 text-xs text-subtle">{description}</div> : null}
-      </div>
-    </div>
+    <EmptyState
+      icon={tone === "muted" ? <AlertCircle /> : <FileDiff />}
+      title={title}
+      description={description}
+      className={className}
+      data-ide-source-control-empty
+    />
   );
 }
 

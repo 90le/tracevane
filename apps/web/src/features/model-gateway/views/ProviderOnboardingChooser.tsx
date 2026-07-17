@@ -392,7 +392,7 @@ export function ProviderOnboardingChooser({
                 </span>
                 <strong className="text-base">{option.title}</strong>
                 {option.primary && (
-                  <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-xs text-white">推荐</span>
+                  <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-xs text-primary-ink">推荐</span>
                 )}
               </span>
               <span className="text-sm text-muted">{option.desc}</span>

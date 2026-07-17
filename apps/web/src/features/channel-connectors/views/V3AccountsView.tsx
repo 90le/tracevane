@@ -106,13 +106,13 @@ function splitList(value: string): string[] {
   return [...new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
 }
 
-function accountTemplate(platform: "feishu" | "octo", hasTarget: boolean): ChannelConnectorAccount {
+function accountTemplate(platform: "feishu" | "octo"): ChannelConnectorAccount {
   const id = `${platform}-${Date.now().toString(36)}`;
   return {
     id,
     platform,
     displayName: platform === "feishu" ? "新飞书机器人" : "新 Octo 账号",
-    lifecycle: hasTarget ? "draft" : "draft",
+    lifecycle: "draft",
     externalAccountId: null,
     botId: null,
     credentials: {},
@@ -274,7 +274,7 @@ function RuleEditor({
       <div className="flex items-center gap-2">
         <Route className="size-4 text-primary" />
         <Input className="h-8 min-w-0 flex-1" value={rule.name} onChange={(event) => onChange({ ...rule, name: event.target.value })} aria-label="规则名称" />
-        <Button type="button" variant="ghost" size="icon" className="size-8 text-red" title="删除例外" aria-label="删除例外" onClick={onDelete}><Trash2 /></Button>
+        <Button type="button" variant="ghost" size="icon" className="size-8 text-danger" title="删除例外" aria-label="删除例外" onClick={onDelete}><Trash2 /></Button>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <FormField label="来源类型">
@@ -359,7 +359,7 @@ function FeishuAuthorization({
           </div>
         </div>
       )}
-      {registration?.error && <p className="rounded-sm border border-amber/40 bg-amber-soft p-2 text-sm text-amber">{registration.error}</p>}
+      {registration?.error && <p className="rounded-sm border border-warning/40 bg-warning-soft p-2 text-sm text-warning">{registration.error}</p>}
     </div>
   );
 }
@@ -386,7 +386,7 @@ function AccountEditor({
   onPlan: (account: ChannelConnectorAccount, policy: ChannelConnectorDeliveryPolicy) => void;
 }) {
   const creating = account == null;
-  const [draft, setDraft] = React.useState<ChannelConnectorAccount>(() => accountTemplate("feishu", targets.length > 0));
+  const [draft, setDraft] = React.useState<ChannelConnectorAccount>(() => accountTemplate("feishu"));
   const [draftPolicy, setDraftPolicy] = React.useState<ChannelConnectorDeliveryPolicy>(() => policyTemplate("pending", targets[0]?.id || ""));
   const [advancedJson, setAdvancedJson] = React.useState("{}");
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
@@ -400,7 +400,7 @@ function AccountEditor({
   const [previewSender, setPreviewSender] = React.useState("sample-user");
 
   React.useEffect(() => {
-    const next = account ? structuredClone(account) : accountTemplate("feishu", targets.length > 0);
+    const next = account ? structuredClone(account) : accountTemplate("feishu");
     const nextPolicy = policy
       ? structuredClone(policy)
       : policyTemplate(next.id, targets[0]?.id || "");
@@ -433,7 +433,7 @@ function AccountEditor({
   const valid = Boolean(draft.id.trim() && draft.displayName.trim() && draftPolicy.defaultTargetRef && (!enabled || credentialsReady));
 
   const switchPlatform = (platform: "feishu" | "octo") => {
-    const next = accountTemplate(platform, targets.length > 0);
+    const next = accountTemplate(platform);
     setDraft({ ...next, id: draft.id, displayName: platform === "feishu" ? "新飞书机器人" : "新 Octo 账号" });
     setAdvancedJson("{}");
     setPreflight(null);
@@ -564,7 +564,7 @@ function AccountEditor({
 
           <section className="grid gap-3 border-t border-line pt-4">
             <div><h3 className="font-semibold text-ink-strong">默认投递</h3><p className="text-sm text-subtle">未命中来源例外的全部消息都会进入这个 Agent 工作区。</p></div>
-            {targets.length === 0 ? <div className="rounded-sm border border-amber/40 bg-amber-soft p-3 text-sm text-amber">尚无 Agent 工作区。请先创建工作区，再启用账号。</div> : (
+            {targets.length === 0 ? <div className="rounded-sm border border-warning/40 bg-warning-soft p-3 text-sm text-warning">尚无 Agent 工作区。请先创建工作区，再启用账号。</div> : (
               <div className="grid gap-3 sm:grid-cols-2">
                 <FormField label="默认 Agent 工作区"><SelectInput value={draftPolicy.defaultTargetRef} onChange={(event) => setDraftPolicy((current) => ({ ...current, defaultTargetRef: event.target.value }))}>{targets.map((target) => <option key={target.id} value={target.id}>{target.name} · {target.runtime.agent}</option>)}</SelectInput></FormField>
                 <div className="rounded-sm border border-line bg-panel p-3 text-sm"><div className="flex items-center gap-2 text-ink-strong"><Bot className="size-4 text-primary" />{defaultTarget?.name || "未选择"}</div><p className="mt-1 truncate text-xs text-muted" title={defaultTarget?.workspace.workDir}>{defaultTarget?.workspace.workDir || "—"}</p></div>
@@ -590,12 +590,12 @@ function AccountEditor({
           <section className="grid gap-3 border-t border-line pt-4">
             <div><h3 className="font-semibold text-ink-strong">分发预览</h3><p className="text-sm text-subtle">输入一个来源，查看最终工作区、命中规则和访问决策。</p></div>
             <div className="grid gap-3 sm:grid-cols-4"><FormField label="来源类型"><SelectInput value={previewPeerKind} onChange={(event) => setPreviewPeerKind(event.target.value as ChannelConnectorDeliveryPeerKind)}><option value="private">私聊</option><option value="group">群聊</option><option value="channel">频道</option></SelectInput></FormField><FormField label="来源 ID"><Input value={previewPeerId} onChange={(event) => setPreviewPeerId(event.target.value)} /></FormField><FormField label="发送者"><Input value={previewSender} onChange={(event) => setPreviewSender(event.target.value)} /></FormField><div className="flex items-end"><Button type="button" variant="outline" className="w-full" disabled={preview.isPending || !targets.length} onClick={runPreview}><Route />模拟解析</Button></div></div>
-            {previewResult && <div className={`rounded-sm border p-3 text-sm ${previewResult.ok ? "border-green/30 bg-green-soft text-green" : "border-amber/40 bg-amber-soft text-amber"}`}>{previewResult.ok ? <>最终投递到 <strong>{targets.find((target) => target.id === previewResult.resolution.targetId)?.name || previewResult.resolution.targetId}</strong>；{previewResult.resolution.explanation}</> : previewResult.message}</div>}
+            {previewResult && <div className={`rounded-sm border p-3 text-sm ${previewResult.ok ? "border-success/30 bg-success/10 text-success" : "border-warning/40 bg-warning-soft text-warning"}`}>{previewResult.ok ? <>最终投递到 <strong>{targets.find((target) => target.id === previewResult.resolution.targetId)?.name || previewResult.resolution.targetId}</strong>；{previewResult.resolution.explanation}</> : previewResult.message}</div>}
           </section>
 
           <section className="grid gap-3 border-t border-line pt-4">
             <button type="button" className="flex w-full items-center gap-2 text-left" onClick={() => setAdvancedOpen((current) => !current)}><span className="font-semibold text-ink-strong">高级平台 JSON</span><Badge variant="outline">advanced</Badge><span className="ml-auto text-muted">{advancedOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}</span></button>
-            {advancedOpen && <FormField label="未界面化扩展字段" hint="常用配置已由上方控件维护；这里保留未来平台扩展。"><TextareaInput className="min-h-40 font-mono" value={advancedJson} onChange={(event) => setAdvancedJson(event.target.value)} />{advancedError && <span role="alert" className="text-xs text-red">{advancedError}</span>}</FormField>}
+            {advancedOpen && <FormField label="未界面化扩展字段" hint="常用配置已由上方控件维护；这里保留未来平台扩展。"><TextareaInput className="min-h-40 font-mono" value={advancedJson} onChange={(event) => setAdvancedJson(event.target.value)} />{advancedError && <span role="alert" className="text-xs text-danger">{advancedError}</span>}</FormField>}
           </section>
 
           <section className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
@@ -671,7 +671,7 @@ export function V3AccountsView({ selectedAccount, goToView }: ChannelConnectorsV
       {filtered.length === 0 ? <EmptyState title="暂无渠道账号" description="创建飞书或 Octo 账号，并选择默认 Agent 工作区。" action={<Button variant="primary" size="sm" onClick={startCreate}><Plus />新建渠道账号</Button>} /> : (
         <Table><TableHeader><TableRow><TableHead>渠道账号</TableHead><TableHead>默认工作区</TableHead><TableHead>来源例外</TableHead><TableHead>运行状态</TableHead><TableHead className="text-right">动作</TableHead></TableRow></TableHeader><TableBody>{filtered.map((account) => {
           const policy = policies.get(account.id); const target = policy ? targets.get(policy.defaultTargetRef) : null; const runtime = accountRuntimeState(account, statusQuery.data?.runtime);
-          return <TableRow key={account.id}><TableCell data-label="渠道账号"><div className="flex items-center gap-3"><span className="grid size-8 place-items-center rounded-sm bg-panel-3 text-muted"><RadioTower className="size-4" /></span><span className="grid min-w-0"><strong className="truncate text-ink-strong">{account.displayName}</strong><span className="truncate text-xs text-muted">{account.platform} · {account.externalAccountId || account.id}</span></span></div></TableCell><TableCell data-label="默认工作区">{target ? <button type="button" className="text-left" onClick={() => goToView("workspaces", { target: target.id })}><span className="text-sm font-medium text-ink-strong hover:text-primary">{target.name}</span><span className="block max-w-64 truncate text-xs text-muted">{target.workspace.workDir}</span></button> : <Badge variant="warn">未配置</Badge>}</TableCell><TableCell data-label="来源例外"><Badge variant={policy?.rules.length ? "info" : "mute"}>{policy?.rules.length || 0} 条</Badge></TableCell><TableCell data-label="运行状态"><Badge variant={runtime.variant} title={runtime.detail}>{runtime.label}</Badge></TableCell><TableCell data-label="动作"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="编辑账号" aria-label="编辑账号" onClick={() => setEditing(account)}><Pencil /></Button><Button variant="ghost" size="icon" title="打开运行中心" aria-label="打开运行中心" onClick={() => goToView("runtime", { account: account.id })}><Activity /></Button><Button variant="ghost" size="icon" className="text-red" title="删除账号" aria-label="删除账号" onClick={() => setDeleteAccount(account)}><Trash2 /></Button></div></TableCell></TableRow>;
+          return <TableRow key={account.id}><TableCell data-label="渠道账号"><div className="flex items-center gap-3"><span className="grid size-8 place-items-center rounded-sm bg-panel-3 text-muted"><RadioTower className="size-4" /></span><span className="grid min-w-0"><strong className="truncate text-ink-strong">{account.displayName}</strong><span className="truncate text-xs text-muted">{account.platform} · {account.externalAccountId || account.id}</span></span></div></TableCell><TableCell data-label="默认工作区">{target ? <button type="button" className="text-left" onClick={() => goToView("workspaces", { target: target.id })}><span className="text-sm font-medium text-ink-strong hover:text-primary">{target.name}</span><span className="block max-w-64 truncate text-xs text-muted">{target.workspace.workDir}</span></button> : <Badge variant="warn">未配置</Badge>}</TableCell><TableCell data-label="来源例外"><Badge variant={policy?.rules.length ? "info" : "mute"}>{policy?.rules.length || 0} 条</Badge></TableCell><TableCell data-label="运行状态"><Badge variant={runtime.variant} title={runtime.detail}>{runtime.label}</Badge></TableCell><TableCell data-label="动作"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon" title="编辑账号" aria-label="编辑账号" onClick={() => setEditing(account)}><Pencil /></Button><Button variant="ghost" size="icon" title="打开运行中心" aria-label="打开运行中心" onClick={() => goToView("runtime", { account: account.id })}><Activity /></Button><Button variant="ghost" size="icon" className="text-danger" title="删除账号" aria-label="删除账号" onClick={() => setDeleteAccount(account)}><Trash2 /></Button></div></TableCell></TableRow>;
         })}</TableBody></Table>
       )}
 

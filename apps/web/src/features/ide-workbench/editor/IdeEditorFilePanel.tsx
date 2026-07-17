@@ -498,7 +498,7 @@ function IdeEditorExternalStateBanner({
       className={cn(
         "flex min-h-8 items-center gap-2 border-b px-3 text-xs",
         tab.externalState === "deleted"
-          ? "border-amber-line bg-amber-soft text-amber"
+          ? "border-warning/30 bg-warning-soft text-warning"
           : "border-primary-line bg-primary-soft text-primary",
       )}
       data-ide-editor-external-banner
@@ -577,8 +577,8 @@ function IdeEditorStatePanel({
         <div
           className={cn(
             "mx-auto mb-3 grid size-11 place-items-center rounded-md [&_svg]:size-5",
-            tone === "danger" && "bg-red-soft text-red",
-            tone === "warning" && "bg-amber-soft text-amber",
+            tone === "danger" && "bg-danger-soft text-danger",
+            tone === "warning" && "bg-warning-soft text-warning",
             tone === "loading" && "bg-primary-soft text-primary",
             tone === "muted" && "bg-panel-2 text-subtle",
           )}

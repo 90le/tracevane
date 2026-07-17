@@ -13,8 +13,6 @@ export interface XtermDimensions {
 export interface XtermHostHandle {
   write: (data: string) => void;
   clear: () => void;
-  focus: () => void;
-  blur: () => void;
   getSelection: () => string;
   clearSelection: () => void;
   selectAll: () => void;
@@ -69,12 +67,6 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     },
     clear() {
       terminalRef.current?.clear();
-    },
-    focus() {
-      terminalRef.current?.focus();
-    },
-    blur() {
-      terminalRef.current?.blur();
     },
     getSelection() {
       return terminalRef.current?.getSelection() ?? "";

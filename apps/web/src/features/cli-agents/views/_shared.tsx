@@ -59,15 +59,15 @@ export function ToneBadge({
   return <Badge variant={TONE_BADGE[tone]}>{children}</Badge>;
 }
 
-/** Tailwind classes for a soft icon-chip per tone. */
+/** Tailwind classes for a soft icon-chip per tone (semantic color tokens). */
 export function toneIconClass(tone: WorkbenchTone): string {
   switch (tone) {
     case "ok":
-      return "bg-green-soft text-green";
+      return "bg-success/12 text-success";
     case "warn":
-      return "bg-amber-soft text-amber";
+      return "bg-warning-soft text-warning";
     case "bad":
-      return "bg-red-soft text-red";
+      return "bg-danger-soft text-danger";
     case "info":
       return "bg-primary-soft text-primary";
     default:
@@ -75,81 +75,7 @@ export function toneIconClass(tone: WorkbenchTone): string {
   }
 }
 
-/** A single icon + two-line copy + trailing slot row (Aurora `.route-row`). */
-export function Row({
-  icon,
-  iconClass,
-  title,
-  subtitle,
-  trailing,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  iconClass?: string;
-  title: React.ReactNode;
-  subtitle?: React.ReactNode;
-  trailing?: React.ReactNode;
-  onClick?: () => void;
-}) {
-  const body = (
-    <>
-      <span
-        className={cn(
-          "grid size-8 shrink-0 place-items-center rounded-[9px] bg-panel-3 text-muted [&_svg]:size-4",
-          iconClass,
-        )}
-      >
-        {icon}
-      </span>
-      <span className="grid min-w-0 flex-1">
-        <strong className="truncate text-base text-ink-strong">{title}</strong>
-        {subtitle && <span className="truncate text-sm text-muted">{subtitle}</span>}
-      </span>
-      {trailing && <span className="ml-auto flex shrink-0 items-center gap-2">{trailing}</span>}
-    </>
-  );
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={cn(
-          "flex w-full items-center gap-3 px-4 py-2.5 text-left outline-none transition-colors",
-          "hover:bg-panel-2 focus-visible:shadow-[var(--ring)]",
-        )}
-      >
-        {body}
-      </button>
-    );
-  }
-  return <div className="flex items-center gap-3 px-4 py-2.5">{body}</div>;
-}
-
-/** Compact metric tile for hero / roll-up rows. */
-export function StatTile({
-  icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: React.ReactNode;
-  sub?: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0 flex-1 basis-[128px] border-b border-line px-3 py-2.5 sm:border-b-0 sm:border-r last:border-r-0">
-      <span className="flex items-center gap-1.5 text-xs text-subtle [&_svg]:size-3.5">
-        {icon}
-        {label}
-      </span>
-      <span className="mt-0.5 block text-xl font-semibold tabular-nums text-ink-strong">{value}</span>
-      {sub && <span className="block truncate text-xs text-muted">{sub}</span>}
-    </div>
-  );
-}
-
-/** Two-column fact list cell. */
+/** Two-column fact cell (plain spans — the parent strip is not a `<dl>`). */
 export function Fact({
   label,
   children,
@@ -158,9 +84,9 @@ export function Fact({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid min-w-0 gap-0.5">
-      <dt className="text-xs text-subtle">{label}</dt>
-      <dd className="truncate text-sm text-ink-strong">{children}</dd>
+    <div className="grid min-w-0 gap-0.5 px-4 py-3">
+      <span className="text-xs text-subtle">{label}</span>
+      <span className="truncate text-sm text-ink-strong">{children}</span>
     </div>
   );
 }
@@ -171,45 +97,4 @@ export function formatTime(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
-}
-
-/** Compact number (1.2k / 3.4M). */
-export function formatCompact(value: number | null | undefined): string {
-  const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-/** Relative idle duration from milliseconds. */
-export function formatIdle(ms: number | null | undefined): string {
-  const n = typeof ms === "number" && Number.isFinite(ms) ? ms : 0;
-  if (n < 1000) return "刚刚";
-  const sec = Math.floor(n / 1000);
-  if (sec < 60) return `${sec}s 空闲`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m 空闲`;
-  const hr = Math.floor(min / 60);
-  return `${hr}h 空闲`;
-}
-
-/** Map a terminal session status to a tone + Chinese label. */
-export function terminalStatusTone(status: string): {
-  tone: WorkbenchTone;
-  label: string;
-} {
-  switch (status) {
-    case "running":
-      return { tone: "ok", label: "运行中" };
-    case "detached":
-      return { tone: "warn", label: "已分离" };
-    case "completed":
-      return { tone: "mute", label: "已完成" };
-    case "failed":
-      return { tone: "bad", label: "失败" };
-    case "lost":
-      return { tone: "bad", label: "丢失" };
-    default:
-      return { tone: "info", label: status || "未知" };
-  }
 }

@@ -12,7 +12,6 @@ import {
   Pencil,
   ListCollapse,
   RefreshCcw,
-  Search,
   Scissors,
   Trash2,
   Upload,
@@ -722,9 +721,6 @@ export function IdeExplorerView({
           }} disabled={activeUpload}>
             <Upload />
           </ExplorerToolbarIconButton>
-          <ExplorerToolbarIconButton label="快速过滤" onClick={() => toast.info("快速过滤暂不可用", { description: "请先使用 Search 视图查找文件或内容。" })}>
-            <Search />
-          </ExplorerToolbarIconButton>
           <ExplorerToolbarIconButton label="刷新" onClick={() => void refreshDirectory()}>
             <RefreshCcw />
           </ExplorerToolbarIconButton>
@@ -1048,8 +1044,8 @@ function GitDecorationBadge({ decoration }: { decoration: IdeGitDecoration }) {
       className={cn(
         "grid min-w-4 place-items-center rounded border px-1 py-0.5 text-[10px] font-semibold leading-none",
         decoration.aggregate && "min-w-3 border-transparent bg-transparent px-0 text-base",
-        decoration.tone === "added" && "border-green/40 bg-green-soft text-green",
-        decoration.tone === "modified" && "border-amber/40 bg-amber-soft text-amber",
+        decoration.tone === "added" && "border-success/40 bg-success/10 text-success",
+        decoration.tone === "modified" && "border-warning/40 bg-warning-soft text-warning",
         decoration.tone === "deleted" && "border-danger-line bg-danger-soft text-danger",
         decoration.tone === "renamed" && "border-primary-line bg-primary-soft text-primary",
         decoration.tone === "untracked" && "border-primary-line bg-primary-soft text-primary",
@@ -1320,7 +1316,7 @@ function IdeExplorerBranch({
           ) : children.isError ? (
             <button
               type="button"
-              className="mx-8 my-1 rounded-sm border border-line bg-panel-2 px-2 py-1 text-left text-xs text-red hover:bg-red-soft focus-visible:shadow-[var(--ring)]"
+              className="mx-8 my-1 rounded-sm border border-line bg-panel-2 px-2 py-1 text-left text-xs text-danger hover:bg-danger-soft focus-visible:shadow-[var(--ring)]"
               onClick={() => void children.refresh()}
             >
               子目录读取失败，点击重试
@@ -1446,12 +1442,12 @@ function DeleteDialog({
         </>
       )}
     >
-          <div className="rounded border border-red/20 bg-red-soft p-3 text-red">
+          <div className="rounded border border-danger/20 bg-danger-soft p-3 text-danger">
             <div className="font-semibold">危险操作</div>
             <div className="mt-1 text-xs">默认移入回收站；勾选永久删除才会直接从文件系统移除。</div>
           </div>
           {openedTabs.length ? (
-            <div className="rounded border border-amber/30 bg-amber-soft p-3 text-xs text-amber" data-ide-explorer-open-tab-delete-warning>
+            <div className="rounded border border-warning/30 bg-warning-soft p-3 text-xs text-warning" data-ide-explorer-open-tab-delete-warning>
               此项目命中 {openedTabs.length} 个已打开标签页，其中 {dirtyCount} 个有未保存修改。删除后标签页不会静默关闭，会标记为已删除。
             </div>
           ) : null}
@@ -1470,10 +1466,10 @@ function DeleteDialog({
               type="checkbox"
               checked={permanent}
               onChange={(event) => setPermanent(event.target.checked)}
-              className="mt-0.5 size-3 accent-red"
+              className="mt-0.5 size-3 accent-danger"
               data-ide-explorer-delete-permanent
             />
-            <span><strong className="text-red">永久删除</strong>：跳过回收站。</span>
+            <span><strong className="text-danger">永久删除</strong>：跳过回收站。</span>
           </label>
     </ActionDialog>
   );
