@@ -450,7 +450,7 @@ test("all daemon panels expose the shared state-driven accessible control surfac
     assert.doesNotMatch(source, /from "@\/design\/ui\/dialog"/);
 
     const successBlock = source.match(
-      /onSuccess:\s*\(result\)\s*=>\s*\{([\s\S]*?)\n\s*\},\n\s*onError/,
+      /onSuccess:\s*\(result\)\s*=>\s*\{([\s\S]*?)\r?\n\s*\},\r?\n\s*onError/,
     )?.[1] ?? "";
     assert.notEqual(successBlock, "");
     assert.doesNotMatch(successBlock, /serviceQuery\.refetch/);
