@@ -47,6 +47,22 @@ export function logoutAuth(): Promise<unknown> {
 }
 
 /**
+ * POST /api/auth/password — set or change the user password. Requires the
+ * current session cookie plus the current credential (token or current
+ * password). On success the server re-issues the session cookie, so the
+ * current browser stays unlocked while other sessions are invalidated.
+ */
+export function changeAuthPassword(
+  currentCredential: string,
+  newPassword: string,
+): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>("/api/auth/password", {
+    method: "POST",
+    body: JSON.stringify({ currentCredential, newPassword }),
+  });
+}
+
+/**
  * One-shot probe of a cheap gated endpoint, used by the auth gate when the
  * status payload omits the `authenticated` flag: resolves when the current
  * session cookie is valid, rejects with 401 `auth_required` when locked.

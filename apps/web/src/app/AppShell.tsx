@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  KeyRound,
   Lock,
   Menu,
   Search,
@@ -43,6 +44,7 @@ import {
 } from "@/design/ui/tooltip";
 import { useTheme } from "@/app/providers";
 import { useAuth } from "@/features/auth/AuthGate";
+import { ChangePasswordDialog } from "@/features/auth/ChangePasswordDialog";
 import {
   isNavItemActive,
   navItemsByGroup,
@@ -182,6 +184,38 @@ function LockButton({ collapsed = false }: { collapsed?: boolean }) {
   );
 }
 
+/** Change-password entry — only rendered when the standalone server enforces auth. */
+function ChangePasswordButton({ collapsed = false }: { collapsed?: boolean }) {
+  const { required } = useAuth();
+  const [open, setOpen] = React.useState(false);
+  if (!required) return null;
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => setOpen(true)}
+      className="text-subtle hover:text-ink"
+      title={collapsed ? undefined : "修改密码"}
+      aria-label="修改密码"
+    >
+      <KeyRound />
+    </Button>
+  );
+  return (
+    <>
+      {collapsed ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{button}</TooltipTrigger>
+          <TooltipContent side="right">修改密码</TooltipContent>
+        </Tooltip>
+      ) : (
+        button
+      )}
+      <ChangePasswordDialog open={open} onOpenChange={setOpen} />
+    </>
+  );
+}
+
 function SidebarUtilities({
   collapsed,
   onToggleCollapse,
@@ -231,6 +265,7 @@ function SidebarUtilities({
             </Button>
           ))}
         <ThemeToggle collapsed={collapsed} />
+        <ChangePasswordButton collapsed={collapsed} />
         <LockButton collapsed={collapsed} />
       </div>
     </SidebarFooter>
