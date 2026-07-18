@@ -1,6 +1,6 @@
 {
   "name": "@binbin/tracevane",
-  "version": "0.1.72",
+  "version": "0.2.0",
   "description": "Tracevane - Local AI Agent Control Workbench",
   "private": true,
   "repository": {
