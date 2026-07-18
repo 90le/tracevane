@@ -881,7 +881,7 @@ export async function refresh(mode, options = {}) {
     });
     started.push(backend);
     await waitForHttpImpl({
-      url: "http://127.0.0.1:" + backendPort + "/api/system/health",
+      url: "http://127.0.0.1:" + backendPort + "/api/auth/status",
       label: "Backend",
       deadlineAt: Date.now() + readinessTimeoutMs,
       supervisorPid: backend.pid,
@@ -915,7 +915,7 @@ export async function refresh(mode, options = {}) {
       signal: abortController.signal,
     });
     await waitForHttpImpl({
-      url: "http://127.0.0.1:" + config.frontendPort + "/api/system/health",
+      url: "http://127.0.0.1:" + config.frontendPort + "/api/auth/status",
       label: "Frontend proxy",
       deadlineAt: frontendDeadline,
       supervisorPid: frontend.pid,

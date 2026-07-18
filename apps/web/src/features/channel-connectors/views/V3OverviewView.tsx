@@ -17,7 +17,8 @@ import type {
   ChannelConnectorsV3Config,
 } from "../types";
 import type { ChannelConnectorsViewProps } from "./types";
-import { CountChip, Panel, PanelHead, Row, StatusDot, formatTime, type StatusTone } from "./_shared";
+import { Panel, PanelHead, Row, formatTime } from "@/design/ui/panel";
+import { CountChip, StatusDot, type StatusTone } from "./_shared";
 
 function accountReadiness(
   account: ChannelConnectorAccount,

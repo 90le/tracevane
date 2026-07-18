@@ -76,6 +76,7 @@ export function TerminalPaneView({
   const [status, setStatus] = React.useState<TerminalPaneStatus>("idle");
   const [message, setMessage] = React.useState("准备启动本地 Shell");
   const [backend, setBackend] = React.useState<"pty" | "tmux" | null>(null);
+  const [notice, setNotice] = React.useState<{ text: string; detail?: string } | null>(null);
   const [menu, setMenu] = React.useState<TerminalPaneMenuState | null>(null);
   const [selectedText, setSelectedText] = React.useState("");
   const [terminalFocused, setTerminalFocused] = React.useState(false);
@@ -159,6 +160,7 @@ export function TerminalPaneView({
     closeTransport();
     setStatus("connecting");
     setMessage("正在连接终端输出流…");
+    setNotice(null);
     const transport = connectWorkbenchTerminal(sid, {
       rootId,
       cwd,
@@ -172,6 +174,12 @@ export function TerminalPaneView({
         setStatus("running");
         setMessage("终端运行中");
         // Do not auto-steal focus from Explorer/Editor when a transport opens.
+      },
+      onNotice: (payload) => {
+        if (transportRef.current !== transport) return;
+        // Compat-channel fallback notice: one non-blocking line, detail on
+        // hover (title attr); the error banner stays for total failure only.
+        setNotice({ text: payload.message, detail: payload.detail });
       },
       onEvent: (payload) => {
         if (transportRef.current !== transport) return;
@@ -293,6 +301,7 @@ export function TerminalPaneView({
     setStatus("idle");
     setMessage("准备启动本地 Shell");
     setBackend(null);
+    setNotice(null);
     xtermRef.current?.clear();
     updateSelectedText("");
   }, [closeTransport, terminalId, updateSelectedText]);
@@ -540,6 +549,16 @@ export function TerminalPaneView({
         </header>
       ) : null}
       <div className="relative min-h-0 min-w-0" data-ide-terminal-pane-body>
+        {notice && status === "running" ? (
+          <div
+            className="absolute inset-x-3 top-2 z-10 flex items-center truncate rounded border border-line bg-panel-2 px-2 py-1 text-2xs text-muted"
+            role="status"
+            title={notice.detail || notice.text}
+            data-ide-terminal-fallback-notice
+          >
+            {notice.text}
+          </div>
+        ) : null}
         {status === "error" ? (
           <div className="absolute inset-x-3 top-3 z-10 flex items-start gap-2 rounded-md border border-danger-line bg-danger-soft p-3 text-xs text-ink-strong shadow-sm" role="status">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-danger" />

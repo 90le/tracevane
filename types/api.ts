@@ -24,6 +24,23 @@ export interface TracevaneTransportConfig {
 export type TracevaneRealtimeTransportKind = 'raw-ws' | 'gateway-rpc' | 'disabled';
 export type TracevaneExposureKind = 'standalone' | 'gateway';
 
+export type TracevaneStandaloneAuthMode = 'on' | 'off';
+
+export interface TracevaneSecurityConfig {
+  /**
+   * Standalone HTTP auth gate. When 'on', every /api/** request (except
+   * /api/auth/status and /api/auth/unlock) and every raw WebSocket upgrade
+   * requires a valid tracevane_session cookie. Gateway exposure is not
+   * affected; the OpenClaw host auth covers it.
+   */
+  auth: TracevaneStandaloneAuthMode;
+  /**
+   * Standalone HTTP bind host. Defaults to 127.0.0.1 (loopback only);
+   * 0.0.0.0 is an explicit LAN opt-in.
+   */
+  bindHost: string;
+}
+
 export interface TracevaneClientRuntimeConfig {
   exposureKind: TracevaneExposureKind;
   appBasePath: string;
@@ -52,4 +69,5 @@ export interface TracevaneServerConfig {
   gatewayWsUrl: string;
   gatewayControlUiBasePath: string;
   transport: TracevaneTransportConfig;
+  security: TracevaneSecurityConfig;
 }

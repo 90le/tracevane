@@ -25,13 +25,10 @@ import {
 import { useSystemHealthQuery } from "@/lib/query/dashboard";
 import { useRecoveryStatusQuery } from "@/lib/query/recovery";
 import type { OpenClawRecoveryStateKind, RecoveryViewProps } from "../types";
+import { Panel, PanelHead, Row, formatTime } from "@/design/ui/panel";
 import {
-  Panel,
-  PanelHead,
   RECOVERY_STATE_BADGE,
-  Row,
   formatDuration,
-  formatTime,
   reachabilityLabel,
 } from "./shared";
 import { RecoveryServicePanel } from "./RecoveryServicePanel";

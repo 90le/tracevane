@@ -26,8 +26,10 @@ export function setCorsHeaders(
   res: http.ServerResponse,
   options: { allowOrigin?: string | null } = {},
 ): void {
+  // Same-origin deployment: no Access-Control-Allow-Origin by default. The
+  // request handler echoes an Origin only for the localhost dev allowlist.
   const allowOrigin =
-    options.allowOrigin === undefined ? "*" : options.allowOrigin;
+    options.allowOrigin === undefined ? null : options.allowOrigin;
 
   if (!res.hasHeader("Access-Control-Allow-Origin") && allowOrigin !== null) {
     res.setHeader("Access-Control-Allow-Origin", allowOrigin);

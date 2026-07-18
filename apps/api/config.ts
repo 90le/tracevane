@@ -4,11 +4,12 @@ import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { resolveProjectRoot } from '../../lib/project-root.js';
-import type { TracevaneExposureKind, TracevaneServerConfig, TracevaneTransportConfig } from '../../types/api.js';
+import type { TracevaneExposureKind, TracevaneSecurityConfig, TracevaneServerConfig, TracevaneStandaloneAuthMode, TracevaneTransportConfig } from '../../types/api.js';
 
 const DEFAULT_PORT = 3760;
 const DEFAULT_GATEWAY_PORT = 31879;
 const DEFAULT_GATEWAY_BASE_PATH = '/tracevane';
+const DEFAULT_BIND_HOST = '127.0.0.1';
 const TRACEVANE_VERSION_FALLBACK = '0.1.72';
 
 let cachedTracevaneVersion: string | null = null;
@@ -42,6 +43,31 @@ function normalizeOptionalBasePath(value: unknown): string {
   if (!raw || raw === '/') return '';
   const withLeadingSlash = raw.startsWith('/') ? raw : `/${raw}`;
   return withLeadingSlash.replace(/\/{2,}/g, '/').replace(/\/+$/g, '');
+}
+
+function normalizeAuthMode(value: unknown): TracevaneStandaloneAuthMode | null {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return normalized === 'on' || normalized === 'off' ? normalized : null;
+}
+
+function normalizeBindHost(value: unknown): string {
+  const host = typeof value === 'string' ? value.trim() : '';
+  return host || DEFAULT_BIND_HOST;
+}
+
+function resolveSecurityConfig(
+  rawSecurity: unknown,
+  defaultAuth: TracevaneStandaloneAuthMode,
+): TracevaneSecurityConfig {
+  const security = isRecord(rawSecurity) ? rawSecurity : {};
+  const envAuth = normalizeAuthMode(process.env.TRACEVANE_AUTH);
+  const envBindHost = typeof process.env.TRACEVANE_BIND_HOST === 'string'
+    ? process.env.TRACEVANE_BIND_HOST.trim()
+    : '';
+  return {
+    auth: envAuth || normalizeAuthMode(security.auth) || defaultAuth,
+    bindHost: envBindHost || normalizeBindHost(security.bindHost),
+  };
 }
 
 function buildGatewayWsUrl(port: number): string {
@@ -210,6 +236,7 @@ export function createTracevaneConfig(
     gatewayWsUrl: buildGatewayWsUrl(gatewayPort),
     gatewayControlUiBasePath: gatewayRuntime.controlUiBasePath,
     transport,
+    security: resolveSecurityConfig(pluginConfig.security, 'on'),
   };
 }
 
@@ -265,6 +292,7 @@ export function createStandaloneTracevaneConfig(overrides: Partial<TracevaneServ
         basePath: normalizeGatewayBasePath(transport.gateway.basePath, DEFAULT_GATEWAY_BASE_PATH),
       },
     },
+    security: resolveSecurityConfig(overrides.security, 'off'),
   };
 }
 

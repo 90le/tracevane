@@ -2,28 +2,11 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { KeyRound, LifeBuoy, RadioTower, ShieldCheck } from "lucide-react";
 
-import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import type { BadgeProps } from "@/design/ui/badge";
 
 import type { OpenClawRecoveryStatusPayload, PlatformTone, SystemHealthPayload } from "./types";
 import { recoveryTone } from "./usePlatformsAggregate";
-
-export function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <section className={cn("rounded-md border border-line bg-panel shadow-sm", className)}>{children}</section>;
-}
-
-export function PanelHead({ title, sub, action }: { title: string; sub?: string; action?: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3 border-b border-line px-4 py-3">
-      <div className="min-w-0">
-        <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
-        {sub && <span className="text-sm text-subtle">{sub}</span>}
-      </div>
-      {action && <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
-    </div>
-  );
-}
 
 const TONE_BADGE: Record<PlatformTone, BadgeProps["variant"]> = { ok: "ok", warn: "warn", bad: "bad", info: "info" };
 

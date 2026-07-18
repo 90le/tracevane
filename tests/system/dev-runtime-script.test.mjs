@@ -856,9 +856,9 @@ test("unrelated root HTTP cannot satisfy readiness without frontend proxy health
       /proxy health rejected/,
     );
     assert.deepEqual(urls, [
-      "http://127.0.0.1:3761/api/system/health",
+      "http://127.0.0.1:3761/api/auth/status",
       "http://127.0.0.1:5176/",
-      "http://127.0.0.1:5176/api/system/health",
+      "http://127.0.0.1:5176/api/auth/status",
     ]);
     assert.deepEqual(rolledBack, ["frontend", "backend"]);
   } finally {

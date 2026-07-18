@@ -5,6 +5,22 @@ export interface ApiRequestOptions extends RequestInit {
   signal?: AbortSignal;
 }
 
+/**
+ * Callback fired when any API response is a 401 whose body code is
+ * `auth_required` (the standalone server's session gate rejected the call).
+ * The auth gate registers it to flip back to the unlock screen when the
+ * session cookie expires mid-session. Other 401s (e.g.
+ * `auth_invalid_credential`) never fire it — they stay plain {@link ApiError}s.
+ * A single slot is kept; pass `null` to unregister.
+ */
+export type OnAuthRequired = () => void;
+
+let onAuthRequired: OnAuthRequired | null = null;
+
+export function setOnAuthRequired(listener: OnAuthRequired | null): void {
+  onAuthRequired = listener;
+}
+
 async function parseBody(response: Response): Promise<unknown> {
   if (response.status === 204) return undefined;
   const text = await response.text();
@@ -43,6 +59,9 @@ export async function apiRequest<T>(
 
   const normalized = normalizeApiError(response.status, body);
   if (normalized) {
+    if (response.status === 401 && normalized.code === "auth_required") {
+      onAuthRequired?.();
+    }
     throw new ApiError(response.status, normalized);
   }
 

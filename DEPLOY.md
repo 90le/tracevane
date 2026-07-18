@@ -111,6 +111,25 @@ http://<host>:<gateway_port>/tracevane/?token=<token>
 
 首次访问带 `?token=` 用于写入鉴权 Cookie，之后同一会话内可省略。standalone 回退入口为 `http://<host>:3760/`。
 
+## 访问认证（密码 / 访问令牌）
+
+Gateway 单口模式由 OpenClaw 宿主负责鉴权。除此之外，Tracevane 自带的 standalone 入口（生产环境默认 3760）**默认启用访问认证**：
+
+- 首次启动自动生成随机**访问令牌**，保存在 `~/.openclaw/tracevane/auth.json`（0600 权限，Jupyter 同款模式）。浏览器打开 standalone 入口会出现解锁页，输入令牌即可；验证成功后写入 HttpOnly Cookie，30 天内免登录。
+- 查看令牌：`cat ~/.openclaw/tracevane/auth.json`（取 `token` 字段）。
+- 令牌同时覆盖页面、全部 `/api/**` 接口和 WebSocket 升级请求；未认证一律返回 401。
+- standalone 入口**默认只监听 `127.0.0.1`**。确需局域网访问时，显式设置 `TRACEVANE_BIND_HOST=0.0.0.0`（或在插件配置 `security.bindHost` 中指定），并务必先设置密码。
+- 设置/修改密码（可选，设置后可用密码代替令牌解锁）：
+
+```bash
+curl -X POST http://127.0.0.1:3760/api/auth/password \
+  -H 'Content-Type: application/json' \
+  -H 'Cookie: tracevane_session=<解锁后获得的 cookie>' \
+  -d '{"currentCredential":"<访问令牌>","newPassword":"<新密码>"}'
+```
+
+- 关闭认证（仅限可信本机开发环境）：`TRACEVANE_AUTH=off`；强制开启：`TRACEVANE_AUTH=on`。
+
 ## 升级
 
 重新执行一键安装即可，安装器幂等：保留既有配置，旧安装目录自动备份到 `~/.openclaw/backups/tracevane/`。

@@ -31,7 +31,8 @@ import type {
 } from "../types";
 import type { ChannelConnectorsViewProps } from "./types";
 import { FormField, SelectInput } from "./V3Fields";
-import { CountChip, Panel, PanelHead, StatusDot, formatTime, type StatusTone } from "./_shared";
+import { Panel, PanelHead, formatTime } from "@/design/ui/panel";
+import { CountChip, StatusDot, type StatusTone } from "./_shared";
 
 const EVENT_TONE: Record<
   ChannelConnectorAgentSessionDriverRuntimeEvent["type"],

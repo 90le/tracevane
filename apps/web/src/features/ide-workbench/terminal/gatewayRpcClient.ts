@@ -47,6 +47,24 @@ export interface ConnectGatewayRpcClientOptions {
   onClose?: (reason: string) => void;
 }
 
+/**
+ * Structured classification for gateway handshake/RPC failures. The terminal
+ * fallback chain (`terminalTransportChain.ts`) keys off `kind`: auth/pairing/
+ * protocol rejections are host capability problems (eligible for the HTTP/SSE
+ * compat channel), network failures are transport-level.
+ */
+export type GatewayRpcFailureKind = "auth" | "pairing" | "protocol" | "network";
+
+export class GatewayRpcClientError extends Error {
+  readonly kind: GatewayRpcFailureKind;
+
+  constructor(message: string, kind: GatewayRpcFailureKind) {
+    super(message);
+    this.name = "GatewayRpcClientError";
+    this.kind = kind;
+  }
+}
+
 function readBrowserGatewayAuthSecret(): GatewayAuthSecret {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -110,7 +128,10 @@ function buildConnectParams(secret: GatewayAuthSecret): Record<string, unknown> 
   };
 }
 
-function readFrameError(error: unknown, fallback: string): string {
+function classifyFrameError(
+  error: unknown,
+  fallback: string,
+): { message: string; kind: GatewayRpcFailureKind } {
   const shape = (error && typeof error === "object" ? error : {}) as {
     code?: unknown;
     message?: unknown;
@@ -120,19 +141,33 @@ function readFrameError(error: unknown, fallback: string): string {
   const message = String(shape.message ?? "").trim();
   const combined = `${code} ${message}`.toLowerCase();
   if (combined.includes("device") || combined.includes("pairing")) {
-    return "OpenClaw 网关注册要求设备身份/配对（device identity），浏览器终端无法完成设备签名握手；请改用 Tracevane standalone 直连模式，或在宿主侧允许 token-only 的 UI 连接。";
+    return {
+      kind: "pairing",
+      message:
+        "OpenClaw 网关注册要求设备身份/配对（device identity），浏览器终端无法完成设备签名握手；请改用 Tracevane standalone 直连模式，或在宿主侧允许 token-only 的 UI 连接。",
+    };
   }
   if (combined.includes("unauthorized") || combined.includes("token") || combined.includes("password") || combined.includes("auth")) {
-    return "OpenClaw 网关鉴权失败：请确认网关 token 有效（先在 OpenClaw Control UI 登录，或用 ?token=<gateway-token> 打开本页面后重试）。";
+    return {
+      kind: "auth",
+      message:
+        "OpenClaw 网关鉴权失败：请确认网关 token 有效（先在 OpenClaw Control UI 登录，或用 ?token=<gateway-token> 打开本页面后重试）。",
+    };
   }
-  return message || fallback;
+  return { kind: "protocol", message: message || fallback };
 }
 
-function readCloseError(code: number): string {
+function readCloseError(code: number): { message: string; kind: GatewayRpcFailureKind } {
   if (code === 1008) {
-    return "OpenClaw 网关拒绝连接（1008 unauthorized）：请检查网关 token 是否有效。";
+    return {
+      kind: "auth",
+      message: "OpenClaw 网关拒绝连接（1008 unauthorized）：请检查网关 token 是否有效。",
+    };
   }
-  return `无法连接 OpenClaw 网关 WebSocket（关闭码 ${code || "未知"}）。`;
+  return {
+    kind: "network",
+    message: `无法连接 OpenClaw 网关 WebSocket（关闭码 ${code || "未知"}）。`,
+  };
 }
 
 export function connectGatewayRpcClient(
@@ -185,7 +220,7 @@ export function connectGatewayRpcClient(
       } catch {
         // ignore close races
       }
-      reject(new Error("连接 OpenClaw 网关超时：connect 握手未完成。"));
+      reject(new GatewayRpcClientError("连接 OpenClaw 网关超时：connect 握手未完成。", "network"));
     }, GATEWAY_CONNECT_TIMEOUT_MS);
 
     const client: GatewayRpcClient = {
@@ -201,7 +236,7 @@ export function connectGatewayRpcClient(
           const id = nextId("req");
           const timer = window.setTimeout(() => {
             pending.delete(id);
-            rejectRequest(new Error(`网关 RPC 请求超时：${method}`));
+            rejectRequest(new GatewayRpcClientError(`网关 RPC 请求超时：${method}`, "network"));
           }, GATEWAY_REQUEST_TIMEOUT_MS);
           pending.set(id, {
             resolve: (payload) => resolveRequest(payload as T),
@@ -296,7 +331,8 @@ export function connectGatewayRpcClient(
         } catch {
           // ignore close races
         }
-        reject(new Error(readFrameError(frame.error, "OpenClaw 网关连接被拒绝。")));
+        const classified = classifyFrameError(frame.error, "OpenClaw 网关连接被拒绝。");
+        reject(new GatewayRpcClientError(classified.message, classified.kind));
         return;
       }
       const entry = pending.get(id);
@@ -306,7 +342,8 @@ export function connectGatewayRpcClient(
       if (frame.ok) {
         entry.resolve(frame.payload);
       } else {
-        entry.reject(new Error(readFrameError(frame.error, "网关 RPC 调用失败。")));
+        const failure = classifyFrameError(frame.error, "网关 RPC 调用失败。");
+        entry.reject(new GatewayRpcClientError(failure.message, failure.kind));
       }
     });
 
@@ -315,7 +352,8 @@ export function connectGatewayRpcClient(
         settled = true;
         window.clearTimeout(connectTimer);
         rejectPending("OpenClaw 网关连接在握手前关闭。");
-        reject(new Error(readCloseError(closeEvent.code)));
+        const classified = readCloseError(closeEvent.code);
+        reject(new GatewayRpcClientError(classified.message, classified.kind));
         return;
       }
       if (closed) return;
@@ -330,7 +368,7 @@ export function connectGatewayRpcClient(
       settled = true;
       window.clearTimeout(connectTimer);
       rejectPending("OpenClaw 网关 WebSocket 连接失败。");
-      reject(new Error("OpenClaw 网关 WebSocket 连接失败。"));
+      reject(new GatewayRpcClientError("OpenClaw 网关 WebSocket 连接失败。", "network"));
     });
   });
 }

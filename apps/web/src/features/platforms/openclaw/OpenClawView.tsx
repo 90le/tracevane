@@ -22,7 +22,8 @@ import { PageHeader } from "@/design/ui/page-header";
 import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 
-import { Panel, PanelHead, EvidenceRow, HostTrustBanner, ToneBadge, metricTone } from "../_shared";
+import { Panel, PanelHead } from "@/design/ui/panel";
+import { EvidenceRow, HostTrustBanner, ToneBadge, metricTone } from "../_shared";
 import { OPENCLAW_SECTIONS } from "../sections";
 import type { PlatformSectionId } from "../types";
 import { usePlatformsAggregate } from "../usePlatformsAggregate";

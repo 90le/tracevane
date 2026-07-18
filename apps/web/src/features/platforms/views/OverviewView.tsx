@@ -10,7 +10,8 @@ import { ErrorState } from "@/shared/states/ErrorState";
 import { LoadingState } from "@/shared/states/LoadingState";
 
 import type { PlatformCard } from "../types";
-import { HostTrustBanner, Panel, PanelHead, ToneBadge } from "../_shared";
+import { Panel, PanelHead } from "@/design/ui/panel";
+import { HostTrustBanner, ToneBadge } from "../_shared";
 import { usePlatformsAggregate } from "../usePlatformsAggregate";
 
 function fmtTime(value: string | null | undefined): string {

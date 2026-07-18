@@ -34,13 +34,8 @@ import type {
   QuickLaunchEntry,
   ReadinessTone,
 } from "./types";
-import {
-  Panel,
-  PanelHead,
-  Row,
-  ToneBadge,
-  formatTime,
-} from "./views/_shared";
+import { Panel, PanelHead, Row, formatTime } from "@/design/ui/panel";
+import { ToneBadge } from "./views/_shared";
 import { ROUTES } from "./views/aggregate";
 import { useDashboardAggregate } from "./views/useDashboardAggregate";
 

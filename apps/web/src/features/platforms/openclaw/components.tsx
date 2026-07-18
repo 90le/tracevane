@@ -6,7 +6,8 @@ import { Badge } from "@/design/ui/badge";
 import { Button } from "@/design/ui/button";
 import { EmptyState } from "@/shared/states/EmptyState";
 
-import { EvidenceRow, Panel, PanelHead, SectionNotice, ToneBadge } from "../_shared";
+import { Panel, PanelHead } from "@/design/ui/panel";
+import { EvidenceRow, SectionNotice, ToneBadge } from "../_shared";
 import type { PlatformTone } from "../types";
 
 export { EvidenceRow, Panel, PanelHead, SectionNotice, ToneBadge };

@@ -12,6 +12,8 @@ export interface SystemHealthPayload {
   port: number;
   gatewayPort: number;
   sseConnections: number;
+  /** Whether the standalone auth gate is enabled in config (security.auth). */
+  authEnabled: boolean;
   serviceState: string;
   serviceSubState: string;
   cpus: number;

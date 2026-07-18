@@ -21,7 +21,8 @@ import {
   useRestoreRecoveryBackupMutation,
 } from "@/lib/query/recovery";
 import type { OpenClawRecoveryBackupSummary } from "../types";
-import { Pager, Panel, PanelHead, formatBytes, formatTime } from "./shared";
+import { Panel, PanelHead, formatTime } from "@/design/ui/panel";
+import { Pager, formatBytes } from "./shared";
 
 const PAGE_SIZE = 8;
 

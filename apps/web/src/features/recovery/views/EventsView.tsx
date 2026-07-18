@@ -10,7 +10,8 @@ import { SkeletonRow } from "@/shared/states/Skeleton";
 
 import { useRecoveryEventsQuery } from "@/lib/query/recovery";
 import type { OpenClawRecoveryEventSeverity } from "../types";
-import { EVENT_SEVERITY_BADGE, Pager, Panel, PanelHead, formatTime } from "./shared";
+import { Panel, PanelHead, formatTime } from "@/design/ui/panel";
+import { EVENT_SEVERITY_BADGE, Pager } from "./shared";
 
 const PAGE_SIZE = 20;
 

@@ -14,6 +14,7 @@ import type { TracevaneApiContext } from "./core/context.js";
 import { TracevaneRouter } from "./core/router.js";
 import { buildTracevaneClientRuntimeConfig } from "./runtime-config.js";
 import { registerAgentsRoutes } from "./modules/agents/routes.js";
+import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { registerChannelConnectorsRoutes } from "./modules/channel-connectors/routes.js";
 import { registerChannelsRoutes } from "./modules/channels/routes.js";
 import { registerConfigRoutes } from "./modules/config/routes.js";
@@ -53,10 +54,21 @@ const CONTENT_TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+export interface TracevaneRouterOptions {
+  /**
+   * Whether the standalone auth gate applies to this router's exposure. Only
+   * the standalone server gates; gateway exposure is covered by the OpenClaw
+   * host auth.
+   */
+  authRequired?: boolean;
+}
+
 export function createTracevaneRouter(
   ctx: TracevaneApiContext,
+  options: TracevaneRouterOptions = {},
 ): TracevaneRouter {
   const router = new TracevaneRouter();
+  registerAuthRoutes(router, ctx, { authRequired: options.authRequired === true });
   registerDashboardRoutes(router, ctx);
   registerDebugRoutes(router, ctx);
   registerFilesRoutes(router, ctx);
@@ -212,6 +224,63 @@ function isWebSocketUpgradeRequest(req: http.IncomingMessage): boolean {
   return typeof upgrade === "string" && upgrade.trim().toLowerCase() === "websocket";
 }
 
+// Standalone auth gate. Only /api/auth/status and /api/auth/unlock stay open
+// when the gate is on; every other /api/** request and every raw WebSocket
+// upgrade requires a valid tracevane_session cookie. Static GET stays open so
+// the SPA can render the unlock screen. Gateway exposure never gates here:
+// the OpenClaw host auth already covers it.
+const AUTH_PUBLIC_API_PATHS = new Set(["/api/auth/status", "/api/auth/unlock"]);
+
+function isAuthPublicApiPath(pathname: string): boolean {
+  const normalized = pathname.replace(/\/+$/g, "") || "/";
+  return AUTH_PUBLIC_API_PATHS.has(normalized);
+}
+
+function isStandaloneAuthRequired(
+  ctx: TracevaneApiContext,
+  runtimeConfig: TracevaneClientRuntimeConfig | null | undefined,
+): boolean {
+  if (runtimeConfig?.exposureKind === "gateway") return false;
+  return ctx.services.auth.isEnabled();
+}
+
+function sendAuthRequired(res: http.ServerResponse): void {
+  sendJson(res, 401, {
+    error: {
+      code: "auth_required",
+      message: "需要解锁后访问",
+    },
+  });
+}
+
+function rejectUnauthorizedUpgrade(socket: Duplex): void {
+  try {
+    socket.write(
+      'HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{"error":{"code":"auth_required","message":"需要解锁后访问"}}',
+    );
+  } catch {}
+  try {
+    socket.destroy();
+  } catch {}
+}
+
+// Same-origin deployment needs no Access-Control-Allow-Origin at all. Only
+// localhost dev servers (Vite on 5176/5177) get their Origin echoed back.
+const DEV_ORIGIN_ALLOWLIST = new Set([
+  "http://localhost:5176",
+  "http://127.0.0.1:5176",
+  "http://[::1]:5176",
+  "http://localhost:5177",
+  "http://127.0.0.1:5177",
+  "http://[::1]:5177",
+]);
+
+function resolveAllowedOrigin(req: http.IncomingMessage): string | null {
+  const origin = req.headers.origin;
+  if (typeof origin !== "string" || !origin) return null;
+  return DEV_ORIGIN_ALLOWLIST.has(origin) ? origin : null;
+}
+
 function isGatewayRawWebSocketPath(pathname: string): boolean {
   const normalized = pathname.replace(/\/+$/g, "") || "/";
   return GATEWAY_RAW_WEBSOCKET_PATHS.has(normalized);
@@ -261,6 +330,13 @@ export function createTracevaneUpgradeHandler(
   ): boolean {
     normalizeRequestPath(req, { stripBasePath: options.stripBasePath });
 
+    // This handler only serves the standalone server; gateway exposure never
+    // forwards raw socket upgrades. Gate it like the /api/** requests.
+    if (ctx.services.auth.isEnabled() && !ctx.services.auth.hasValidSession(req)) {
+      rejectUnauthorizedUpgrade(socket);
+      return true;
+    }
+
     const handled =
       handleModelGatewayRealtimeUnsupportedUpgrade(req, socket, head) ||
       ctx.services.terminal.handleUpgrade(req, socket, head) ||
@@ -279,7 +355,8 @@ export function createTracevaneRequestHandler(
   ctx: TracevaneApiContext,
   options: TracevaneRequestHandlerOptions = {},
 ) {
-  const router = createTracevaneRouter(ctx);
+  const authRequired = isStandaloneAuthRequired(ctx, options.runtimeConfig);
+  const router = createTracevaneRouter(ctx, { authRequired });
 
   return async function handleTracevaneRequest(
     req: http.IncomingMessage,
@@ -291,7 +368,7 @@ export function createTracevaneRequestHandler(
       req.url || "/",
       `http://${req.headers.host || "127.0.0.1"}`,
     );
-    setCorsHeaders(res);
+    setCorsHeaders(res, { allowOrigin: resolveAllowedOrigin(req) });
 
     if (req.method === "OPTIONS") {
       sendNoContent(res);
@@ -302,6 +379,16 @@ export function createTracevaneRequestHandler(
       shouldRejectGatewayRawWebSocket(req, url.pathname, options.runtimeConfig)
     ) {
       sendGatewayRawWebSocketUnsupported(res, url.pathname);
+      return true;
+    }
+
+    if (
+      authRequired &&
+      url.pathname.startsWith("/api/") &&
+      !isAuthPublicApiPath(url.pathname) &&
+      !ctx.services.auth.hasValidSession(req)
+    ) {
+      sendAuthRequired(res);
       return true;
     }
 
@@ -333,6 +420,7 @@ export function createTracevaneServer(
     runtimeConfig: buildTracevaneClientRuntimeConfig(ctx.config, "standalone"),
   });
   const upgradeHandler = createTracevaneUpgradeHandler(ctx);
+  const bindHost = ctx.config.security?.bindHost || "127.0.0.1";
   let server: http.Server | null = null;
 
   return {
@@ -362,11 +450,11 @@ export function createTracevaneServer(
 
       await new Promise<void>((resolve, reject) => {
         server!.once("error", reject);
-        server!.listen(ctx.config.port, () => resolve());
+        server!.listen(ctx.config.port, bindHost, () => resolve());
       });
 
       ctx.logger.info(
-        `tracevane: HTTP server listening on port ${ctx.config.port}`,
+        `tracevane: HTTP server listening on ${bindHost}:${ctx.config.port}`,
       );
     },
 

@@ -119,6 +119,11 @@ syncConfig('startup');
 watchOpenClawConfig();
 await server.start();
 
-console.info(`[tracevane-api] standalone server ready at http://127.0.0.1:${config.port}`);
+console.info(`[tracevane-api] standalone server ready at http://${config.security.bindHost}:${config.port}`);
+if (config.security.auth === 'on') {
+  console.info(
+    `[tracevane-api] auth enabled; access token at ${path.join(path.dirname(config.openclawConfigFile), 'tracevane', 'auth.json')}`
+  );
+}
 
 await new Promise(() => {});

@@ -88,6 +88,7 @@ test("overview surfaces use responsive metrics and route tables", () => {
     "apps/web/src/features/channel-connectors/views/V3OverviewView.tsx",
   );
   const cliShared = read("apps/web/src/features/cli-agents/views/_shared.tsx");
+  const sharedPanel = read("apps/web/src/design/ui/panel.tsx");
 
   assert.match(
     gatewayOverview,
@@ -104,10 +105,10 @@ test("overview surfaces use responsive metrics and route tables", () => {
     /mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4/,
   );
   assert.match(
-    cliShared,
+    sharedPanel,
     /min-w-0 overflow-hidden rounded-md border border-line bg-panel shadow-sm/,
   );
-  assert.match(cliShared, /flex min-w-0 flex-wrap items-center/);
+  assert.match(sharedPanel, /flex min-w-0 flex-wrap items-center/);
   assert.match(cliShared, /grid min-w-0 gap-0\.5 px-4 py-3/);
   assert.doesNotMatch(
     cliShared,

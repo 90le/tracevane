@@ -29,14 +29,8 @@ import type {
   OpenClawRecoveryRunAction,
   OpenClawRecoveryState,
 } from "../types";
-import {
-  CommandEvidence,
-  Panel,
-  PanelHead,
-  Row,
-  formatTime,
-  reachabilityLabel,
-} from "./shared";
+import { Panel, PanelHead, Row, formatTime } from "@/design/ui/panel";
+import { CommandEvidence, reachabilityLabel } from "./shared";
 
 interface DetectedIssue {
   id: string;

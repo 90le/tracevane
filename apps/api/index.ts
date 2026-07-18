@@ -12,6 +12,7 @@ import {
   handleTracevaneRequest,
 } from "./server.js";
 import { createAgentsService } from "./modules/agents/service.js";
+import { createTracevaneAuthService } from "./modules/auth/service.js";
 import {
   createChannelConnectorsService,
   type ChannelConnectorsServiceOptions,
@@ -50,6 +51,7 @@ export function createTracevaneContext(
   const getSseConnections = () => sseClients.size;
 
   const agents = createAgentsService(options.config);
+  const auth = createTracevaneAuthService(options.config);
   const channelConnectors = createChannelConnectorsService(
     options.config,
     options.channelConnectorsOptions,
@@ -84,6 +86,7 @@ export function createTracevaneContext(
   const openclawRecovery = createOpenClawRecoveryService(options.config);
   const services: TracevaneServices = {
     agents,
+    auth,
     channelConnectors,
     channels,
     config,

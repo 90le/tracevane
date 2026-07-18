@@ -6,6 +6,12 @@ import {
   type WorkbenchTerminalEvent,
 } from "./terminalClient";
 import { createGatewayTerminalTransport } from "./terminalGatewayTransport";
+import { createSseTerminalTransport } from "./terminalSseTransport";
+import {
+  createTerminalTransportFallbackChain,
+  type TerminalFallbackNotice,
+  type TerminalTransportFailure,
+} from "./terminalTransportChain";
 
 export interface WorkbenchTerminalDimensions {
   cols: number;
@@ -16,7 +22,13 @@ export interface WorkbenchTerminalTransportHandlers {
   onOpen: () => void;
   onEvent: (event: WorkbenchTerminalEvent) => void;
   onClose: () => void;
-  onError: (message: string) => void;
+  onError: (message: string, failure?: TerminalTransportFailure) => void;
+  /**
+   * Non-blocking one-line status notice (currently: the gateway-RPC → SSE
+   * compat-channel fallback). Never an error state; the prominent error
+   * banner stays reserved for total failure via onError.
+   */
+  onNotice?: (notice: TerminalFallbackNotice) => void;
 }
 
 /**
@@ -29,6 +41,9 @@ export interface WorkbenchTerminalTransport {
   resize: (dimensions: WorkbenchTerminalDimensions) => void;
   close: () => void;
 }
+
+/** Re-exported so transport implementations share one definition. */
+export type { TerminalFallbackNotice, TerminalTransportFailure } from "./terminalTransportChain";
 
 function createRawWebSocketTerminalTransport(
   sid: string,
@@ -61,7 +76,10 @@ function createRawWebSocketTerminalTransport(
   });
   socket.addEventListener("error", () => {
     if (closed) return;
-    handlers.onError("终端 WebSocket 连接失败");
+    handlers.onError("终端 WebSocket 连接失败", {
+      kind: "network",
+      message: "终端 WebSocket 连接失败",
+    });
   });
 
   return {
@@ -90,7 +108,7 @@ function createFailedTerminalTransport(
   handlers: WorkbenchTerminalTransportHandlers,
 ): WorkbenchTerminalTransport {
   const timer = window.setTimeout(() => {
-    handlers.onError(message);
+    handlers.onError(message, { kind: "disabled", message });
     handlers.onClose();
   }, 0);
   return {
@@ -103,8 +121,11 @@ function createFailedTerminalTransport(
 /**
  * Picks the realtime transport from the injected runtime config:
  * `realtimeTransport: "gateway-rpc"` (gateway exposure) tunnels through the
- * OpenClaw host gateway; `"raw-ws"` keeps the direct WebSocket; `"disabled"`
- * or `features.terminalRealtime === false` yields a structured error state.
+ * OpenClaw host gateway, with an automatic fallback to the HTTP/SSE compat
+ * channel (`terminalSseTransport.ts`) when the host rejects the RPC attach
+ * (auth/pairing/protocol) — see `terminalTransportChain.ts`; `"raw-ws"` keeps
+ * the direct WebSocket; `"disabled"` or `features.terminalRealtime === false`
+ * yields a structured error state.
  */
 export function connectWorkbenchTerminal(
   sid: string,
@@ -127,7 +148,13 @@ export function connectWorkbenchTerminal(
     );
   }
   if (transportKind === "gateway-rpc") {
-    return createGatewayTerminalTransport(sid, options, handlers);
+    return createTerminalTransportFallbackChain<WorkbenchTerminalEvent>({
+      createPrimary: (chainHandlers) =>
+        createGatewayTerminalTransport(sid, options, chainHandlers),
+      createFallback: (chainHandlers) =>
+        createSseTerminalTransport(sid, options, chainHandlers),
+      handlers,
+    });
   }
   return createRawWebSocketTerminalTransport(sid, options, handlers);
 }

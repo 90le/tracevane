@@ -48,14 +48,8 @@ import type {
   TerminalAgentCliId,
   WorkbenchTone,
 } from "../types";
-import {
-  Fact,
-  Panel,
-  PanelHead,
-  ToneBadge,
-  formatTime,
-  toneIconClass,
-} from "./_shared";
+import { Panel, PanelHead, formatTime } from "@/design/ui/panel";
+import { Fact, ToneBadge, toneIconClass } from "./_shared";
 
 interface AgentCliDescriptor {
   id: TerminalAgentCliId;

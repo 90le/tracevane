@@ -1,45 +1,9 @@
 import * as React from "react";
 
-import { cn } from "@/design/lib/utils";
 import { Badge } from "@/design/ui/badge";
 import type { BadgeProps } from "@/design/ui/badge";
 
 import type { WorkbenchTone } from "../types";
-
-/** Panel shell: hairline border + low elevation over the page canvas. */
-export function Panel({
-  className,
-  children,
-}: {
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className={cn("min-w-0 overflow-hidden rounded-md border border-line bg-panel shadow-sm", className)}>
-      {children}
-    </section>
-  );
-}
-
-export function PanelHead({
-  title,
-  sub,
-  action,
-}: {
-  title: string;
-  sub?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-3 border-b border-line px-4 py-3">
-      <div className="min-w-0">
-        <h3 className="text-md font-semibold text-ink-strong">{title}</h3>
-        {sub && <span className="block truncate text-sm text-subtle">{sub}</span>}
-      </div>
-      {action && <div className="ml-auto shrink-0 max-sm:ml-0">{action}</div>}
-    </div>
-  );
-}
 
 const TONE_BADGE: Record<WorkbenchTone, BadgeProps["variant"]> = {
   ok: "ok",
@@ -89,12 +53,4 @@ export function Fact({
       <span className="truncate text-sm text-ink-strong">{children}</span>
     </div>
   );
-}
-
-/** Format an ISO timestamp for display, falling back to the raw value. */
-export function formatTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
 }

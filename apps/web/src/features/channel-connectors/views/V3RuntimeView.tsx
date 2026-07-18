@@ -19,7 +19,8 @@ import type {
 } from "../types";
 import type { ChannelConnectorsViewProps } from "./types";
 import { DaemonServicePanel } from "./DaemonServicePanel";
-import { CountChip, Panel, PanelHead, Row, StatusDot, formatTime } from "./_shared";
+import { Panel, PanelHead, Row, formatTime } from "@/design/ui/panel";
+import { CountChip, StatusDot } from "./_shared";
 
 function connectionState(
   account: ChannelConnectorAccount,

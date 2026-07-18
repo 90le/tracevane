@@ -1030,6 +1030,7 @@ export function createSystemService(
         port: config.port,
         gatewayPort: config.gatewayPort,
         sseConnections: getSseConnections(),
+        authEnabled: config.security?.auth === "on",
         serviceState: service.activeState,
         serviceSubState: service.subState,
         cpus: host.cpus,

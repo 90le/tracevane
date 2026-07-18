@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  Lock,
   Menu,
   Search,
   Moon,
@@ -41,6 +42,7 @@ import {
   TooltipTrigger,
 } from "@/design/ui/tooltip";
 import { useTheme } from "@/app/providers";
+import { useAuth } from "@/features/auth/AuthGate";
 import {
   isNavItemActive,
   navItemsByGroup,
@@ -155,6 +157,31 @@ function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
   );
 }
 
+/** Session lock — only rendered when the standalone server enforces auth. */
+function LockButton({ collapsed = false }: { collapsed?: boolean }) {
+  const { required, lock } = useAuth();
+  if (!required) return null;
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={lock}
+      className="text-subtle hover:text-ink"
+      title={collapsed ? undefined : "锁定"}
+      aria-label="锁定"
+    >
+      <Lock />
+    </Button>
+  );
+  if (!collapsed) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="right">锁定</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function SidebarUtilities({
   collapsed,
   onToggleCollapse,
@@ -204,6 +231,7 @@ function SidebarUtilities({
             </Button>
           ))}
         <ThemeToggle collapsed={collapsed} />
+        <LockButton collapsed={collapsed} />
       </div>
     </SidebarFooter>
   );

@@ -82,6 +82,8 @@ chmod +x /tmp/install-tracevane.sh
 /tmp/install-tracevane.sh --mode standalone --json
 ```
 
+Standalone 入口默认启用访问认证：首次启动自动生成访问令牌（`~/.openclaw/tracevane/auth.json`，0600 权限），浏览器打开后输入令牌解锁；同时默认只监听 `127.0.0.1`，局域网访问需显式设置 `TRACEVANE_BIND_HOST=0.0.0.0`。详见 `DEPLOY.md` 的「访问认证」一节。
+
 ### Gateway 模式
 
 ```bash
