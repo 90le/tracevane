@@ -22,7 +22,7 @@
   <a href="https://github.com/90le/tracevane/actions"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/90le/tracevane/pages.yml?style=flat-square&label=pages"></a>
 </p>
 
-> Tracevane currently ships as an OpenClaw UI extension and is in maintenance mode. Existing capabilities will be maintained, without a fixed feature cadence.
+> Tracevane ships as an OpenClaw UI extension for people who already run OpenClaw: paste one prompt to your OpenClaw agent and it installs everything.
 
 ## Capabilities
 
@@ -36,9 +36,40 @@
 
 ## Quick install
 
-Supported on Linux, macOS, and WSL using a Linux filesystem. Bash, Node.js, and an initialized OpenClaw installation are required.
+Supported on Linux, macOS, and WSL2 using a Linux filesystem. Bash, Node.js, and an onboarded OpenClaw installation are required. No OpenClaw yet? See "Install OpenClaw from scratch" below.
 
-> **Fresh machine:** the Tracevane installer does not install a completely missing OpenClaw CLI. It only upgrades an existing installation that is too old. Install and onboard OpenClaw first.
+### Option 1: let your OpenClaw agent install it (recommended)
+
+Paste this prompt into your OpenClaw conversation. The agent downloads the installer, verifies the SHA-256, installs, and runs health checks — tokens and credentials never enter the chat:
+
+```text
+OpenClaw is already installed and onboarded on this machine. First verify the environment with: openclaw --version, openclaw doctor, openclaw gateway status. Then download the Tracevane installer from https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh to a local path, review the script, and run it with --check-release to confirm the release version and SHA-256. If everything checks out, run it with --mode gateway --json to mount Tracevane at the gateway path /tracevane. Never use curl | bash, and never bypass TLS, SHA-256, config validation, or health checks. When done, report the JSON fields version, installDir, configPath, accessUrls, healthChecks, warnings, and degradedFeatures, and confirm both the /tracevane route and the 3760 fallback health check pass. Redact every token and credential — do not echo them; I will read the access token myself from ~/.openclaw/openclaw.json.
+```
+
+Prompts for the standalone entry (`127.0.0.1:3760`), fresh machines, and audit dry-runs live in [Agent installation prompts](docs/agent-installation.md).
+
+### Option 2: run the installer yourself
+
+Download and inspect the script first; do not use `curl | bash`.
+
+```bash
+curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
+sed -n '1,220p' /tmp/install-tracevane.sh
+chmod +x /tmp/install-tracevane.sh
+/tmp/install-tracevane.sh --check-release
+
+# Single-port mode (recommended): mount at the gateway path /tracevane
+/tmp/install-tracevane.sh --mode gateway --json
+
+# Or the standalone entry: http://127.0.0.1:3760
+/tmp/install-tracevane.sh --mode standalone --json
+```
+
+The installer verifies release metadata and SHA-256, then returns the install directory, configuration path, access URLs, and health results. See [Installation](docs/installation.md) for every flag.
+
+### Install OpenClaw from scratch (first time only)
+
+**Fresh machine:** the Tracevane installer does not install a completely missing OpenClaw CLI; it only upgrades an existing installation that is too old. If `openclaw --version` is not found:
 
 ```bash
 node --version
@@ -50,25 +81,7 @@ openclaw doctor
 openclaw gateway status
 ```
 
-Onboarding asks you to select a model provider and authorize an account or API key. Keep credentials out of issues, logs, and Agent conversations. Refer to the [official OpenClaw installation guide](https://docs.openclaw.ai/install) for current runtime requirements and alternative methods.
-
-After OpenClaw passes its checks, download and inspect the Tracevane installer; do not use `curl | bash`.
-
-```bash
-curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
-sed -n '1,220p' /tmp/install-tracevane.sh
-chmod +x /tmp/install-tracevane.sh
-/tmp/install-tracevane.sh --check-release
-/tmp/install-tracevane.sh --mode standalone --json
-```
-
-For an existing OpenClaw Gateway, change only the final command:
-
-```bash
-/tmp/install-tracevane.sh --mode gateway --json
-```
-
-The installer verifies release metadata and SHA-256, then returns the install directory, configuration path, access URLs, and health results. See [Installation](docs/installation.md) and [Agent installation prompts](docs/agent-installation.md).
+Onboarding asks you to select a model provider and authorize an account or API key. Keep credentials out of issues, logs, and agent conversations. Refer to the [official OpenClaw installation guide](https://docs.openclaw.ai/install) for current runtime requirements and alternative methods. Once the checks pass, go back to option 1 or 2.
 
 ## Development
 

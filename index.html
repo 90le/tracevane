@@ -4,133 +4,540 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Tracevane — OpenClaw AI Agent Control Workbench</title>
-  <meta name="description" content="Operate OpenClaw workspaces, model gateways, channels, CLI agents, and runtime health from one local-first control surface.">
-  <meta name="theme-color" content="#06111d">
-  <meta property="og:title" content="Tracevane — Operate OpenClaw from one workspace">
-  <meta property="og:description" content="Local-first control for workspaces, model gateways, channels, CLI agents, and runtime health.">
+  <meta name="description" content="A local-first control workbench that mounts on your OpenClaw gateway: workspaces, terminal, model routing, channels, and runtime health on one port.">
+  <meta name="theme-color" content="#0B0E13">
+  <meta property="og:title" content="Tracevane — One console for your OpenClaw agent">
+  <meta property="og:description" content="Local-first workbench for OpenClaw: files, terminal, model gateway, channels, and runtime health on one port.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://90le.github.io/tracevane/">
-  <meta property="og:image" content="https://90le.github.io/tracevane/assets/landing/tracevane-dashboard.webp">
+  <meta property="og:image" content="https://90le.github.io/tracevane/assets/brand/tracevane-logo-poster.png">
   <link rel="icon" href="assets/brand/favicon.ico">
   <link rel="manifest" href="assets/brand/site.webmanifest">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css">
   <style>
-    :root{--bg:#06111d;--surface:#081827;--surface-2:#0a1c2c;--line:#17384d;--line-strong:#23607c;--text:#f3f7fa;--muted:#9caebc;--quiet:#627987;--cyan:#22d3ee;--lime:#b6ef24;--max:1320px;--mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;--display:"Barlow Condensed","Arial Narrow",sans-serif}
-    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.65 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:inherit;text-decoration:none}button{font:inherit}.shell{width:min(calc(100% - 48px),var(--max));margin:auto}.skip{position:absolute;left:-9999px}.skip:focus{left:18px;top:14px;z-index:50;background:var(--cyan);color:#001018;padding:8px 12px}
-    header{height:74px;border-bottom:1px solid var(--line);background:rgba(6,17,29,.96);position:sticky;top:0;z-index:20}.nav{height:100%;display:flex;align-items:center;gap:32px}.brand{display:flex;align-items:center;gap:12px;font-size:20px;font-weight:700;letter-spacing:.02em;margin-right:auto}.brand img{width:34px;height:34px}.nav-links{display:flex;align-items:center;gap:30px;color:#b8c7d1;font-size:13px}.nav-links a:hover{color:var(--cyan)}.lang-toggle{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;color:#c8d7df;background:transparent;border:1px solid var(--line-strong);cursor:pointer}.lang-toggle:hover,.lang-toggle:focus-visible{color:#fff;border-color:var(--cyan);outline:none}.github-link{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 15px;border:1px solid var(--cyan);color:var(--cyan);font-size:13px;font-weight:600}.github-link:hover{background:rgba(34,211,238,.08)}
-    .hero{padding:76px 0 54px;display:grid;grid-template-columns:minmax(390px,.75fr) minmax(560px,1.25fr);gap:58px;align-items:center}.eyebrow{color:var(--lime);font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase}.hero h1{font:700 clamp(54px,5.4vw,78px)/.98 var(--display);letter-spacing:-.025em;margin:22px 0 24px;max-width:650px}.hero h1 span{color:var(--cyan)}.hero-copy>p{font-size:17px;line-height:1.75;color:#b0bfca;max-width:620px;margin:0}.actions{display:flex;gap:13px;flex-wrap:wrap;margin-top:31px}.button{min-height:46px;padding:10px 18px;border:1px solid var(--line-strong);display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:13px;font-weight:700}.button.primary{background:var(--cyan);border-color:var(--cyan);color:#001018}.button.secondary{color:var(--cyan);border-color:var(--cyan)}.button:hover{filter:brightness(1.08)}.trust-row{display:flex;gap:18px;flex-wrap:wrap;margin-top:28px;color:#7f96a4;font:11px var(--mono)}.trust-row span{display:inline-flex;align-items:center;gap:7px}.trust-row i{color:var(--lime);font-size:14px}.product-shot{margin:0;border:1px solid var(--line-strong);background:#04101a;padding:8px;box-shadow:0 24px 60px rgba(0,0,0,.32)}.product-shot img{width:100%;height:auto;display:block}.product-shot figcaption{display:flex;justify-content:space-between;gap:15px;padding:8px 3px 0;color:#597381;font:10px var(--mono)}
-    section{padding:78px 0;border-top:1px solid var(--line)}.section-head{display:flex;justify-content:space-between;align-items:end;gap:30px;margin-bottom:38px}.section-kicker{color:var(--cyan);font:600 11px var(--mono);letter-spacing:.14em;text-transform:uppercase}.section-head h2{font:700 clamp(38px,4vw,52px)/1 var(--display);margin:8px 0 0}.section-head p{color:var(--muted);max-width:560px;margin:0}.cap-layout{display:grid;grid-template-columns:.78fr 1.22fr;gap:44px;align-items:center}.cap-list{border-top:1px solid var(--line)}.cap-item{display:grid;grid-template-columns:42px 42px 1fr;gap:12px;align-items:start;padding:18px 0;border-bottom:1px solid var(--line)}.cap-item>i{font-size:30px;color:var(--cyan);line-height:1}.cap-num{color:var(--cyan);font:600 18px var(--display)}.cap-item h3{font:600 20px/1.1 var(--display);margin:0 0 6px}.cap-item p{color:#879daa;font-size:12px;line-height:1.55;margin:0}.architecture{border:1px solid var(--line);background:#04101a;padding:8px}.architecture img{display:block;width:100%;height:auto}.architecture figcaption{padding:8px 3px 0;color:#597381;font:10px var(--mono)}
-    .install-head{margin-bottom:28px}.install-box{border:1px solid var(--line-strong);background:#05121e}.mode-tabs{display:flex;border-bottom:1px solid var(--line)}.mode-tab{min-width:150px;height:44px;padding:0 18px;border:0;border-right:1px solid var(--line);background:transparent;color:#8da2af;cursor:pointer}.mode-tab[aria-selected="true"]{color:var(--cyan);box-shadow:inset 0 -2px var(--cyan);background:#071a29}.mode-tab:focus-visible{outline:1px solid var(--cyan);outline-offset:-2px}.terminal{position:relative;min-height:320px}.terminal pre{margin:0;padding:25px 80px 28px 28px;color:#b7c7d0;font:12px/1.9 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}.terminal .comment{color:#607785}.terminal .command{color:var(--cyan)}.copy-button{position:absolute;right:18px;bottom:18px;display:inline-flex;align-items:center;gap:7px;color:#c7d5dd;background:#081a28;border:1px solid #5a7180;padding:8px 11px;cursor:pointer;font-size:12px}.copy-button:hover{border-color:var(--cyan);color:var(--cyan)}.install-meta{display:flex;justify-content:space-between;gap:20px;color:#718794;font-size:12px;margin-top:13px}.install-meta a{color:var(--cyan)}.prereq{display:inline-flex;align-items:center;gap:8px;color:#aab9c2}.prereq i{color:var(--lime)}
-    .doc-links{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:18px}.doc-link{min-height:58px;border:1px solid var(--line-strong);display:flex;align-items:center;gap:10px;padding:0 15px;color:#a9bdc8;font-size:12px}.doc-link i{font-size:22px;color:var(--cyan)}.doc-link:hover{border-color:var(--cyan);color:#fff}.agent-prompts{margin:0 0 30px;color:#718794;font:11px/1.8 var(--mono)}.agent-prompts a{color:#9fb5c0;margin-left:12px}.agent-prompts a:hover{color:var(--cyan)}.community{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line)}.community-card{display:grid;grid-template-columns:52px 1fr;gap:18px;padding:27px}.community-card+ .community-card{border-left:1px solid var(--line)}.community-card>i{font-size:34px;color:var(--cyan);border:1px solid var(--line-strong);width:52px;height:52px;display:grid;place-items:center}.community-card h3{font:600 21px var(--display);margin:0 0 6px}.community-card p{color:#879daa;font-size:12px;margin:0 0 12px}.community-card a{color:var(--cyan);font-size:12px}
-    footer{border-top:1px solid var(--line);padding:28px 0 38px;color:#718895;font-size:12px}.footer-row{display:flex;align-items:center;gap:22px}.footer-brand{display:flex;align-items:center;gap:9px;margin-right:auto;color:#cad6dc;font-weight:700}.footer-brand img{width:25px;height:25px}.footer-links{display:flex;gap:22px}.footer-links a:hover{color:var(--cyan)}
-    @media(max-width:1040px){.hero{grid-template-columns:1fr;gap:42px}.hero-copy{max-width:760px}.cap-layout{grid-template-columns:1fr}.doc-links{grid-template-columns:repeat(3,1fr)}}
-    @media(max-width:720px){.shell{width:min(calc(100% - 28px),var(--max))}header{height:66px}.nav{gap:12px}.nav-links,.github-link{display:none}.brand{font-size:18px}.hero{padding:52px 0 42px}.hero h1{font-size:52px}.hero-copy>p{font-size:15px}.actions{display:grid}.button{width:100%}.product-shot{padding:4px}.product-shot figcaption{display:none}section{padding:60px 0}.section-head{display:block}.section-head p{margin-top:16px}.cap-item{grid-template-columns:35px 34px 1fr}.architecture{padding:4px}.mode-tab{min-width:0;flex:1}.terminal pre{padding:20px 18px 68px;font-size:11px}.install-meta{display:block}.install-meta>*{display:flex;margin-top:8px}.doc-links{grid-template-columns:1fr 1fr}.community{grid-template-columns:1fr}.community-card+ .community-card{border-left:0;border-top:1px solid var(--line)}.footer-row{align-items:flex-start;flex-wrap:wrap}.footer-links{width:100%;flex-wrap:wrap}}
-    @media(max-width:430px){.hero h1{font-size:46px}.trust-row{display:grid;gap:8px}.doc-links{grid-template-columns:1fr}.community-card{grid-template-columns:42px 1fr;padding:22px 18px}.community-card>i{width:42px;height:42px;font-size:27px}}
+    :root{
+      --bg:#0B0E13;--panel:#12161D;--panel-2:#171C25;--panel-3:#1E2531;
+      --ink:#DCE3EC;--ink-strong:#F3F6FA;--muted:#97A2B3;--subtle:#68738A;
+      --line:rgba(148,163,184,.12);--line-2:rgba(148,163,184,.20);
+      --pri:#22D3EE;--pri-ink:#062229;--pri-soft:rgba(34,211,238,.14);--pri-line:rgba(34,211,238,.34);
+      --teal:#2DD4BF;--green:#34D399;--amber:#FBBF24;--red:#F87171;
+      --mono:ui-monospace,"JetBrains Mono","Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+      --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+      --max:1180px;
+    }
+    *{box-sizing:border-box}html{scroll-behavior:smooth}
+    body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 var(--sans);-webkit-font-smoothing:antialiased}
+    a{color:inherit;text-decoration:none}button{font:inherit;color:inherit}
+    .shell{width:min(calc(100% - 48px),var(--max));margin:auto}
+    .skip{position:absolute;left:-9999px}.skip:focus{left:16px;top:12px;z-index:50;background:var(--pri);color:var(--pri-ink);padding:8px 12px;border-radius:6px}
+    .kicker{color:var(--pri);font:600 11px var(--mono);letter-spacing:.16em;text-transform:uppercase}
+
+    header.site{position:sticky;top:0;z-index:20;height:64px;border-bottom:1px solid var(--line);background:rgba(11,14,19,.88);backdrop-filter:blur(10px)}
+    .nav{height:100%;display:flex;align-items:center;gap:28px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;color:var(--ink-strong);margin-right:auto}
+    .brand img{width:28px;height:28px}
+    .nav-links{display:flex;gap:24px;font-size:13px;color:var(--muted)}
+    .nav-links a:hover{color:var(--pri)}
+    .lang-toggle{height:32px;padding:0 12px;background:transparent;border:1px solid var(--line-2);border-radius:6px;cursor:pointer;font:600 12px var(--mono);color:var(--muted)}
+    .lang-toggle:hover{color:var(--ink-strong);border-color:var(--pri)}
+    .nav-cta{display:inline-flex;align-items:center;height:32px;padding:0 14px;border:1px solid var(--pri-line);border-radius:6px;color:var(--pri);font-size:12px;font-weight:600}
+    .nav-cta:hover{background:var(--pri-soft)}
+
+    .hero{padding:88px 0 72px;display:grid;grid-template-columns:1.02fr .98fr;gap:64px;align-items:center}
+    .hero h1{font-size:clamp(38px,4.6vw,58px);line-height:1.08;letter-spacing:-.02em;color:var(--ink-strong);margin:20px 0 18px;font-weight:700}
+    .hero h1 em{font-style:normal;color:var(--pri)}
+    .hero-sub{font-size:16px;line-height:1.8;color:var(--muted);max-width:540px;margin:0}
+    .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:30px}
+    .btn{min-height:44px;padding:10px 18px;border-radius:8px;display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:700;border:1px solid transparent;cursor:pointer}
+    .btn.primary{background:var(--pri);color:var(--pri-ink);border-color:var(--pri)}
+    .btn.primary:hover{filter:brightness(1.1)}
+    .btn.ghost{border-color:var(--line-2);color:var(--ink)}
+    .btn.ghost:hover{border-color:var(--pri);color:var(--pri)}
+    .hero-meta{display:flex;gap:16px;flex-wrap:wrap;margin-top:26px;color:var(--subtle);font:11px var(--mono)}
+    .hero-meta b{color:var(--muted);font-weight:600}
+    .hero-meta i{font-style:normal;color:var(--green);margin-right:6px}
+
+    /* CSS console mock — mirrors the product's dark console tokens */
+    .mock{border:1px solid var(--line-2);border-radius:14px;background:var(--panel);box-shadow:0 32px 80px -28px rgba(0,0,0,.75);overflow:hidden}
+    .mock-bar{display:flex;align-items:center;gap:7px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel-2)}
+    .mock-bar i{width:9px;height:9px;border-radius:50%;background:var(--panel-3)}
+    .mock-bar i:first-child{background:var(--red)}.mock-bar i:nth-child(2){background:var(--amber)}.mock-bar i:nth-child(3){background:var(--green)}
+    .mock-url{margin-left:10px;flex:1;font:11px var(--mono);color:var(--subtle);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 10px}
+    .mock-lock{font:600 10px var(--mono);color:var(--green);border:1px solid rgba(52,211,153,.35);border-radius:4px;padding:3px 7px;letter-spacing:.08em}
+    .mock-body{display:grid;grid-template-columns:132px 1fr;min-height:340px}
+    .mock-side{border-right:1px solid var(--line);background:var(--panel);padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+    .mock-side span{font-size:11px;color:var(--subtle);padding:6px 10px;border-radius:6px}
+    .mock-side span.on{color:var(--pri);background:var(--pri-soft)}
+    .mock-main{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto 1fr;gap:10px;padding:12px;background:var(--bg)}
+    .mock-panel{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 12px;min-width:0}
+    .mock-panel.wide{grid-column:1/-1}
+    .mock-panel h4{margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;font:600 10px var(--mono);letter-spacing:.1em;color:var(--subtle)}
+    .mock-panel h4 b{color:var(--green);font-weight:600}
+    .mrow{display:flex;align-items:center;gap:8px;font:11px var(--mono);color:var(--muted);padding:4px 0;border-top:1px solid var(--line)}
+    .mrow:first-of-type{border-top:0}
+    .mrow .dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex:none}
+    .mrow .dot.warn{background:var(--amber)}
+    .mrow b{color:var(--ink);font-weight:600}
+    .mrow em{font-style:normal;color:var(--subtle);margin-left:auto}
+    .mmetrics{display:flex;gap:18px;margin-top:8px}
+    .mmetrics div{flex:1}
+    .mmetrics small{display:block;font:9px var(--mono);color:var(--subtle);letter-spacing:.08em}
+    .mmetrics strong{font:600 15px var(--mono);color:var(--ink-strong)}
+    .mmetrics strong.ok{color:var(--green)}
+
+    section.block{padding:72px 0;border-top:1px solid var(--line)}
+    .section-head{display:flex;justify-content:space-between;align-items:end;gap:32px;margin-bottom:36px}
+    .section-head h2{font-size:clamp(26px,3vw,36px);line-height:1.15;color:var(--ink-strong);margin:10px 0 0;letter-spacing:-.01em}
+    .section-head p{color:var(--muted);max-width:520px;margin:0;font-size:14px}
+
+    .caps{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .cap{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:20px}
+    .cap:hover{border-color:var(--pri-line)}
+    .cap-num{font:600 11px var(--mono);color:var(--pri);letter-spacing:.1em}
+    .cap h3{font-size:15px;color:var(--ink-strong);margin:10px 0 6px}
+    .cap p{font-size:12.5px;color:var(--muted);margin:0;line-height:1.65}
+
+    .install-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:14px;align-items:stretch}
+    .panel{border:1px solid var(--line-2);border-radius:12px;background:var(--panel);overflow:hidden;display:flex;flex-direction:column}
+    .panel-head{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line)}
+    .panel-head h3{margin:0;font-size:14px;color:var(--ink-strong)}
+    .badge{font:600 10px var(--mono);color:var(--pri-ink);background:var(--pri);border-radius:4px;padding:3px 7px;letter-spacing:.06em}
+    .badge.dim{background:var(--panel-3);color:var(--muted)}
+    .tabs{display:flex;gap:6px;margin-left:auto}
+    .tab{height:28px;padding:0 12px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer;font:600 11px var(--mono)}
+    .tab[aria-selected="true"]{color:var(--pri);border-color:var(--pri-line);background:var(--pri-soft)}
+    .panel-body{position:relative;flex:1;display:flex}
+    .panel-body pre{margin:0;flex:1;padding:16px 18px 64px;font:12px/1.85 var(--mono);color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+    .copy-btn{position:absolute;right:14px;bottom:12px;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink);cursor:pointer;font:600 11px var(--mono)}
+    .copy-btn:hover{border-color:var(--pri);color:var(--pri)}
+    .panel-note{padding:12px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--subtle)}
+    .panel-note a{color:var(--pri)}
+    .install-links{display:flex;gap:20px;flex-wrap:wrap;margin-top:16px;font-size:12.5px;color:var(--muted)}
+    .install-links a{color:var(--pri)}
+
+    .docs-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .doc-card{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:18px 20px;display:block}
+    .doc-card:hover{border-color:var(--pri-line)}
+    .doc-card h3{margin:0 0 6px;font-size:14px;color:var(--ink-strong)}
+    .doc-card p{margin:0;font-size:12px;color:var(--subtle)}
+    .prompt-links{margin-top:18px;padding:14px 16px;border:1px dashed var(--line-2);border-radius:10px;font:11px/2 var(--mono);color:var(--subtle)}
+    .prompt-links a{color:var(--muted);margin-right:14px}
+    .prompt-links a:hover{color:var(--pri)}
+
+    footer{border-top:1px solid var(--line);padding:26px 0 34px;color:var(--subtle);font-size:12px}
+    .footer-row{display:flex;align-items:center;gap:20px}
+    .footer-brand{display:flex;align-items:center;gap:8px;margin-right:auto;color:var(--muted);font-weight:700}
+    .footer-brand img{width:22px;height:22px}
+    .footer-links{display:flex;gap:18px}
+    .footer-links a:hover{color:var(--pri)}
+
+    @media(max-width:1020px){
+      .hero{grid-template-columns:1fr;gap:44px;padding:64px 0 56px}
+      .caps{grid-template-columns:repeat(2,1fr)}
+      .install-grid{grid-template-columns:1fr}
+      .docs-grid{grid-template-columns:repeat(2,1fr)}
+    }
+    @media(max-width:680px){
+      .shell{width:min(calc(100% - 28px),var(--max))}
+      .nav-links,.nav-cta{display:none}
+      .hero{padding:48px 0 44px}
+      .actions{display:grid}.btn{justify-content:center}
+      .mock-body{grid-template-columns:1fr}.mock-side{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line)}
+      .mock-main{grid-template-columns:1fr}
+      .caps,.docs-grid{grid-template-columns:1fr}
+      .section-head{display:block}.section-head p{margin-top:14px}
+      .tabs{margin-left:0}.panel-head{flex-wrap:wrap}
+      .footer-row{flex-wrap:wrap}
+    }
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
   </style>
 </head>
 <body>
   <a class="skip" href="#main" data-i18n="a11y.skip">Skip to content</a>
-  <header>
+  <header class="site">
     <div class="shell nav">
-      <a class="brand" href="#top"><img src="assets/brand/tracevane-mark.svg" alt=""><span>Tracevane</span></a>
-      <nav class="nav-links" aria-label="Primary navigation"><a href="#capabilities" data-i18n="nav.capabilities">Capabilities</a><a href="#install" data-i18n="nav.install">Install</a><a href="#docs" data-i18n="nav.docs">Docs</a><a href="https://github.com/90le/tracevane">GitHub</a></nav>
-      <button class="lang-toggle" id="lang-toggle" type="button"><i class="ph ph-translate" aria-hidden="true"></i><span>中文</span></button>
-      <a class="github-link" href="https://github.com/90le/tracevane"><span data-i18n="nav.github">View on GitHub</span><i class="ph ph-arrow-square-out" aria-hidden="true"></i></a>
+      <a class="brand" href="#top"><img src="assets/brand/tracevane-mark-96.png" alt=""><span>Tracevane</span></a>
+      <nav class="nav-links" aria-label="Primary"><a href="#capabilities" data-i18n="nav.capabilities">Capabilities</a><a href="#install" data-i18n="nav.install">Install</a><a href="#docs" data-i18n="nav.docs">Docs</a><a href="https://github.com/90le/tracevane">GitHub</a></nav>
+      <button class="lang-toggle" id="lang-toggle" type="button">中文</button>
+      <a class="nav-cta" href="https://github.com/90le/tracevane/releases/latest" data-version>v0.1.72</a>
     </div>
   </header>
+
   <main id="main">
     <div class="shell hero" id="top">
-      <div class="hero-copy">
-        <div class="eyebrow" data-i18n="hero.kicker">Local-first AI Agent control workbench</div>
-        <h1 data-i18n-html="hero.title">Operate OpenClaw from <span>one workspace.</span></h1>
-        <p data-i18n="hero.description">Dashboard, files, IDE, model routing, channels, CLI agents, and system recovery — packaged as one maintainable extension.</p>
-        <div class="actions"><a class="button primary" href="#install"><span data-i18n="hero.install">Install v0.1.72</span><i class="ph ph-download-simple" aria-hidden="true"></i></a><a class="button secondary" href="https://github.com/90le/tracevane/blob/main/docs/installation.md"><span data-i18n="hero.docs">Read documentation</span><i class="ph ph-arrow-right" aria-hidden="true"></i></a></div>
-        <div class="trust-row"><span><i class="ph ph-code" aria-hidden="true"></i><b data-i18n="trust.open">Open source</b></span><span><i class="ph ph-lock-key" aria-hidden="true"></i><b data-i18n="trust.local">Local-first</b></span><span><i class="ph ph-shield-check" aria-hidden="true"></i><b data-i18n="trust.privacy">Credentials stay local</b></span><span><i class="ph ph-wrench" aria-hidden="true"></i><b data-i18n="trust.mode">Maintenance mode</b></span></div>
+      <div>
+        <div class="kicker" data-i18n="hero.kicker">OpenClaw UI extension · local-first</div>
+        <h1 data-i18n-html="hero.title">One console for <em>your OpenClaw.</em></h1>
+        <p class="hero-sub" data-i18n="hero.sub">Tracevane mounts a local-first workbench on your OpenClaw gateway — files, terminal, model routing, channels, and runtime health, sharing one port and one lock.</p>
+        <div class="actions">
+          <button class="btn primary" type="button" data-copy-prompt><span data-i18n="hero.copyPrompt">Copy the agent install prompt</span></button>
+          <a class="btn ghost" href="#install"><span data-i18n="hero.manual">Manual install</span> · <span data-version>v0.1.72</span></a>
+        </div>
+        <div class="hero-meta">
+          <span><i>●</i><b data-i18n="trust.open">Open source · MIT</b></span>
+          <span><i>●</i><b data-i18n="trust.local">Local-first</b></span>
+          <span><i>●</i><b data-i18n="trust.privacy">Credentials stay on the machine</b></span>
+          <span><i>●</i><b data-i18n="trust.port">One gateway port</b></span>
+        </div>
       </div>
-      <figure class="product-shot"><img src="assets/landing/tracevane-dashboard.webp" width="1536" height="1024" alt="Tracevane dark operations dashboard showing agents, model routes, runtime health, and recent events" data-i18n-alt="image.dashboard" fetchpriority="high"><figcaption><span data-i18n="image.preview">ILLUSTRATED PRODUCT PREVIEW</span><span>TRACEVANE / LOCAL</span></figcaption></figure>
+
+      <div class="mock" aria-hidden="true">
+        <div class="mock-bar"><i></i><i></i><i></i><span class="mock-url">http://127.0.0.1:31879/tracevane/</span><span class="mock-lock">UNLOCKED</span></div>
+        <div class="mock-body">
+          <div class="mock-side">
+            <span class="on" data-i18n="mock.n1">Dashboard</span><span data-i18n="mock.n2">Files</span><span data-i18n="mock.n3">Terminal</span><span data-i18n="mock.n4">Model Gateway</span><span data-i18n="mock.n5">Channels</span><span data-i18n="mock.n6">System</span>
+          </div>
+          <div class="mock-main">
+            <div class="mock-panel">
+              <h4><span data-i18n="mock.routes">MODEL ROUTES</span><b>6/6 OK</b></h4>
+              <div class="mrow"><span class="dot"></span><b>openai</b> gpt-4o-mini <em>99.6%</em></div>
+              <div class="mrow"><span class="dot"></span><b>anthropic</b> claude-sonnet-4 <em>99.7%</em></div>
+              <div class="mrow"><span class="dot"></span><b>local</b> llama-3-8b <em>100%</em></div>
+            </div>
+            <div class="mock-panel">
+              <h4><span data-i18n="mock.agents">AGENTS</span><b data-i18n="mock.live">LIVE</b></h4>
+              <div class="mrow"><span class="dot"></span><b>code-assist</b><em>412ms</em></div>
+              <div class="mrow"><span class="dot"></span><b>doc-search</b><em>289ms</em></div>
+              <div class="mrow"><span class="dot warn"></span><b>web-scraper</b><em>1.36s</em></div>
+            </div>
+            <div class="mock-panel wide">
+              <h4><span data-i18n="mock.health">RUNTIME HEALTH</span><b>60m</b></h4>
+              <svg viewBox="0 0 400 56" width="100%" height="56" preserveAspectRatio="none" aria-hidden="true">
+                <g stroke="rgba(148,163,184,.10)" stroke-width="1"><line x1="0" y1="14" x2="400" y2="14"/><line x1="0" y1="28" x2="400" y2="28"/><line x1="0" y1="42" x2="400" y2="42"/></g>
+                <polyline fill="none" stroke="#22D3EE" stroke-width="1.6" points="0,34 25,30 50,33 75,26 100,29 125,22 150,25 175,19 200,24 225,18 250,22 275,16 300,21 325,17 350,20 375,15 400,18"/>
+                <polyline fill="none" stroke="#34D399" stroke-width="1.4" points="0,44 25,42 50,45 75,41 100,44 125,40 150,43 175,39 200,42 225,38 250,41 275,37 300,40 325,38 350,41 375,37 400,39"/>
+              </svg>
+              <div class="mmetrics">
+                <div><small>RPM</small><strong>162</strong></div>
+                <div><small data-i18n="mock.err">ERROR</small><strong class="ok">0.42%</strong></div>
+                <div><small>P95</small><strong>812ms</strong></div>
+                <div><small>UPTIME</small><strong>7d 14h</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <section id="capabilities">
+    <section class="block" id="capabilities">
       <div class="shell">
-        <div class="section-head"><div><div class="section-kicker" data-i18n="cap.kicker">01 / Capabilities</div><h2 data-i18n="cap.title">Everything around OpenClaw, connected.</h2></div><p data-i18n="cap.intro">Tracevane keeps each runtime boundary visible while bringing daily operations into one coherent surface.</p></div>
-        <div class="cap-layout">
-          <div class="cap-list">
-            <article class="cap-item"><i class="ph ph-squares-four" aria-hidden="true"></i><span class="cap-num">01</span><div><h3 data-i18n="cap.c1t">Dashboard</h3><p data-i18n="cap.c1d">Unified health, routing, channels, Agent runs, and recovery status.</p></div></article>
-            <article class="cap-item"><i class="ph ph-code" aria-hidden="true"></i><span class="cap-num">02</span><div><h3 data-i18n="cap.c2t">Workspace & IDE</h3><p data-i18n="cap.c2d">Files, online editing, preview, terminal, Git, and a project workbench.</p></div></article>
-            <article class="cap-item"><i class="ph ph-git-branch" aria-hidden="true"></i><span class="cap-num">03</span><div><h3 data-i18n="cap.c3t">Model Gateway</h3><p data-i18n="cap.c3d">Route models and providers through explicit protocol and health boundaries.</p></div></article>
-            <article class="cap-item"><i class="ph ph-terminal-window" aria-hidden="true"></i><span class="cap-num">04</span><div><h3 data-i18n="cap.c4t">Channels & CLI Agents</h3><p data-i18n="cap.c4d">Connect message inputs to Codex, Claude Code, and OpenCode workflows.</p></div></article>
-            <article class="cap-item"><i class="ph ph-shield-check" aria-hidden="true"></i><span class="cap-num">05</span><div><h3 data-i18n="cap.c5t">System Guard</h3><p data-i18n="cap.c5d">Inspect configuration, device trust, service health, and recovery evidence.</p></div></article>
-            <article class="cap-item"><i class="ph ph-cube" aria-hidden="true"></i><span class="cap-num">06</span><div><h3 data-i18n="cap.c6t">Standalone / Gateway</h3><p data-i18n="cap.c6d">Use a local 3760 entry or mount Tracevane at the OpenClaw Gateway.</p></div></article>
+        <div class="section-head">
+          <div><div class="kicker" data-i18n="cap.kicker">01 / Capabilities</div><h2 data-i18n="cap.title">Everything around OpenClaw, in one surface.</h2></div>
+          <p data-i18n="cap.intro">Daily operations stay in one coherent console, while each runtime boundary remains visible and inspectable.</p>
+        </div>
+        <div class="caps">
+          <div class="cap"><div class="cap-num">01</div><h3 data-i18n="cap.c1t">Workspace & files</h3><p data-i18n="cap.c1d">File manager, online editing, preview, terminal, and Git workflows.</p></div>
+          <div class="cap"><div class="cap-num">02</div><h3 data-i18n="cap.c2t">Model Gateway</h3><p data-i18n="cap.c2d">Providers, models, routing, account pools, protocol adapters, and usage.</p></div>
+          <div class="cap"><div class="cap-num">03</div><h3 data-i18n="cap.c3t">Channel connectors</h3><p data-i18n="cap.c3d">Connect Feishu, Octo, and other message inputs to agent workflows.</p></div>
+          <div class="cap"><div class="cap-num">04</div><h3 data-i18n="cap.c4t">CLI agents</h3><p data-i18n="cap.c4d">Readiness checks and runs for Codex, Claude Code, and OpenCode.</p></div>
+          <div class="cap"><div class="cap-num">05</div><h3 data-i18n="cap.c5t">Runtime health</h3><p data-i18n="cap.c5d">Services, configuration, device trust, and recovery evidence.</p></div>
+          <div class="cap"><div class="cap-num">06</div><h3 data-i18n="cap.c6t">Auth & access</h3><p data-i18n="cap.c6d">Unlock by token or password, loopback-only by default, explicit LAN opt-in.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="install">
+      <div class="shell">
+        <div class="section-head">
+          <div><div class="kicker" data-i18n="install.kicker">02 / Install</div><h2 data-i18n="install.title">Already on OpenClaw? Paste one prompt.</h2></div>
+          <p data-i18n="install.intro">Hand the prompt to your OpenClaw agent. It downloads the installer, verifies the SHA-256, installs, and runs health checks — credentials never enter the chat.</p>
+        </div>
+
+        <div class="install-grid">
+          <div class="panel">
+            <div class="panel-head">
+              <h3 data-i18n="install.agentTitle">Install via the OpenClaw agent</h3>
+              <span class="badge" data-i18n="install.recommended">RECOMMENDED</span>
+              <div class="tabs" role="tablist" aria-label="Install mode">
+                <button class="tab" type="button" role="tab" aria-selected="true" data-mode="gateway">Gateway</button>
+                <button class="tab" type="button" role="tab" aria-selected="false" data-mode="standalone">Standalone</button>
+              </div>
+            </div>
+            <div class="panel-body"><pre id="prompt-text"></pre><button class="copy-btn" type="button" data-copy-prompt><span data-i18n="install.copy">Copy prompt</span></button></div>
+            <div class="panel-note"><span data-i18n="install.agentNote">The agent pauses for any model-account or key step so you can complete it locally; tokens stay out of the conversation.</span> <a href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md" data-i18n="install.morePrompts">All prompts →</a></div>
           </div>
-          <figure class="architecture"><img src="assets/landing/tracevane-architecture.webp" width="1536" height="1024" loading="lazy" alt="Tracevane Gateway architecture connecting CLI, HTTP, WebSocket, MCP, system guard, workspace, and model providers" data-i18n-alt="image.architecture"><figcaption data-i18n="image.archCaption">TRACEVANE GATEWAY / EXPLICIT INPUT AND PROVIDER BOUNDARIES</figcaption></figure>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h3 data-i18n="install.manualTitle">Or run the installer yourself</h3>
+              <span class="badge dim">Bash</span>
+            </div>
+            <div class="panel-body"><pre id="command-text"></pre><button class="copy-btn" type="button" data-copy-command><span data-i18n="install.copyCmd">Copy commands</span></button></div>
+            <div class="panel-note"><span data-i18n="install.manualNote">Review the script before running it — never pipe curl into bash. The installer verifies release metadata and SHA-256.</span></div>
+          </div>
+        </div>
+
+        <div class="install-links">
+          <span data-i18n="install.req">Linux · macOS · WSL2 (Linux filesystem)</span>
+          <span>OpenClaw <span data-min-version>&gt;= 2026.5.28</span></span>
+          <span data-i18n-html="install.fresh">No OpenClaw yet? <a href="https://github.com/90le/tracevane/blob/main/docs/installation.md">Fresh-machine guide →</a></span>
+          <span data-i18n-html="install.offline">Offline / private mirror: <a href="https://github.com/90le/tracevane/blob/main/docs/installation.md">--version --package-url --package-sha256 →</a></span>
         </div>
       </div>
     </section>
 
-    <section id="install">
+    <section class="block" id="docs">
       <div class="shell">
-        <div class="section-head install-head"><div><div class="section-kicker" data-i18n="install.kicker">02 / Install</div><h2 data-i18n="install.title">Inspect first. Then install.</h2></div><p data-i18n="install.intro">OpenClaw must already be installed and onboarded. The Tracevane installer verifies Release metadata and SHA-256.</p></div>
-        <div class="install-box">
-          <div class="mode-tabs" role="tablist" aria-label="Installation mode"><button class="mode-tab" type="button" role="tab" aria-selected="true" data-mode="standalone" data-i18n="install.standalone">Standalone</button><button class="mode-tab" type="button" role="tab" aria-selected="false" data-mode="gateway" data-i18n="install.gateway">Gateway</button></div>
-          <div class="terminal"><pre id="install-command"></pre><button class="copy-button" type="button" data-copy><span data-i18n="install.copy">Copy</span><i class="ph ph-copy" aria-hidden="true"></i></button></div>
+        <div class="section-head">
+          <div><div class="kicker" data-i18n="docs.kicker">03 / Docs</div><h2 data-i18n="docs.title">Documentation & source</h2></div>
+          <p data-i18n="docs.intro">Clear install paths, security posture, and direct links to the source.</p>
         </div>
-        <div class="install-meta"><span class="prereq"><i class="ph ph-check-circle" aria-hidden="true"></i><span data-i18n="install.requirements">Linux, macOS, or WSL2 · initialized OpenClaw required</span></span><span><span data-i18n="install.fresh">No OpenClaw yet?</span> <a href="https://github.com/90le/tracevane/blob/main/docs/installation.md#情况-a全新机器没有-openclaw" data-i18n="install.freshLink">Start with the fresh-machine guide →</a></span></div>
-      </div>
-    </section>
-
-    <section id="docs">
-      <div class="shell">
-        <div class="section-head"><div><div class="section-kicker" data-i18n="docs.kicker">03 / Open source</div><h2 data-i18n="docs.title">Documentation & community</h2></div><p data-i18n="docs.intro">Clear install paths, public maintenance boundaries, and direct links to the source.</p></div>
-        <div class="doc-links"><a class="doc-link" href="https://github.com/90le/tracevane/blob/main/docs/installation.md"><i class="ph ph-download-simple"></i><span data-i18n="docs.installation">Installation</span></a><a class="doc-link" href="https://github.com/90le/tracevane#项目结构"><i class="ph ph-tree-structure"></i><span data-i18n="docs.architecture">Architecture</span></a><a class="doc-link" href="https://github.com/90le/tracevane/blob/main/docs/troubleshooting.md"><i class="ph ph-wrench"></i><span data-i18n="docs.troubleshooting">Troubleshooting</span></a><a class="doc-link" href="https://github.com/90le/tracevane/blob/main/SECURITY.md"><i class="ph ph-shield-check"></i><span data-i18n="docs.security">Security</span></a><a class="doc-link" href="https://github.com/90le/tracevane/blob/main/CONTRIBUTING.md"><i class="ph ph-users-three"></i><span data-i18n="docs.contributing">Contributing</span></a><a class="doc-link" href="https://github.com/90le/tracevane/releases"><i class="ph ph-tag"></i><span data-i18n="docs.releases">Releases</span></a></div>
-        <div class="agent-prompts"><span data-i18n="docs.agentPrompts">Agent install prompts:</span><a id="promptFreshMachineStandalone" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptfreshmachinestandalone" data-i18n="docs.freshStandalone">Fresh machine</a><a id="promptFreshMachineGateway" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptfreshmachinegateway" data-i18n="docs.freshGateway">Fresh Gateway</a><a id="promptStandaloneShort" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptstandaloneshort">Standalone</a><a id="promptGatewayShort" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptgatewayshort">Gateway</a><a id="promptStandaloneAudit" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptstandaloneaudit" data-i18n="docs.auditStandalone">Standalone audit</a><a id="promptGatewayAudit" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptgatewayaudit" data-i18n="docs.auditGateway">Gateway audit</a></div>
-        <div class="community"><article class="community-card"><i class="ph ph-terminal-window" aria-hidden="true"></i><div><h3 data-i18n="community.maintTitle">Built for self-hosters and contributors.</h3><p data-i18n="community.maintDesc">Tracevane is open source and in maintenance mode. Contributions that improve stability, documentation, and compatibility are welcome.</p><a href="https://github.com/90le/tracevane/blob/main/CONTRIBUTING.md"><span data-i18n="community.contribute">Read CONTRIBUTING.md</span> →</a></div></article><article class="community-card"><i class="ph ph-github-logo" aria-hidden="true"></i><div><h3 data-i18n="community.joinTitle">Join the project on GitHub.</h3><p data-i18n="community.joinDesc">Report reproducible issues, propose focused changes, and follow current maintenance work.</p><a href="https://github.com/90le/tracevane"><span data-i18n="community.github">View on GitHub</span> →</a></div></article></div>
+        <div class="docs-grid">
+          <a class="doc-card" href="https://github.com/90le/tracevane/blob/main/docs/installation.md"><h3 data-i18n="docs.installation">Installation & uninstall</h3><p data-i18n="docs.installationD">Gateway and standalone modes, dry-run, offline mirrors.</p></a>
+          <a class="doc-card" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md"><h3 data-i18n="docs.agent">Agent install prompts</h3><p data-i18n="docs.agentD">Copy-paste prompts for OpenClaw and other coding agents.</p></a>
+          <a class="doc-card" href="https://github.com/90le/tracevane/blob/main/docs/troubleshooting.md"><h3 data-i18n="docs.troubleshooting">Troubleshooting</h3><p data-i18n="docs.troubleshootingD">Health URLs, checksums, node-pty, service fallback.</p></a>
+          <a class="doc-card" href="https://github.com/90le/tracevane/blob/main/SECURITY.md"><h3 data-i18n="docs.security">Security policy</h3><p data-i18n="docs.securityD">Private reporting and credential-handling rules.</p></a>
+          <a class="doc-card" href="https://github.com/90le/tracevane/blob/main/CONTRIBUTING.md"><h3 data-i18n="docs.contributing">Contributing</h3><p data-i18n="docs.contributingD">Focused changes, tests, and review expectations.</p></a>
+          <a class="doc-card" href="https://github.com/90le/tracevane/releases"><h3 data-i18n="docs.releases">Releases</h3><p data-i18n="docs.releasesD">Versioned tarballs, installers, and SHA-256 sums.</p></a>
+        </div>
+        <div class="prompt-links">
+          <span data-i18n="docs.promptIndex">Prompt index:</span>
+          <a id="promptGatewayShort" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptgatewayshort">promptGatewayShort</a>
+          <a id="promptStandaloneShort" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptstandaloneshort">promptStandaloneShort</a>
+          <a id="promptGatewayAudit" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptgatewayaudit">promptGatewayAudit</a>
+          <a id="promptStandaloneAudit" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptstandaloneaudit">promptStandaloneAudit</a>
+          <a id="promptFreshMachineGateway" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptfreshmachinegateway">promptFreshMachineGateway</a>
+          <a id="promptFreshMachineStandalone" href="https://github.com/90le/tracevane/blob/main/docs/agent-installation.md#promptfreshmachinestandalone">promptFreshMachineStandalone</a>
+        </div>
       </div>
     </section>
   </main>
-  <footer><div class="shell footer-row"><div class="footer-brand"><img src="assets/brand/tracevane-mark.svg" alt=""><span>Tracevane</span></div><span data-i18n="footer.note">Open source · MIT · Maintenance mode</span><nav class="footer-links"><a href="https://github.com/90le/tracevane">GitHub</a><a href="https://github.com/90le/tracevane/releases" data-i18n="docs.releases">Releases</a><a href="https://github.com/90le/tracevane/blob/main/LICENSE" data-i18n="footer.license">License</a><a href="https://github.com/90le/tracevane/issues">Issues</a></nav></div></footer>
+
+  <footer>
+    <div class="shell footer-row">
+      <div class="footer-brand"><img src="assets/brand/tracevane-mark-96.png" alt=""><span>Tracevane</span></div>
+      <span data-i18n="footer.note">Open source · MIT · Local-first</span>
+      <nav class="footer-links"><a href="https://github.com/90le/tracevane">GitHub</a><a href="https://github.com/90le/tracevane/releases" data-i18n="docs.releases">Releases</a><a href="https://github.com/90le/tracevane/blob/main/LICENSE" data-i18n="footer.license">License</a><a href="https://github.com/90le/tracevane/issues">Issues</a></nav>
+    </div>
+  </footer>
+
   <script>
+    const TRACEVANE_VERSION = "0.1.72";
     const OPENCLAW_MIN_VERSION = "2026.5.28";
-    const translations={
-      en:{
-        "a11y.skip":"Skip to content","nav.capabilities":"Capabilities","nav.install":"Install","nav.docs":"Docs","nav.github":"View on GitHub",
-        "hero.kicker":"Local-first AI Agent control workbench","hero.title":"Operate OpenClaw from <span>one workspace.</span>","hero.description":"Dashboard, files, IDE, model routing, channels, CLI agents, and system recovery — packaged as one maintainable extension.","hero.install":"Install v0.1.72","hero.docs":"Read documentation",
-        "trust.open":"Open source","trust.local":"Local-first","trust.privacy":"Credentials stay local","trust.mode":"Maintenance mode",
-        "image.dashboard":"Tracevane dark operations dashboard showing agents, model routes, runtime health, and recent events","image.preview":"ILLUSTRATED PRODUCT PREVIEW","image.architecture":"Tracevane Gateway architecture connecting CLI, HTTP, WebSocket, MCP, system guard, workspace, and model providers","image.archCaption":"TRACEVANE GATEWAY / EXPLICIT INPUT AND PROVIDER BOUNDARIES",
-        "cap.kicker":"01 / Capabilities","cap.title":"Everything around OpenClaw, connected.","cap.intro":"Tracevane keeps each runtime boundary visible while bringing daily operations into one coherent surface.",
-        "cap.c1t":"Dashboard","cap.c1d":"Unified health, routing, channels, Agent runs, and recovery status.","cap.c2t":"Workspace & IDE","cap.c2d":"Files, online editing, preview, terminal, Git, and a project workbench.","cap.c3t":"Model Gateway","cap.c3d":"Route models and providers through explicit protocol and health boundaries.","cap.c4t":"Channels & CLI Agents","cap.c4d":"Connect message inputs to Codex, Claude Code, and OpenCode workflows.","cap.c5t":"System Guard","cap.c5d":"Inspect configuration, device trust, service health, and recovery evidence.","cap.c6t":"Standalone / Gateway","cap.c6d":"Use a local 3760 entry or mount Tracevane at the OpenClaw Gateway.",
-        "install.kicker":"02 / Install","install.title":"Inspect first. Then install.","install.intro":"OpenClaw must already be installed and onboarded. The Tracevane installer verifies Release metadata and SHA-256.","install.standalone":"Standalone","install.gateway":"Gateway","install.copy":"Copy","install.copied":"Copied","install.requirements":"Linux, macOS, or WSL2 · initialized OpenClaw required","install.fresh":"No OpenClaw yet?","install.freshLink":"Start with the fresh-machine guide →",
-        "docs.kicker":"03 / Open source","docs.title":"Documentation & community","docs.intro":"Clear install paths, public maintenance boundaries, and direct links to the source.","docs.installation":"Installation","docs.architecture":"Architecture","docs.troubleshooting":"Troubleshooting","docs.security":"Security","docs.contributing":"Contributing","docs.releases":"Releases","docs.agentPrompts":"Agent install prompts:","docs.freshStandalone":"Fresh machine","docs.freshGateway":"Fresh Gateway","docs.auditStandalone":"Standalone audit","docs.auditGateway":"Gateway audit",
-        "community.maintTitle":"Built for self-hosters and contributors.","community.maintDesc":"Tracevane is open source and in maintenance mode. Contributions that improve stability, documentation, and compatibility are welcome.","community.contribute":"Read CONTRIBUTING.md","community.joinTitle":"Join the project on GitHub.","community.joinDesc":"Report reproducible issues, propose focused changes, and follow current maintenance work.","community.github":"View on GitHub","footer.note":"Open source · MIT · Maintenance mode","footer.license":"License"
+
+    const translations = {
+      en: {
+        "a11y.skip": "Skip to content",
+        "nav.capabilities": "Capabilities", "nav.install": "Install", "nav.docs": "Docs",
+        "hero.kicker": "OpenClaw UI extension · local-first",
+        "hero.title": "One console for <em>your OpenClaw.</em>",
+        "hero.sub": "Tracevane mounts a local-first workbench on your OpenClaw gateway — files, terminal, model routing, channels, and runtime health, sharing one port and one lock.",
+        "hero.copyPrompt": "Copy the agent install prompt", "hero.manual": "Manual install",
+        "trust.open": "Open source · MIT", "trust.local": "Local-first", "trust.privacy": "Credentials stay on the machine", "trust.port": "One gateway port",
+        "mock.n1": "Dashboard", "mock.n2": "Files", "mock.n3": "Terminal", "mock.n4": "Model Gateway", "mock.n5": "Channels", "mock.n6": "System",
+        "mock.routes": "MODEL ROUTES", "mock.agents": "AGENTS", "mock.live": "LIVE", "mock.health": "RUNTIME HEALTH", "mock.err": "ERROR",
+        "cap.kicker": "01 / Capabilities", "cap.title": "Everything around OpenClaw, in one surface.",
+        "cap.intro": "Daily operations stay in one coherent console, while each runtime boundary remains visible and inspectable.",
+        "cap.c1t": "Workspace & files", "cap.c1d": "File manager, online editing, preview, terminal, and Git workflows.",
+        "cap.c2t": "Model Gateway", "cap.c2d": "Providers, models, routing, account pools, protocol adapters, and usage.",
+        "cap.c3t": "Channel connectors", "cap.c3d": "Connect Feishu, Octo, and other message inputs to agent workflows.",
+        "cap.c4t": "CLI agents", "cap.c4d": "Readiness checks and runs for Codex, Claude Code, and OpenCode.",
+        "cap.c5t": "Runtime health", "cap.c5d": "Services, configuration, device trust, and recovery evidence.",
+        "cap.c6t": "Auth & access", "cap.c6d": "Unlock by token or password, loopback-only by default, explicit LAN opt-in.",
+        "install.kicker": "02 / Install", "install.title": "Already on OpenClaw? Paste one prompt.",
+        "install.intro": "Hand the prompt to your OpenClaw agent. It downloads the installer, verifies the SHA-256, installs, and runs health checks — credentials never enter the chat.",
+        "install.agentTitle": "Install via the OpenClaw agent", "install.recommended": "RECOMMENDED",
+        "install.copy": "Copy prompt", "install.copied": "Copied",
+        "install.agentNote": "The agent pauses for any model-account or key step so you can complete it locally; tokens stay out of the conversation.",
+        "install.morePrompts": "All prompts →",
+        "install.manualTitle": "Or run the installer yourself", "install.copyCmd": "Copy commands",
+        "install.manualNote": "Review the script before running it — never pipe curl into bash. The installer verifies release metadata and SHA-256.",
+        "install.req": "Linux · macOS · WSL2 (Linux filesystem)",
+        "install.fresh": "No OpenClaw yet? <a href=\"https://github.com/90le/tracevane/blob/main/docs/installation.md\">Fresh-machine guide →</a>",
+        "install.offline": "Offline / private mirror: <a href=\"https://github.com/90le/tracevane/blob/main/docs/installation.md\">--version --package-url --package-sha256 →</a>",
+        "docs.kicker": "03 / Docs", "docs.title": "Documentation & source",
+        "docs.intro": "Clear install paths, security posture, and direct links to the source.",
+        "docs.installation": "Installation & uninstall", "docs.installationD": "Gateway and standalone modes, dry-run, offline mirrors.",
+        "docs.agent": "Agent install prompts", "docs.agentD": "Copy-paste prompts for OpenClaw and other coding agents.",
+        "docs.troubleshooting": "Troubleshooting", "docs.troubleshootingD": "Health URLs, checksums, node-pty, service fallback.",
+        "docs.security": "Security policy", "docs.securityD": "Private reporting and credential-handling rules.",
+        "docs.contributing": "Contributing", "docs.contributingD": "Focused changes, tests, and review expectations.",
+        "docs.releases": "Releases", "docs.releasesD": "Versioned tarballs, installers, and SHA-256 sums.",
+        "docs.promptIndex": "Prompt index:",
+        "footer.note": "Open source · MIT · Local-first", "footer.license": "License"
       },
-      zh:{
-        "a11y.skip":"跳到正文","nav.capabilities":"能力","nav.install":"安装","nav.docs":"文档","nav.github":"访问 GitHub",
-        "hero.kicker":"本地优先的 AI Agent 控制工作台","hero.title":"在一个工作台中<span>运营 OpenClaw。</span>","hero.description":"把仪表盘、文件、IDE、模型路由、消息渠道、CLI Agent 与系统恢复整合为一个可维护的扩展。","hero.install":"安装 v0.1.72","hero.docs":"阅读安装文档",
-        "trust.open":"开源","trust.local":"本地优先","trust.privacy":"凭据留在本机","trust.mode":"维护模式",
-        "image.dashboard":"Tracevane 深色运维仪表盘，展示 Agent、模型路由、运行健康与最近事件","image.preview":"产品界面示意图","image.architecture":"Tracevane Gateway 架构图，连接 CLI、HTTP、WebSocket、MCP、系统守卫、工作区与模型 Provider","image.archCaption":"TRACEVANE GATEWAY / 明确的输入与 PROVIDER 边界",
-        "cap.kicker":"01 / 核心能力","cap.title":"围绕 OpenClaw 的能力，一处连接。","cap.intro":"Tracevane 保留每个运行边界的可见性，同时把日常操作集中在一个一致的控制界面中。",
-        "cap.c1t":"仪表盘","cap.c1d":"统一查看健康、路由、渠道、Agent 运行与恢复状态。","cap.c2t":"工作区与 IDE","cap.c2d":"文件、在线编辑、预览、终端、Git 与项目级工作台。","cap.c3t":"模型网关","cap.c3d":"在明确的协议与健康边界中路由模型和 Provider。","cap.c4t":"消息渠道与 CLI Agent","cap.c4d":"将消息入口连接到 Codex、Claude Code 和 OpenCode 工作流。","cap.c5t":"系统守卫","cap.c5d":"检查配置、设备信任、服务健康与恢复证据。","cap.c6t":"Standalone / Gateway","cap.c6d":"使用本机 3760 入口，或挂载到 OpenClaw Gateway。",
-        "install.kicker":"02 / 安装","install.title":"先检查，再安装。","install.intro":"必须先安装并完成 OpenClaw onboarding。Tracevane 安装器会验证 Release 元数据和 SHA-256。","install.standalone":"独立模式","install.gateway":"网关模式","install.copy":"复制","install.copied":"已复制","install.requirements":"Linux、macOS 或 WSL2 · 需要已初始化的 OpenClaw","install.fresh":"还没有 OpenClaw？","install.freshLink":"先看全新机器安装说明 →",
-        "docs.kicker":"03 / 开源项目","docs.title":"文档与社区","docs.intro":"清晰的安装路径、公开的维护边界，以及直接可达的源代码。","docs.installation":"安装说明","docs.architecture":"项目结构","docs.troubleshooting":"故障排查","docs.security":"安全策略","docs.contributing":"参与贡献","docs.releases":"版本发布","docs.agentPrompts":"Agent 安装提示词：","docs.freshStandalone":"全新机器","docs.freshGateway":"全新 Gateway","docs.auditStandalone":"独立模式审计","docs.auditGateway":"网关模式审计",
-        "community.maintTitle":"面向自托管用户与贡献者。","community.maintDesc":"Tracevane 已开源并处于维护模式，欢迎提升稳定性、文档质量和兼容性的贡献。","community.contribute":"阅读 CONTRIBUTING.md","community.joinTitle":"在 GitHub 参与项目。","community.joinDesc":"报告可复现问题、提出聚焦的改动，并关注当前维护进展。","community.github":"访问 GitHub","footer.note":"开源 · MIT · 维护模式","footer.license":"许可证"
+      zh: {
+        "a11y.skip": "跳到正文",
+        "nav.capabilities": "能力", "nav.install": "安装", "nav.docs": "文档",
+        "hero.kicker": "OpenClaw UI 扩展 · 本地优先",
+        "hero.title": "你的 OpenClaw，<br><em>一个控制台。</em>",
+        "hero.sub": "Tracevane 把本地优先的工作台挂载到你的 OpenClaw Gateway：文件、终端、模型路由、消息渠道与运行健康，共用一个端口、一把锁。",
+        "hero.copyPrompt": "复制 Agent 安装提示词", "hero.manual": "手动安装",
+        "trust.open": "开源 · MIT", "trust.local": "本地优先", "trust.privacy": "凭据不出本机", "trust.port": "Gateway 单口运行",
+        "mock.n1": "仪表盘", "mock.n2": "文件", "mock.n3": "终端", "mock.n4": "模型网关", "mock.n5": "渠道", "mock.n6": "系统",
+        "mock.routes": "模型路由", "mock.agents": "AGENT", "mock.live": "实时", "mock.health": "运行健康", "mock.err": "错误率",
+        "cap.kicker": "01 / 核心能力", "cap.title": "围绕 OpenClaw 的一切，一个界面。",
+        "cap.intro": "日常操作集中在同一个控制台，每个运行边界仍然可见、可检查。",
+        "cap.c1t": "工作区与文件", "cap.c1d": "文件管理、在线编辑、预览、终端与 Git 工作流。",
+        "cap.c2t": "模型网关", "cap.c2d": "Provider、模型、路由、账号池、协议适配与用量。",
+        "cap.c3t": "消息渠道", "cap.c3d": "把飞书、Octo 等消息入口接入 Agent 工作流。",
+        "cap.c4t": "CLI Agent", "cap.c4d": "检查并运行 Codex、Claude Code、OpenCode 等本地 Agent。",
+        "cap.c5t": "运行健康", "cap.c5d": "服务、配置、设备信任与恢复证据。",
+        "cap.c6t": "认证与访问", "cap.c6d": "令牌或密码解锁，默认仅监听回环，局域网访问需显式开启。",
+        "install.kicker": "02 / 安装", "install.title": "已有 OpenClaw？粘贴一段提示词。",
+        "install.intro": "把提示词发给你的 OpenClaw Agent：它会下载安装器、校验 SHA-256、完成安装并做健康检查——凭据不会进入对话。",
+        "install.agentTitle": "交给 OpenClaw Agent 安装", "install.recommended": "推荐",
+        "install.copy": "复制提示词", "install.copied": "已复制",
+        "install.agentNote": "涉及模型账号或密钥的步骤，Agent 会暂停并交给你在本机完成；令牌不会出现在对话里。",
+        "install.morePrompts": "全部提示词 →",
+        "install.manualTitle": "或者自己运行安装器", "install.copyCmd": "复制命令",
+        "install.manualNote": "先审阅脚本再执行，禁止 curl | bash。安装器会校验 Release 元数据与 SHA-256。",
+        "install.req": "Linux · macOS · WSL2（Linux 文件系统）",
+        "install.fresh": "还没有 OpenClaw？<a href=\"https://github.com/90le/tracevane/blob/main/docs/installation.md\">全新机器指南 →</a>",
+        "install.offline": "离线 / 私有镜像：<a href=\"https://github.com/90le/tracevane/blob/main/docs/installation.md\">--version --package-url --package-sha256 →</a>",
+        "docs.kicker": "03 / 文档", "docs.title": "文档与源码",
+        "docs.intro": "清晰的安装路径、公开的安全策略，以及直接可达的源代码。",
+        "docs.installation": "安装与卸载", "docs.installationD": "Gateway 与 standalone 模式、预演、离线镜像。",
+        "docs.agent": "Agent 安装提示词", "docs.agentD": "可直接粘贴给 OpenClaw 及其他编程 Agent。",
+        "docs.troubleshooting": "故障排查", "docs.troubleshootingD": "健康检查地址、校验和、node-pty、服务降级。",
+        "docs.security": "安全策略", "docs.securityD": "私下报告渠道与凭据处理规则。",
+        "docs.contributing": "参与贡献", "docs.contributingD": "聚焦的改动、测试与评审约定。",
+        "docs.releases": "版本发布", "docs.releasesD": "带版本号的发布包、安装器与 SHA-256。",
+        "docs.promptIndex": "提示词索引：",
+        "footer.note": "开源 · MIT · 本地优先", "footer.license": "许可证"
       }
     };
-    const installCommands={
-      en:{standalone:`# 1. Verify OpenClaw\nopenclaw --version\nopenclaw doctor\nopenclaw gateway status\n\n# 2. Download and inspect Tracevane\ncurl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh\nsed -n '1,220p' /tmp/install-tracevane.sh\nchmod +x /tmp/install-tracevane.sh\n/tmp/install-tracevane.sh --check-release\n\n# 3. Install\n/tmp/install-tracevane.sh --mode standalone --json`,gateway:`# 1. Verify the OpenClaw Gateway\nopenclaw --version\nopenclaw doctor\nopenclaw gateway status\n\n# 2. Download and inspect Tracevane\ncurl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh\nsed -n '1,220p' /tmp/install-tracevane.sh\nchmod +x /tmp/install-tracevane.sh\n/tmp/install-tracevane.sh --check-release\n\n# 3. Mount at /tracevane\n/tmp/install-tracevane.sh --mode gateway --json`},
-      zh:{standalone:`# 1. 验证 OpenClaw\nopenclaw --version\nopenclaw doctor\nopenclaw gateway status\n\n# 2. 下载并审阅 Tracevane\ncurl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh\nsed -n '1,220p' /tmp/install-tracevane.sh\nchmod +x /tmp/install-tracevane.sh\n/tmp/install-tracevane.sh --check-release\n\n# 3. 安装\n/tmp/install-tracevane.sh --mode standalone --json`,gateway:`# 1. 验证 OpenClaw Gateway\nopenclaw --version\nopenclaw doctor\nopenclaw gateway status\n\n# 2. 下载并审阅 Tracevane\ncurl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh\nsed -n '1,220p' /tmp/install-tracevane.sh\nchmod +x /tmp/install-tracevane.sh\n/tmp/install-tracevane.sh --check-release\n\n# 3. 挂载到 /tracevane\n/tmp/install-tracevane.sh --mode gateway --json`}
+
+    const prompts = {
+      en: {
+        gateway: `OpenClaw is already installed and onboarded on this machine. First verify the environment with: openclaw --version, openclaw doctor, openclaw gateway status. Then download the Tracevane installer from https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh to a local path, review the script, and run it with --check-release to confirm the release version and SHA-256. If everything checks out, run it with --mode gateway --json to mount Tracevane at the gateway path /tracevane. Never use curl | bash, and never bypass TLS, SHA-256, config validation, or health checks. When done, report the JSON fields version, installDir, configPath, accessUrls, healthChecks, warnings, and degradedFeatures, and confirm both the /tracevane route and the 3760 fallback health check pass. Redact every token and credential — do not echo them; I will read the access token myself from ~/.openclaw/openclaw.json.`,
+        standalone: `OpenClaw is already installed and onboarded on this machine. First verify the environment with: openclaw --version, openclaw doctor, openclaw gateway status. Then download the Tracevane installer from https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh to a local path, review the script, and run it with --check-release to confirm the release version and SHA-256. If everything checks out, run it with --mode standalone --json. Never use curl | bash, and never bypass TLS, SHA-256, config validation, or health checks. When done, report the JSON fields version, installDir, configPath, accessUrls, healthChecks, warnings, and degradedFeatures. The standalone entry listens on 127.0.0.1:3760 with token auth; redact every token and credential — I will read the unlock token myself from ~/.openclaw/tracevane/auth.json.`
+      },
+      zh: {
+        gateway: `这台机器已经安装并完成 OpenClaw onboarding。请先运行 openclaw --version、openclaw doctor、openclaw gateway status 验证环境；验证通过后，从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载 Tracevane 安装器到本地并审阅脚本，运行 --check-release 确认 Release 版本与 SHA-256；确认无误后执行 --mode gateway --json，把 Tracevane 挂载到 Gateway 的 /tracevane。禁止使用 curl | bash，禁止绕过 TLS、SHA-256、配置校验或健康检查。完成后返回 JSON 中的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，并确认 /tracevane 路由和 3760 回退健康检查都通过。所有 token 与凭据必须脱敏，不要回显；访问令牌我会自己用 cat ~/.openclaw/openclaw.json 查看。`,
+        standalone: `这台机器已经安装并完成 OpenClaw onboarding。请先运行 openclaw --version、openclaw doctor、openclaw gateway status 验证环境；验证通过后，从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载 Tracevane 安装器到本地并审阅脚本，运行 --check-release 确认 Release 版本与 SHA-256；确认无误后执行 --mode standalone --json。禁止使用 curl | bash，禁止绕过 TLS、SHA-256、配置校验或健康检查。完成后返回 JSON 中的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures。standalone 入口监听 127.0.0.1:3760 并启用令牌认证；所有 token 与凭据必须脱敏，不要回显；解锁令牌我会自己用 cat ~/.openclaw/tracevane/auth.json 查看。`
+      }
     };
-    let language=localStorage.getItem("tracevane-language")||((navigator.language||"").toLowerCase().startsWith("zh")?"zh":"en");
-    let installMode="standalone";
-    const commandElement=document.querySelector("#install-command");
-    const langButton=document.querySelector("#lang-toggle");
-    function renderCommand(){commandElement.textContent=installCommands[language][installMode]}
-    function applyLanguage(next){language=next;localStorage.setItem("tracevane-language",language);document.documentElement.lang=language==="zh"?"zh-CN":"en";document.title=language==="zh"?"Tracevane — OpenClaw AI Agent 控制工作台":"Tracevane — OpenClaw AI Agent Control Workbench";document.querySelector('meta[name="description"]').content=language==="zh"?"在一个本地优先的控制界面中运营 OpenClaw 工作区、模型网关、消息渠道、CLI Agent 与运行健康。":"Operate OpenClaw workspaces, model gateways, channels, CLI agents, and runtime health from one local-first control surface.";document.querySelectorAll("[data-i18n]").forEach(el=>{const value=translations[language][el.dataset.i18n];if(value)el.textContent=value});document.querySelectorAll("[data-i18n-html]").forEach(el=>{const value=translations[language][el.dataset.i18nHtml];if(value)el.innerHTML=value});document.querySelectorAll("[data-i18n-alt]").forEach(el=>{const value=translations[language][el.dataset.i18nAlt];if(value)el.alt=value});langButton.querySelector("span").textContent=language==="zh"?"EN":"中文";langButton.setAttribute("aria-label",language==="zh"?"Switch to English":"切换为中文");renderCommand()}
-    langButton.addEventListener("click",()=>applyLanguage(language==="zh"?"en":"zh"));
-    document.querySelectorAll("[data-mode]").forEach(button=>button.addEventListener("click",()=>{installMode=button.dataset.mode;document.querySelectorAll("[data-mode]").forEach(item=>item.setAttribute("aria-selected",String(item===button)));renderCommand()}));
-    document.querySelector("[data-copy]").addEventListener("click",async event=>{const label=event.currentTarget.querySelector("span");try{await navigator.clipboard.writeText(installCommands[language][installMode]);label.textContent=translations[language]["install.copied"];setTimeout(()=>label.textContent=translations[language]["install.copy"],1600)}catch{commandElement.focus();label.textContent=translations[language]["install.copy"]}});
+
+    const commands = {
+      en: {
+        gateway: `# 1. Verify OpenClaw (>= ${OPENCLAW_MIN_VERSION})
+openclaw --version
+openclaw doctor
+openclaw gateway status
+
+# 2. Download and review the installer
+curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
+sed -n '1,220p' /tmp/install-tracevane.sh
+
+# 3. Verify release metadata and SHA-256
+chmod +x /tmp/install-tracevane.sh
+/tmp/install-tracevane.sh --check-release
+
+# 4. Mount at the gateway path /tracevane
+/tmp/install-tracevane.sh --mode gateway --json`,
+        standalone: `# 1. Verify OpenClaw (>= ${OPENCLAW_MIN_VERSION})
+openclaw --version
+openclaw doctor
+openclaw gateway status
+
+# 2. Download and review the installer
+curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
+sed -n '1,220p' /tmp/install-tracevane.sh
+
+# 3. Verify release metadata and SHA-256
+chmod +x /tmp/install-tracevane.sh
+/tmp/install-tracevane.sh --check-release
+
+# 4. Install the standalone entry (127.0.0.1:3760)
+/tmp/install-tracevane.sh --mode standalone --json`
+      },
+      zh: {
+        gateway: `# 1. 验证 OpenClaw（>= ${OPENCLAW_MIN_VERSION}）
+openclaw --version
+openclaw doctor
+openclaw gateway status
+
+# 2. 下载并审阅安装器（禁止 curl | bash）
+curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
+sed -n '1,220p' /tmp/install-tracevane.sh
+
+# 3. 校验 Release 元数据与 SHA-256
+chmod +x /tmp/install-tracevane.sh
+/tmp/install-tracevane.sh --check-release
+
+# 4. 挂载到 Gateway 单口（/tracevane）
+/tmp/install-tracevane.sh --mode gateway --json`,
+        standalone: `# 1. 验证 OpenClaw（>= ${OPENCLAW_MIN_VERSION}）
+openclaw --version
+openclaw doctor
+openclaw gateway status
+
+# 2. 下载并审阅安装器（禁止 curl | bash）
+curl -fL https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh -o /tmp/install-tracevane.sh
+sed -n '1,220p' /tmp/install-tracevane.sh
+
+# 3. 校验 Release 元数据与 SHA-256
+chmod +x /tmp/install-tracevane.sh
+/tmp/install-tracevane.sh --check-release
+
+# 4. 安装 standalone 入口（127.0.0.1:3760）
+/tmp/install-tracevane.sh --mode standalone --json`
+      }
+    };
+
+    let language = localStorage.getItem("tracevane-language") || ((navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en");
+    let installMode = "gateway";
+    const promptEl = document.querySelector("#prompt-text");
+    const commandEl = document.querySelector("#command-text");
+    const langButton = document.querySelector("#lang-toggle");
+
+    function renderInstall() {
+      promptEl.textContent = prompts[language][installMode];
+      commandEl.textContent = commands[language][installMode];
+    }
+
+    function applyLanguage(next) {
+      language = next;
+      localStorage.setItem("tracevane-language", language);
+      document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+      document.title = language === "zh" ? "Tracevane — OpenClaw AI Agent 控制工作台" : "Tracevane — OpenClaw AI Agent Control Workbench";
+      document.querySelector('meta[name="description"]').content = language === "zh"
+        ? "挂载到 OpenClaw Gateway 的本地优先控制台：工作区、终端、模型路由、消息渠道与运行健康，共用一个端口。"
+        : "A local-first control workbench that mounts on your OpenClaw gateway: workspaces, terminal, model routing, channels, and runtime health on one port.";
+      document.querySelectorAll("[data-i18n]").forEach((el) => {
+        const value = translations[language][el.dataset.i18n];
+        if (value) el.textContent = value;
+      });
+      document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+        const value = translations[language][el.dataset.i18nHtml];
+        if (value) el.innerHTML = value;
+      });
+      langButton.textContent = language === "zh" ? "EN" : "中文";
+      langButton.setAttribute("aria-label", language === "zh" ? "Switch to English" : "切换为中文");
+      renderInstall();
+    }
+
+    function flashCopied(button) {
+      const label = button.querySelector("span");
+      if (!label) return;
+      const original = label.textContent;
+      label.textContent = translations[language]["install.copied"];
+      setTimeout(() => { label.textContent = original; }, 1600);
+    }
+
+    async function copyText(text, button) {
+      try {
+        await navigator.clipboard.writeText(text);
+        flashCopied(button);
+      } catch {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(installMode && text === prompts[language][installMode] ? promptEl : commandEl);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
+
+    document.querySelectorAll("[data-version]").forEach((el) => { el.textContent = `v${TRACEVANE_VERSION}`; });
+    document.querySelectorAll("[data-min-version]").forEach((el) => { el.textContent = `>= ${OPENCLAW_MIN_VERSION}`; });
+    langButton.addEventListener("click", () => applyLanguage(language === "zh" ? "en" : "zh"));
+    document.querySelectorAll("[data-mode]").forEach((button) => button.addEventListener("click", () => {
+      installMode = button.dataset.mode;
+      document.querySelectorAll("[data-mode]").forEach((item) => item.setAttribute("aria-selected", String(item === button)));
+      renderInstall();
+    }));
+    document.querySelectorAll("[data-copy-prompt]").forEach((button) => button.addEventListener("click", () => copyText(prompts[language][installMode], button)));
+    document.querySelectorAll("[data-copy-command]").forEach((button) => button.addEventListener("click", () => copyText(commands[language][installMode], button)));
     applyLanguage(language);
   </script>
 </body>

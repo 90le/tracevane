@@ -32,7 +32,6 @@ jobs:
           mkdir -p _site/assets
           cp index.html _site/
           cp -R assets/brand _site/assets/brand
-          cp -R assets/landing _site/assets/landing
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

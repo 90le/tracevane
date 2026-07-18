@@ -1,18 +1,55 @@
 # Agent 安装提示词
 
-以下 Prompt 可直接复制给 Codex、Claude Code 或 OpenCode。选择与你的环境对应的一段，不需要自己补命令。
+把下面任意一段整段粘贴到你的 OpenClaw 对话里，OpenClaw Agent 会按提示词完成下载、审阅、校验、安装和健康检查。这些提示词同样适用于 Codex、Claude Code、OpenCode 等编程 Agent。
+
+所有提示词遵循同一组安全约定：
+
+- 涉及模型 Provider、账号登录、OAuth 或 API key 的步骤，Agent 必须暂停，由你在本机交互完成。
+- 安装完成后访问令牌由你自己在本机查看（`cat ~/.openclaw/openclaw.json` 或 `cat ~/.openclaw/tracevane/auth.json`），Agent 不得回显任何 token/credential。
+- 禁止 `curl | bash`，禁止绕过 TLS、SHA-256、OpenClaw 配置校验或健康检查。
 
 ## 选择哪一个
 
 | 当前环境 | 使用的 Prompt |
 | --- | --- |
-| OpenClaw 尚未安装，希望 Tracevane 使用独立 `3760` 入口 | `promptFreshMachineStandalone` |
-| OpenClaw 尚未安装，希望 Tracevane 挂载到 Gateway | `promptFreshMachineGateway` |
-| OpenClaw 已安装，只安装 Tracevane standalone | `promptStandaloneShort` |
-| OpenClaw 已安装，只安装 Tracevane gateway | `promptGatewayShort` |
-| 需要先预演并记录变更 | 对应的 Audit Prompt |
+| 已有 OpenClaw，挂载到 Gateway 单口（推荐） | `promptGatewayShort` |
+| 已有 OpenClaw，使用独立 `3760` 入口 | `promptStandaloneShort` |
+| 已有 OpenClaw，先预演审计再安装（gateway） | `promptGatewayAudit` |
+| 已有 OpenClaw，先预演审计再安装（standalone） | `promptStandaloneAudit` |
+| OpenClaw 尚未安装，从零安装并挂载 Gateway | `promptFreshMachineGateway` |
+| OpenClaw 尚未安装，从零安装 standalone | `promptFreshMachineStandalone` |
 
-> Onboarding 涉及模型账号或 API key 时，Agent 必须暂停，让用户在本机交互完成。不要把密钥粘贴给 Agent，也不要允许 Agent 在日志中回显凭据。
+## promptGatewayShort
+
+```text
+这台机器已经安装并完成 OpenClaw onboarding。请先运行 openclaw --version、openclaw doctor、openclaw gateway status 验证环境；验证通过后，从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载 Tracevane 安装器到本地并审阅脚本，运行 --check-release 确认 Release 版本与 SHA-256；确认无误后执行 --mode gateway --json，把 Tracevane 挂载到 Gateway 的 /tracevane。禁止使用 curl | bash，禁止绕过 TLS、SHA-256、配置校验或健康检查。完成后返回 JSON 中的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，并确认 /tracevane 路由和 3760 回退健康检查都通过。所有 token 与凭据必须脱敏，不要回显；访问令牌我会自己用 cat ~/.openclaw/openclaw.json 查看。
+```
+
+## promptStandaloneShort
+
+```text
+这台机器已经安装并完成 OpenClaw onboarding。请先运行 openclaw --version、openclaw doctor、openclaw gateway status 验证环境；验证通过后，从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载 Tracevane 安装器到本地并审阅脚本，运行 --check-release 确认 Release 版本与 SHA-256；确认无误后执行 --mode standalone --json。禁止使用 curl | bash，禁止绕过 TLS、SHA-256、配置校验或健康检查。完成后返回 JSON 中的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures。standalone 入口监听 127.0.0.1:3760 并启用令牌认证；所有 token 与凭据必须脱敏，不要回显；解锁令牌我会自己用 cat ~/.openclaw/tracevane/auth.json 查看。
+```
+
+## promptGatewayAudit
+
+```text
+审计 gateway 安装：先只读检查平台、WSL/文件系统、Node.js、npm、OpenClaw 版本，并验证 openclaw doctor 与 openclaw gateway status。如果 OpenClaw 缺失或 Gateway 未初始化，停止并改用 promptFreshMachineGateway。随后从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载安装器到本地并审阅，执行 --check-release 和 --mode gateway --dry-run --json，再正式安装；披露 changed paths、失败 rollback 证据，并验证 /tracevane 与 3760 fallback health。完整返回原始 JSON 字段 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures；所有凭据脱敏，不要回显。禁止 curl | bash，禁止绕过任何安全校验。
+```
+
+## promptStandaloneAudit
+
+```text
+审计 standalone 安装：先只读检查平台、WSL/文件系统、Node.js、npm、OpenClaw 版本和 Gateway 状态。如果 OpenClaw 缺失，停止并改用 promptFreshMachineStandalone，不要跳过前置安装。OpenClaw 可用时，从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载安装器到本地并审阅，先执行 --check-release 和 --mode standalone --dry-run --json，再正式安装；披露 changed paths 和失败 rollback 证据，完整返回原始 JSON 字段 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，并对 token/credential 脱敏。禁止 curl | bash 或绕过 checksum、TLS、配置、health 校验。
+```
+
+## promptFreshMachineGateway
+
+```text
+请在这台机器上从零安装 OpenClaw 和 Tracevane，并将 Tracevane 挂载到 OpenClaw Gateway。先只读报告操作系统、是否为 WSL2、node/npm/openclaw 版本。若 OpenClaw 缺失，按 https://docs.openclaw.ai/install 的官方 npm 路径安装：确认受支持的 Node.js 后执行 npm install -g openclaw@latest，再执行 openclaw onboard --install-daemon。涉及 Provider 登录、OAuth 或 API key 时暂停，让我在本机交互完成，禁止读取、记录或回显凭据。随后必须通过 openclaw --version、openclaw doctor、openclaw gateway status。
+
+OpenClaw 验证通过后，从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载脚本到本地，展示来源和 SHA-256，审阅脚本，运行 --check-release，然后执行 --mode gateway --json。禁止 curl | bash，禁止绕过 TLS、checksum、配置校验或健康检查。最后返回 OpenClaw 版本、Gateway 状态，以及 Tracevane JSON 的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，并单独确认 /tracevane 路由和 3760 fallback health；所有凭据必须脱敏。
+```
 
 ## promptFreshMachineStandalone
 
@@ -31,34 +68,7 @@
 10. 最后原样返回 OpenClaw 版本，以及 Tracevane JSON 的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures。所有路径中的用户名可以保留，所有 token/credential 必须脱敏。
 ```
 
-## promptFreshMachineGateway
+## 安装完成后访问
 
-```text
-请在这台机器上从零安装 OpenClaw 和 Tracevane，并将 Tracevane 挂载到 OpenClaw Gateway。先只读报告操作系统、是否为 WSL2、node/npm/openclaw 版本。若 OpenClaw 缺失，按 https://docs.openclaw.ai/install 的官方 npm 路径安装：确认受支持的 Node.js 后执行 npm install -g openclaw@latest，再执行 openclaw onboard --install-daemon。涉及 Provider 登录、OAuth 或 API key 时暂停，让我在本机交互完成，禁止读取、记录或回显凭据。随后必须通过 openclaw --version、openclaw doctor、openclaw gateway status。
-
-OpenClaw 验证通过后，从 https://github.com/90le/tracevane/releases/latest/download/install-tracevane.sh 下载脚本到本地，展示来源和 SHA-256，审阅脚本，运行 --check-release，然后执行 --mode gateway --json。禁止 curl | bash，禁止绕过 TLS、checksum、配置校验或健康检查。最后返回 OpenClaw 版本、Gateway 状态，以及 Tracevane JSON 的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，并单独确认 /tracevane 路由和 3760 fallback health；所有凭据必须脱敏。
-```
-
-## promptStandaloneShort
-
-```text
-OpenClaw 已经安装并完成 onboarding。请先运行 openclaw --version、openclaw doctor、openclaw gateway status；验证通过后，从 Tracevane 官方 GitHub Release 下载 Bash 安装器到本地并审阅，运行 --check-release，确认来源、版本和 SHA-256 后执行 --mode standalone --json。不要使用 curl | bash，不要绕过 checksum、TLS、OpenClaw 配置校验或健康检查。原样返回 JSON 的 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，所有凭据脱敏。
-```
-
-## promptGatewayShort
-
-```text
-OpenClaw 已经安装并完成 onboarding。请先验证 openclaw --version、openclaw doctor、openclaw gateway status；通过后从 Tracevane 官方 GitHub Release 下载并审阅安装器，运行 --check-release，再执行 --mode gateway --json。禁止 curl | bash，禁止绕过 checksum、TLS、配置校验或健康检查。必须返回原始 JSON 字段 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures，并单独确认 /tracevane 路由和 3760 fallback health；所有凭据脱敏。
-```
-
-## promptStandaloneAudit
-
-```text
-审计 standalone 安装：先只读检查平台、WSL/文件系统、Node.js、npm、OpenClaw 版本和 Gateway 状态。如果 OpenClaw 缺失，停止并使用 promptFreshMachineStandalone，不要跳过前置安装。OpenClaw 可用时，审阅本地 Tracevane 安装脚本，先执行 --check-release 和 --mode standalone --dry-run --json，再正式安装；披露 changed paths 和失败 rollback 证据，完整返回原始 JSON 字段并对 token/credential 做脱敏。禁止 curl | bash 或绕过 checksum、TLS、配置、health 校验。
-```
-
-## promptGatewayAudit
-
-```text
-审计 gateway 安装：先只读检查平台、WSL/文件系统、Node.js、npm、OpenClaw 版本，并验证 openclaw doctor 与 openclaw gateway status。如果 OpenClaw 缺失或 Gateway 未初始化，停止并使用 promptFreshMachineGateway。随后审阅安装器，执行 --check-release 和 --mode gateway --dry-run --json，再正式安装；披露 changed paths、失败 rollback 证据，并验证 /tracevane 与 3760 fallback health。完整返回原始 JSON 字段 version、installDir、configPath、accessUrls、healthChecks、warnings、degradedFeatures；所有凭据脱敏。禁止绕过任何安全校验或使用 curl | bash。
-```
+- **Gateway 单口模式**：浏览器打开 `http://<host>:<gateway_port>/tracevane/?token=<token>`。端口和 token 由安装器写入 `~/.openclaw/openclaw.json`，请在本机自行查看。
+- **Standalone 模式**：浏览器打开 `http://127.0.0.1:3760/`，在解锁页输入访问令牌；令牌在 `~/.openclaw/tracevane/auth.json`（0600 权限）。解锁后可在界面中改设密码。
