@@ -25,6 +25,10 @@ import {
   createSupervisorPlan,
 } from "./platform-plans.js";
 import {
+  resolveDaemonPortConflict,
+  type PortConflictOutcome,
+} from "./port-conflict.js";
+import {
   getProcessSessionSupervisor,
   type SessionSupervisor,
 } from "./session-supervisor.js";
@@ -63,6 +67,10 @@ export interface CreateServiceManagerDependencies {
   commandTimeoutMs?: number;
   runtimeProofTimeoutMs?: number;
   redact?: string[];
+  portConflictResolver?: (
+    definition: ServiceDefinition,
+    options: { platform: NodeJS.Platform; excludePids?: number[] },
+  ) => Promise<PortConflictOutcome>;
 }
 
 export interface ServiceManager {
@@ -457,6 +465,95 @@ export function createServiceManager(
     }
   });
 
+  const portConflictResolver = dependencies.portConflictResolver ??
+    ((definition: ServiceDefinition, options: { platform: NodeJS.Platform; excludePids?: number[] }) =>
+      resolveDaemonPortConflict(definition, {
+        ...options,
+        processIsAlive,
+        redact: secrets,
+      }));
+
+  function portConflictEvidence(outcome: PortConflictOutcome): SupervisorCommandResult {
+    return {
+      label: "Resolve daemon port conflict",
+      command: "port-conflict",
+      args: outcome.holderPid !== null ? [String(outcome.holderPid)] : [],
+      ok: outcome.resolved,
+      exitCode: outcome.resolved ? 0 : null,
+      stdout: outcome.detail ?? "",
+      stderr: "",
+      errorCode: outcome.resolved ? null : "address-in-use",
+      errorMessage: outcome.resolved ? null : outcome.detail,
+      durationMs: 0,
+    };
+  }
+
+  function portConflictFailureResponse(
+    inspection: PersistentInspection,
+    action: TracevaneServiceAction,
+    plan: SupervisorPlan,
+    outcome: PortConflictOutcome,
+    prefixCommands: SupervisorCommandResult[] = [],
+  ): ManageServiceResponse {
+    const holderText = outcome.holderPid !== null
+      ? ` Holder: pid ${outcome.holderPid}${outcome.holderDescription ? ` (${outcome.holderDescription})` : ""}.`
+      : "";
+    return {
+      ok: false,
+      action,
+      manager: persistentManagerStatus(plan, {
+        installed: inspection.manager.installed,
+        enabled: inspection.manager.enabled,
+        active: null,
+        state: "failed",
+        configCurrent: inspection.manager.configCurrent,
+        errorCode: "address-in-use",
+        errorMessage:
+          `Service address is already in use by another process.${holderText} ${outcome.detail ?? ""}`.trim(),
+      }),
+      commands: [...inspection.commands, ...prefixCommands, portConflictEvidence(outcome)],
+      templateWritten: false,
+      configCurrent: inspection.manager.configCurrent,
+    };
+  }
+
+  /**
+   * Best-effort removal of the enablement registration (systemd wants
+   * symlink / launchd bootstrap) so a rolled-back fresh install never
+   * leaves a dangling link that systemd reports as "bad-setting".
+   */
+  async function cleanupPersistentEnablement(
+    plan: SupervisorPlan,
+    action: TracevaneServiceAction,
+    options: { includeReload?: boolean } = {},
+  ): Promise<SupervisorCommandResult[]> {
+    const evidence: SupervisorCommandResult[] = [];
+    if (plan.supervisor === "systemd-user" || plan.supervisor === "launchd-user") {
+      const includeReload = options.includeReload ?? true;
+      const commands = (plan.commands.uninstall ?? []).filter((command) =>
+        includeReload ||
+        !(command.command === "systemctl" && command.args.includes("daemon-reload"))
+      );
+      const disable = await runSequence(commands, action);
+      evidence.push(...disable.commands);
+    }
+    if (plan.supervisor === "systemd-user") {
+      try {
+        const wantsPath = path.posix.join(
+          path.posix.dirname(plan.configPath),
+          "default.target.wants",
+          path.posix.basename(plan.configPath),
+        );
+        await fileSystem.unlink(wantsPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          // best effort — the disable command above is the authoritative cleanup
+        }
+      }
+    }
+    return evidence;
+  }
+
   async function verifyRecordedRuntimeStopped(
     definition: ServiceDefinition,
     runtimePid: number,
@@ -591,6 +688,20 @@ export function createServiceManager(
     requireCurrentConfig = true,
     timeoutMs = runtimeProofTimeoutMs,
   ): Promise<PersistentStartProof> {
+    if (plan.supervisor === "systemd-user") {
+      // A health probe alone cannot prove the systemd unit owns the port —
+      // a stale or foreign process may be the one answering. Require the
+      // native unit to report active as well.
+      const healthy = await probeHealth(definition.healthUrl);
+      if (!healthy) {
+        return { ready: false, commands: [] };
+      }
+      const native = await inspectPersistent(plan);
+      const nativeActive = native.manager.installed &&
+        native.manager.active === true &&
+        !hasUntrustedStatus(native.manager);
+      return { ready: nativeActive, commands: native.commands };
+    }
     if (plan.supervisor !== "scheduled-task") {
       return {
         ready: await probeHealth(definition.healthUrl),
@@ -1314,6 +1425,42 @@ export function createServiceManager(
               }
             }
           }
+          if (plan.supervisor !== "scheduled-task") {
+            const currentSession = await session.status(definition.id);
+            const liveChildPid = currentSession.active === true &&
+                typeof currentSession.pid === "number"
+              ? currentSession.pid
+              : null;
+            const portConflict = await portConflictResolver(definition, {
+              platform,
+              excludePids: liveChildPid !== null ? [liveChildPid] : [],
+            });
+            if (portConflict.conflict) {
+              transitionCommands = [
+                ...transitionCommands,
+                portConflictEvidence(portConflict),
+              ];
+              if (!portConflict.resolved) {
+                return {
+                  ok: false,
+                  action: request.action,
+                  manager: persistentManagerStatus(plan, {
+                    installed: inspection.manager.installed,
+                    enabled: inspection.manager.enabled,
+                    active: null,
+                    state: "failed",
+                    configCurrent: inspection.manager.configCurrent,
+                    errorCode: "address-in-use",
+                    errorMessage: portConflict.detail ??
+                      "Service address is already in use by another process.",
+                  }),
+                  commands: transitionCommands,
+                  templateWritten: false,
+                  configCurrent: inspection.manager.configCurrent,
+                };
+              }
+            }
+          }
           const started = await session.start(definition);
           manager = started;
           sessionStarted = true;
@@ -1493,6 +1640,37 @@ export function createServiceManager(
                   request.action,
                   "The recorded runtime changed before the session restart completed.",
                 );
+              }
+            }
+            if (plan.supervisor !== "scheduled-task") {
+              const portConflict = await portConflictResolver(definition, {
+                platform,
+                excludePids: [],
+              });
+              if (portConflict.conflict) {
+                transitionCommands = [
+                  ...transitionCommands,
+                  portConflictEvidence(portConflict),
+                ];
+                if (!portConflict.resolved) {
+                  return {
+                    ok: false,
+                    action: request.action,
+                    manager: persistentManagerStatus(plan, {
+                      installed: inspection.manager.installed,
+                      enabled: inspection.manager.enabled,
+                      active: null,
+                      state: "failed",
+                      configCurrent: inspection.manager.configCurrent,
+                      errorCode: "address-in-use",
+                      errorMessage: portConflict.detail ??
+                        "Service address is already in use by another process.",
+                    }),
+                    commands: transitionCommands,
+                    templateWritten: false,
+                    configCurrent: inspection.manager.configCurrent,
+                  };
+                }
               }
             }
             const started = await session.start(definition);
@@ -1813,6 +1991,14 @@ export function createServiceManager(
             };
           }
         }
+        // The unit file is already gone; still remove any dangling
+        // enablement (e.g. a stale default.target.wants symlink reported
+        // by systemd as "bad-setting") so uninstall leaves a clean state.
+        const enablementCleanup = await cleanupPersistentEnablement(
+          plan,
+          request.action,
+          { includeReload: false },
+        );
         const postUnlinkSequence = await runSequence(
           systemdPostUnlinkCommands(plan),
           request.action,
@@ -1835,6 +2021,7 @@ export function createServiceManager(
             }),
             commands: [
               ...inspection.commands,
+              ...enablementCleanup,
               ...postUnlinkSequence.commands,
             ],
             templateWritten: false,
@@ -1847,6 +2034,7 @@ export function createServiceManager(
           manager: sessionReadyStatus(),
           commands: [
             ...inspection.commands,
+            ...enablementCleanup,
             ...postUnlinkSequence.commands,
           ],
           templateWritten: false,
@@ -2187,6 +2375,34 @@ export function createServiceManager(
         let lifecyclePrefixCommands: SupervisorCommandResult[] = [];
         let persistentStoppedForLifecycle = false;
         if (
+          plan.supervisor !== "scheduled-task" &&
+          inspection.manager.active !== true
+        ) {
+          // The persistent unit is not active; the port should be free.
+          // Terminate a stale Tracevane holder (e.g. an orphaned gateway
+          // child) so the fresh unit can bind, or fail fast with the
+          // foreign holder identified.
+          const portConflict = await portConflictResolver(definition, {
+            platform,
+            excludePids: [],
+          });
+          if (portConflict.conflict) {
+            if (!portConflict.resolved) {
+              return portConflictFailureResponse(
+                inspection,
+                request.action,
+                plan,
+                portConflict,
+                lifecyclePrefixCommands,
+              );
+            }
+            lifecyclePrefixCommands = [
+              ...lifecyclePrefixCommands,
+              portConflictEvidence(portConflict),
+            ];
+          }
+        }
+        if (
           plan.supervisor === "scheduled-task" &&
           persistentMayOwnRuntime
         ) {
@@ -2488,8 +2704,18 @@ export function createServiceManager(
             lifecycleCommands(plan, lifecycleAction),
             effectiveAction,
           );
+          sequence = {
+            ...sequence,
+            commands: [...lifecyclePrefixCommands, ...sequence.commands],
+          };
           if (!sequence.ok) {
             let rollbackOk = true;
+            // A failed fresh install must not leave the enablement behind:
+            // once the unit file is rolled back, systemd reports the
+            // dangling wants symlink as "bad-setting".
+            const enablementCleanup = previousLifecycleTemplate === null
+              ? await cleanupPersistentEnablement(plan, effectiveAction)
+              : [];
             try {
               if (previousLifecycleTemplate === null) {
                 try {
@@ -2521,7 +2747,11 @@ export function createServiceManager(
               ok: false,
               action: request.action,
               manager,
-              commands: [...inspection.commands, ...sequence.commands],
+              commands: [
+                ...inspection.commands,
+                ...sequence.commands,
+                ...enablementCleanup,
+              ],
               templateWritten: false,
               configCurrent: rollbackOk
                 ? inspection.manager.configCurrent
@@ -2719,6 +2949,30 @@ export function createServiceManager(
               request.action,
               "The previous session runtime did not stop; persistent takeover was not attempted.",
             );
+          }
+        }
+        if (
+          (effectiveAction === "start" || effectiveAction === "restart") &&
+          plan.supervisor !== "scheduled-task" &&
+          inspection.manager.active !== true
+        ) {
+          const portConflict = await portConflictResolver(definition, {
+            platform,
+            excludePids: [],
+          });
+          if (portConflict.conflict) {
+            if (!portConflict.resolved) {
+              return portConflictFailureResponse(
+                inspection,
+                request.action,
+                plan,
+                portConflict,
+              );
+            }
+            inspection.commands = [
+              ...inspection.commands,
+              portConflictEvidence(portConflict),
+            ];
           }
         }
         let sequence: CommandSequenceResult;

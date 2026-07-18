@@ -299,6 +299,22 @@ npm rebuild @homebridge/node-pty-prebuilt-multiarch
 
 如果 `node-pty` 无法加载，终端能力可能不可用；需补齐系统编译环境或切换到支持的 Node ABI。
 
+### 守护服务无法启动 / is-enabled 报 bad-setting
+
+三个守护（`tracevane-model-gateway.service`、`tracevane-channel-connectors.service`、`tracevane-recovery.service`）启动失败时，先在 Tracevane 界面上对对应守护执行一次「修复/重新安装」：
+
+- 如果 `~/.config/systemd/user/default.target.wants/` 里残留失效符号链接（unit 文件已被回滚删除，systemd 报 `bad-setting`），安装与卸载流程现在都会自动清理这些坏链。
+- 启动前会自动检测守护端口（默认 `18796`/`18797`/`18798`）占用：占用者若是残留的 Tracevane 守护进程（例如 Gateway 直接拉起的孤儿子进程），会被自动终止后再启动；若是无关进程，不会强行结束它，错误信息会给出 pid 和命令行，需要手动停止该进程或改守护端口。
+
+手动排查命令：
+
+```bash
+systemctl --user is-enabled tracevane-channel-connectors.service
+systemctl --user is-active tracevane-channel-connectors.service
+ls -l ~/.config/systemd/user/default.target.wants/
+ss -ltnp | grep -E '18796|18797|18798'
+```
+
 ### helper pairing / token cache 异常
 
 如果单口环境出现 `pairing required`、`gateway closed (1006/1008)`，优先在 Tracevane System 页执行 helper token cache 修复。常见原因是 helper `paired.json` 已升级到新 operator token，但 `identity/device-auth.json` 仍缓存旧 token。

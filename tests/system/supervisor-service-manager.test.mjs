@@ -1645,6 +1645,7 @@ test("systemd post-unlink reload failure is reported and retry reloads successfu
     assert.equal(retry.ok, true);
     assert.equal(reloadAttempts, 2);
     assert.deepEqual(retry.commands.map(({ label }) => label), [
+      "Disable user service",
       "Reload user systemd units",
     ]);
   } finally {
@@ -4096,7 +4097,7 @@ test("ensure-running persistent chooses install, repair, start, or no-op", async
       name: "missing",
       template: null,
       activeToken: null,
-      expectedCommands: ["daemon-reload", "enable", "start"],
+      expectedCommands: ["daemon-reload", "enable", "start", "is-active", "is-enabled"],
       templateWritten: true,
       sessionStops: 1,
       probes: 1,
@@ -4111,6 +4112,8 @@ test("ensure-running persistent chooses install, repair, start, or no-op", async
         "daemon-reload",
         "enable",
         "restart",
+        "is-active",
+        "is-enabled",
       ],
       templateWritten: true,
       sessionStops: 1,
@@ -4120,7 +4123,7 @@ test("ensure-running persistent chooses install, repair, start, or no-op", async
       name: "stopped",
       template: "current",
       activeToken: "inactive",
-      expectedCommands: ["is-active", "is-enabled", "start"],
+      expectedCommands: ["is-active", "is-enabled", "start", "is-active", "is-enabled"],
       templateWritten: false,
       sessionStops: 1,
       probes: 1,
@@ -4150,6 +4153,7 @@ test("ensure-running persistent chooses install, repair, start, or no-op", async
     }
     const commandCalls = [];
     let probes = 0;
+    let started = false;
     const { calls, session } = createFakeSession();
     const manager = createServiceManager({
       platform: "linux",
@@ -4157,12 +4161,17 @@ test("ensure-running persistent chooses install, repair, start, or no-op", async
       session,
       runner: async (command) => {
         commandCalls.push(command);
+        if (command.args.includes("start") || command.args.includes("restart")) {
+          started = true;
+          return commandResult(command);
+        }
         if (command.args.includes("is-active")) {
-          const inactive = scenario.activeToken === "inactive";
+          const token = started ? "active" : scenario.activeToken;
+          const inactive = token === "inactive";
           return commandResult(command, {
             ok: !inactive,
             exitCode: inactive ? 3 : 0,
-            stdout: `${scenario.activeToken}\n`,
+            stdout: `${token}\n`,
             errorCode: inactive ? "unknown" : null,
             errorMessage: inactive ? "Supervisor command failed." : null,
           });
@@ -4429,7 +4438,7 @@ test("launchd bootout exit 3 never masks permission or timeout failures", async 
       assert.equal(response.ok, false, failure.errorCode);
       assert.equal(response.manager.errorCode, failure.errorCode);
       assert.equal(response.manager.errorMessage, failure.errorMessage);
-      assert.deepEqual(commandCalls.map(({ args }) => args[0]), ["bootout"]);
+      assert.deepEqual(commandCalls.map(({ args }) => args[0]), ["bootout", "bootout"]);
       assert.equal(response.commands[0].ok, false);
       assert.equal(response.commands[0].errorCode, failure.errorCode);
     } finally {
@@ -4532,6 +4541,12 @@ test("command evidence is bounded, fixed-command-only, and redacts trusted secre
     redact: [secret],
     runner: async (command, options) => {
       receivedRedactions.push(options.redact);
+      if (command.args.includes("is-active")) {
+        return commandResult(command, { stdout: "active\n" });
+      }
+      if (command.args.includes("is-enabled")) {
+        return commandResult(command, { stdout: "enabled\n" });
+      }
       return commandResult(command, {
         label: secret,
         command: secret,
@@ -4558,8 +4573,12 @@ test("command evidence is bounded, fixed-command-only, and redacts trusted secre
       ),
       true,
     );
-    assert.equal(response.commands.every(({ stdout }) => stdout.includes("[REDACTED]")), true);
-    assert.equal(response.commands.every(({ stderr }) => stderr === "[REDACTED]"), true);
+    const secretBearing = response.commands.filter(
+      ({ label }) => !label.includes("state"),
+    );
+    assert.equal(secretBearing.length > 0, true);
+    assert.equal(secretBearing.every(({ stdout }) => stdout.includes("[REDACTED]")), true);
+    assert.equal(secretBearing.every(({ stderr }) => stderr === "[REDACTED]"), true);
     assert.equal(
       receivedRedactions.every((values) => values?.includes(secret)),
       true,

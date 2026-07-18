@@ -9,6 +9,15 @@ export {
   createSupervisorPlan,
 } from "./platform-plans.js";
 export {
+  isOwnedDaemonProcess,
+  parseHealthUrlTarget,
+  parseProcNetTcpListeners,
+  resolveDaemonPortConflict,
+  type PortConflictOutcome,
+  type PortHolder,
+  type ResolveDaemonPortConflictOptions,
+} from "./port-conflict.js";
+export {
   createServiceManager,
   type CreateServiceManagerDependencies,
   type ManageServiceRequest,
