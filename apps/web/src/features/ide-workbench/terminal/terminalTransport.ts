@@ -5,10 +5,9 @@ import {
   type CreateWorkbenchTerminalOptions,
   type WorkbenchTerminalEvent,
 } from "./terminalClient";
-import { createGatewayTerminalTransport } from "./terminalGatewayTransport";
 import { createSseTerminalTransport } from "./terminalSseTransport";
 import {
-  createTerminalTransportFallbackChain,
+  resolveTerminalTransportChannel,
   type TerminalFallbackNotice,
   type TerminalTransportFailure,
 } from "./terminalTransportChain";
@@ -33,8 +32,9 @@ export interface WorkbenchTerminalTransportHandlers {
 
 /**
  * Mode-agnostic terminal realtime channel. Standalone mode uses the raw
- * `/ws/terminal` WebSocket; OpenClaw gateway single-port mode tunnels the
- * session through host gateway RPC (`terminalGatewayTransport.ts`).
+ * `/ws/terminal` WebSocket; OpenClaw gateway single-port mode uses the
+ * same-origin HTTP/SSE channel so PTY output is not delayed by host event
+ * scheduling.
  */
 export interface WorkbenchTerminalTransport {
   sendInput: (data: string) => void;
@@ -120,12 +120,10 @@ function createFailedTerminalTransport(
 
 /**
  * Picks the realtime transport from the injected runtime config:
- * `realtimeTransport: "gateway-rpc"` (gateway exposure) tunnels through the
- * OpenClaw host gateway, with an automatic fallback to the HTTP/SSE compat
- * channel (`terminalSseTransport.ts`) when the host rejects the RPC attach
- * (auth/pairing/protocol) — see `terminalTransportChain.ts`; `"raw-ws"` keeps
- * the direct WebSocket; `"disabled"` or `features.terminalRealtime === false`
- * yields a structured error state.
+ * `realtimeTransport: "gateway-rpc"` (gateway exposure) uses the HTTP/SSE
+ * channel because OpenClaw host gateway events are not flushed at interactive
+ * terminal latency. `"raw-ws"` keeps the direct WebSocket; `"disabled"` or
+ * `features.terminalRealtime === false` yields a structured error state.
  */
 export function connectWorkbenchTerminal(
   sid: string,
@@ -139,22 +137,18 @@ export function connectWorkbenchTerminal(
       handlers,
     );
   }
-  const transportKind =
-    runtime?.realtimeTransport ?? (isGatewayExposure() ? "gateway-rpc" : "raw-ws");
+  const transportKind = resolveTerminalTransportChannel(
+    runtime?.realtimeTransport,
+    isGatewayExposure(),
+  );
   if (transportKind === "disabled") {
     return createFailedTerminalTransport(
       "服务端已禁用终端实时通道（realtimeTransport=disabled）。",
       handlers,
     );
   }
-  if (transportKind === "gateway-rpc") {
-    return createTerminalTransportFallbackChain<WorkbenchTerminalEvent>({
-      createPrimary: (chainHandlers) =>
-        createGatewayTerminalTransport(sid, options, chainHandlers),
-      createFallback: (chainHandlers) =>
-        createSseTerminalTransport(sid, options, chainHandlers),
-      handlers,
-    });
+  if (transportKind === "sse") {
+    return createSseTerminalTransport(sid, options, handlers);
   }
   return createRawWebSocketTerminalTransport(sid, options, handlers);
 }
