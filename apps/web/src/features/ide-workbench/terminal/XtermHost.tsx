@@ -36,7 +36,6 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
   const onCopyShortcutRef = React.useRef(onCopyShortcut);
   const onPasteShortcutRef = React.useRef(onPasteShortcut);
   const onFocusChangeRef = React.useRef(onFocusChange);
-  const suppressProgrammaticInputUntilRef = React.useRef(0);
   const acceptInputRef = React.useRef(acceptInput);
   const inputArmedRef = React.useRef(false);
 
@@ -56,13 +55,7 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
       if (!terminal) return;
       // Writing replayed/backlog output into xterm can make xterm answer
       // terminal capability/status queries through onData. Those bytes are
-      // not user input and must never be sent back to the PTY. Use a very
-      // short time window instead of a write-callback counter: callback-based
-      // suppression could linger and swallow real typing, while pure regex
-      // filtering could leave fragments when escape responses were split.
-      if (mayTriggerXtermGeneratedReport(data)) {
-        suppressProgrammaticInputUntilRef.current = performance.now() + 40;
-      }
+      // filtered in onData without blocking real keyboard input.
       terminal.write(data);
     },
     clear() {
@@ -104,7 +97,6 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
     terminal.open(container);
     const dataDisposable = terminal.onData((data) => {
       if (!inputArmedRef.current || !acceptInputRef.current) return;
-      if (performance.now() < suppressProgrammaticInputUntilRef.current) return;
       const userInput = stripXtermGeneratedReports(data);
       if (userInput) onInputRef.current(userInput);
     });
@@ -187,7 +179,6 @@ export const XtermHost = React.forwardRef<XtermHostHandle, {
 
     return () => {
       resizeObserver.disconnect();
-      suppressProgrammaticInputUntilRef.current = 0;
       inputArmedRef.current = false;
       dataDisposable.dispose();
       selectionDisposable.dispose();
@@ -244,8 +235,4 @@ function stripXtermGeneratedReports(data: string): string {
   return data
     .replace(/(?:\x1b\[[?>]?[0-9;]*[cnR])+/g, "")
     .replace(/(?:\x9b[?>]?[0-9;]*[cnR])+/g, "");
-}
-
-function mayTriggerXtermGeneratedReport(data: string): boolean {
-  return /(?:\x1b\[[?>]?[0-9;]*[cn]|\x9b[?>]?[0-9;]*[cn])/.test(data);
 }

@@ -27,7 +27,7 @@ const tracevaneBasePath = process.env.TRACEVANE_BASE_PATH || "";
 const tracevaneSmokeDisableWatch = process.env.TRACEVANE_SMOKE_DISABLE_WATCH === "1";
 const webConfigDir = path.dirname(fileURLToPath(import.meta.url));
 const tracevaneRootDir = path.resolve(webConfigDir, "..", "..");
-const TRACEVANE_PACKAGE_VERSION_FALLBACK = "0.2.2";
+const TRACEVANE_PACKAGE_VERSION_FALLBACK = "0.2.3";
 const tracevanePackageVersionOverride =
   process.env.TRACEVANE_BUILD_VERSION?.trim() || "";
 const tracevanePackageVersion = (() => {
