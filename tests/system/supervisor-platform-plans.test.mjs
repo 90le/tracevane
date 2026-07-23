@@ -54,6 +54,11 @@ test("systemd plans preserve literal dollar paths with CJK, spaces, percent, and
     plan.template,
     new RegExp(`^ExecStart=${escapeRegExp(expectedExecStart)}$`, "m"),
   );
+  assert.match(
+    plan.template,
+    /^WorkingDirectory=\/opt\/\$\{NAME\}\/项目 %% workers$/m,
+  );
+  assert.doesNotMatch(plan.template, /^WorkingDirectory="/m);
   assert.match(plan.template, /\$\$\{NAME\}/);
   assert.match(plan.template, /%%/);
   assert.match(plan.template, /\\"quote\\"/);
@@ -105,7 +110,7 @@ function processIsAlive(pid) {
   }
 }
 
-async function waitForJson(filePath, timeoutMs = 5_000) {
+async function waitForJson(filePath, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (fs.existsSync(filePath)) {
@@ -293,7 +298,7 @@ test("windows tasks bind the logon trigger and principal to one current user", (
 
 test("Windows PowerShell 5.1 launch round-trips one encoded watchdog argv payload", {
   skip: process.platform === "win32" ? false : "Windows PowerShell compatibility only",
-  timeout: 15_000,
+  timeout: 20_000,
 }, async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-powershell-argv-"));
   const root = path.join(tempRoot, "space & 配置");

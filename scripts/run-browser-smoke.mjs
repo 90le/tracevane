@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -225,9 +224,12 @@ export async function runBrowserSmoke(
   const browserExecutable = resolveBrowserExecutable(env, {
     defaultExecutablePath,
   });
-  const smokeTempDir = mkdtempSync(path.join(tmpdir(), "tracevane-browser-smoke-"));
+  const smokeTempRoot = path.join(rootDir, "tmp");
+  mkdirSync(smokeTempRoot, { recursive: true });
+  const smokeTempDir = mkdtempSync(path.join(smokeTempRoot, "tracevane-browser-smoke-"));
   const childEnv = {
     ...env,
+    OPENCLAW_STATE_DIR: env.OPENCLAW_STATE_DIR || smokeTempDir,
     PLAYWRIGHT_CHROME_EXECUTABLE: browserExecutable,
     TRACEVANE_WEB_PORT: String(options.webPort),
     TRACEVANE_WEB_SMOKE_URL: `http://127.0.0.1:${options.webPort}`,

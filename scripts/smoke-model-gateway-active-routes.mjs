@@ -532,6 +532,7 @@ function sleep(ms) {
 
 async function acquireActiveRouteSmokeLock(options) {
   const lockDir = activeRouteSmokeLockDir();
+  fs.mkdirSync(path.dirname(lockDir), { recursive: true });
   const startedAt = Date.now();
   let attempts = 0;
   for (;;) {

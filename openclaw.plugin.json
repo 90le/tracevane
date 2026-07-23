@@ -2,7 +2,7 @@
   "id": "tracevane",
   "name": "Tracevane",
   "description": "Tracevane 本地 AI Agent 控制工作台，聚焦 Gateway、Channel Connectors、CLI Agent 和运行态自愈。",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "homepage": "https://github.com/binbin/tracevane",
   "activation": {
     "onStartup": true

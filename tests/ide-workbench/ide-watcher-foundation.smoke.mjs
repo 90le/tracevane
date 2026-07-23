@@ -139,7 +139,7 @@ async function focusMonaco(page, targetPath) {
 
 async function replaceEditorContent(page, targetPath, content) {
   await focusMonaco(page, targetPath);
-  await page.keyboard.press('Control+A');
+  await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(content);
 }
 

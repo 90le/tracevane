@@ -193,16 +193,27 @@ async function startMockGateway(options = {}) {
 }
 
 async function runScript(args, options = {}) {
-  const result = await execFileAsync(process.execPath, [scriptPath, ...args], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
-      ...(options.env || {}),
-    },
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024 * 16,
-  });
+  let result;
+  try {
+    result = await execFileAsync(process.execPath, [scriptPath, ...args], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
+        ...(options.env || {}),
+      },
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024 * 16,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      error.message += [
+        error.stdout ? `\nstdout:\n${error.stdout}` : "",
+        error.stderr ? `\nstderr:\n${error.stderr}` : "",
+      ].join("");
+    }
+    throw error;
+  }
   return JSON.parse(result.stdout);
 }
 

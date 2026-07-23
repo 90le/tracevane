@@ -175,13 +175,18 @@ function systemdPostUnlinkCommands(plan: SupervisorPlan): SupervisorCommand[] {
   );
 }
 
-function uninstallCommands(plan: SupervisorPlan): SupervisorCommand[] {
+function uninstallCommands(
+  plan: SupervisorPlan,
+  active: boolean | null,
+): SupervisorCommand[] {
   if (plan.supervisor === "launchd-user") {
     return [...(plan.commands.uninstall ?? [])];
   }
   const postUnlinkCommands = systemdPostUnlinkCommands(plan);
   return [
-    ...(plan.commands.stop ?? []),
+    ...(plan.supervisor === "systemd-user" && active === false
+      ? []
+      : plan.commands.stop ?? []),
     ...(plan.commands.uninstall ?? []).filter((command) =>
       !postUnlinkCommands.includes(command)
     ),
@@ -3220,7 +3225,7 @@ export function createServiceManager(
           }
         } else {
           sequence = await runSequence(
-            uninstallCommands(plan),
+            uninstallCommands(plan, inspection.manager.active),
             request.action,
           );
         }

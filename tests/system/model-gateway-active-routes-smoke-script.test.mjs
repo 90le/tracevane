@@ -263,6 +263,31 @@ test("model gateway active route smoke restores active providers after success",
   }
 });
 
+test("model gateway active route smoke creates a missing lock parent", async () => {
+  const gateway = await startMockGateway();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-active-route-parent-"));
+  const lockDir = path.join(root, "missing", "active-route-smoke.lock");
+  try {
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex",
+      "--json",
+    ], {
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lockDir,
+      TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_MARKER_PATH: path.join(root, "missing", "active-route-smoke.marker.json"),
+    });
+
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.lock?.lockDir, lockDir);
+    assert.equal(fs.existsSync(path.dirname(lockDir)), true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    await gateway.close();
+  }
+});
+
 test("model gateway active route smoke can run compatibility cleanup probes", async () => {
   const gateway = await startMockGateway();
   try {

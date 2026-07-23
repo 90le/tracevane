@@ -1,6 +1,6 @@
 {
   "name": "@binbin/tracevane",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Tracevane - Local AI Agent Control Workbench",
   "private": true,
   "repository": {
@@ -84,7 +84,7 @@
     "test:web:api": "node --test tests/system/web-model-gateway.test.mjs tests/system/web-api-client.test.mjs",
     "test:cross-platform:gateway": "node --test --test-concurrency=1 tests/system/model-gateway-service.test.mjs tests/system/model-gateway-codex-namespace-compat.test.mjs tests/system/model-gateway-protocol-matrix-smoke-script.test.mjs",
     "test:cross-platform:channel": "node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs tests/system/channel-connectors-session-continuity-v3.test.mjs tests/system/channel-connectors-target-execution-v3.test.mjs",
-    "test:cross-platform:files": "node --test tests/system/files-service.test.mjs tests/system/web-file-manager-domain.test.mjs",
+    "test:cross-platform:files": "node --test tests/system/file-manager-smoke-paths.test.mjs tests/system/files-service.test.mjs tests/system/web-file-manager-domain.test.mjs",
     "test:cross-platform:terminal": "node --test tests/system/system-terminal-handoff.test.mjs tests/system/ide-terminal-durable-backend-script.test.mjs",
     "release:cross-platform:quick": "node scripts/cross-platform-release-gate.mjs",
     "release:cross-platform:full": "node scripts/cross-platform-release-gate.mjs --full",

@@ -1,6 +1,7 @@
 import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveWritableSmokeDirectory } from './file-manager-smoke-paths.mjs';
 
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
@@ -142,11 +143,8 @@ function fixtureBytes() {
 
 async function run() {
   const summary = await api('/api/files/summary');
-  const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
-  const root = summary.roots?.find((item) => item.id === rootId) ?? summary.roots?.[0];
-  if (!rootId || !root?.absolutePath) throw new Error('No file-manager root is available');
-
-  const workspacePath = `tmp/media-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const uniqueName = `media-preview-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const { root, rootId, directoryPath: workspacePath } = resolveWritableSmokeDirectory(summary, uniqueName);
   const paths = {
     image: `${workspacePath}/pixel.png`,
     video: `${workspacePath}/sample.mp4`,

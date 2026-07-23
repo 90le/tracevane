@@ -557,6 +557,7 @@ test("runBrowserSmoke gives explicit ports precedence in a clean child fixture",
         browser: process.env.PLAYWRIGHT_CHROME_EXECUTABLE,
         external: process.env.TRACEVANE_USE_EXTERNAL_API,
         force: process.env.TRACEVANE_SMOKE_FORCE_OPTIMIZE,
+        stateDir: process.env.OPENCLAW_STATE_DIR,
         smokeTemp: process.env.TRACEVANE_SMOKE_TEMP_DIR,
         url: process.env.TRACEVANE_WEB_SMOKE_URL,
         webPort: process.env.TRACEVANE_WEB_PORT,
@@ -596,6 +597,8 @@ test("runBrowserSmoke gives explicit ports precedence in a clean child fixture",
   assert.equal(selectedOptions.rootDir, directory);
   const childOutput = JSON.parse(readFileSync(output, "utf8"));
   assert.ok(path.isAbsolute(childOutput.smokeTemp));
+  assert.equal(childOutput.stateDir, childOutput.smokeTemp);
+  assert.equal(path.dirname(childOutput.smokeTemp), path.join(directory, "tmp"));
   assert.equal(existsSync(childOutput.smokeTemp), false);
   assert.deepEqual(childOutput, {
     apiPort: "3910",
@@ -603,6 +606,7 @@ test("runBrowserSmoke gives explicit ports precedence in a clean child fixture",
     browser: process.execPath,
     external: "1",
     force: "1",
+    stateDir: childOutput.smokeTemp,
     smokeTemp: childOutput.smokeTemp,
     url: "http://127.0.0.1:5210",
     webPort: "5210",
