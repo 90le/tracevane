@@ -10,7 +10,7 @@ const DEFAULT_PORT = 3760;
 const DEFAULT_GATEWAY_PORT = 31879;
 const DEFAULT_GATEWAY_BASE_PATH = '/tracevane';
 const DEFAULT_BIND_HOST = '127.0.0.1';
-const TRACEVANE_VERSION_FALLBACK = '0.2.2';
+const TRACEVANE_VERSION_FALLBACK = '0.2.3';
 
 let cachedTracevaneVersion: string | null = null;
 
