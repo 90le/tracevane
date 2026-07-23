@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { resolveWritableSmokeDirectory } from './file-manager-smoke-paths.mjs';
 
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
@@ -79,10 +80,8 @@ async function openFileInOnlineEditor(page, path) {
 
 async function run() {
   const summary = await api('/api/files/summary');
-  const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
-  if (!rootId) throw new Error('No file-manager root is available');
-
-  const workspacePath = `tmp/monaco-nls-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const uniqueName = `monaco-nls-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const { rootId, directoryPath: workspacePath } = resolveWritableSmokeDirectory(summary, uniqueName);
   const samplePath = `${workspacePath}/sample.ts`;
   await cleanup(rootId, [workspacePath]);
   await createDirectory(rootId, workspacePath);

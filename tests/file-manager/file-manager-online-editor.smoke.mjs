@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { resolveWritableSmokeDirectory } from './file-manager-smoke-paths.mjs';
 
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
@@ -218,11 +219,8 @@ async function openEditorMenuSection(page, selector) {
 
 async function run() {
   const summary = await api('/api/files/summary');
-  const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
-  if (!rootId) throw new Error('No file-manager root is available');
-
   const prefix = `tracevane-online-editor-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const workspacePath = `tmp/${prefix}`;
+  const { rootId, directoryPath: workspacePath } = resolveWritableSmokeDirectory(summary, prefix);
   const firstPath = `${workspacePath}/a.txt`;
   const secondPath = `${workspacePath}/b.txt`;
   const largePath = `${workspacePath}/large.txt`;
@@ -486,9 +484,15 @@ async function run() {
     if (await visibleFilterAfterEditor.count()) await visibleFilterAfterEditor.fill('');
     await refreshFileList(page);
     await page.waitForSelector(`[data-file-manager-entry-path="${cssAttr(firstPath)}"]`, { timeout: 30_000 });
-    await page.locator(`[data-file-manager-entry-path="${cssAttr(firstPath)}"] input[type="checkbox"]`).click({ force: true });
-    await page.waitForSelector('[data-file-manager-bulk-primary-action="edit"]', { timeout: 30_000 });
-    await page.locator('[data-file-manager-bulk-primary-action="edit"]').click();
+    await page.locator(`[data-file-manager-entry-path="${cssAttr(firstPath)}"] input[type="checkbox"]`).first().check({ force: true });
+    await page.waitForFunction(
+      () => Number(document.querySelector('[data-file-manager-list]')?.getAttribute('data-file-manager-selection-count') || 0) === 1,
+      null,
+      { timeout: 30_000 },
+    );
+    const bulkEditAction = page.locator('[data-file-manager-bulk-desktop] [data-file-manager-bulk-primary-action="edit"]').first();
+    await bulkEditAction.waitFor({ state: 'visible', timeout: 30_000 });
+    await bulkEditAction.click();
     await page.waitForSelector('[data-file-online-editor-dialog]', { timeout: 30_000 });
     await page.waitForSelector('[data-code-editor="monaco-direct"]', { timeout: 30_000 });
     await clickEditorAction(page, '[data-file-online-editor-close-all]');

@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { resolveWritableSmokeDirectory } from './file-manager-smoke-paths.mjs';
 
 const BASE_URL = process.env.TRACEVANE_WEB_SMOKE_URL || 'http://127.0.0.1:5176';
 const CHROME = process.env.PLAYWRIGHT_CHROME_EXECUTABLE || '/home/binbin/.local/bin/google-chrome';
@@ -258,9 +259,8 @@ async function findTrashItem(rootId, originalPath) {
 
 async function run() {
   const summary = await api('/api/files/summary');
-  const rootId = summary.defaultRootId ?? summary.roots?.[0]?.id;
-  if (!rootId) throw new Error('No file-manager root is available');
-  const smokeDir = `tmp/tracevane-file-ops-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const uniqueName = `tracevane-file-ops-smoke-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const { rootId, directoryPath: smokeDir } = resolveWritableSmokeDirectory(summary, uniqueName);
   const sourceName = 'ops-source.txt';
   const renamedName = 'ops-renamed.txt';
   const copyTargetName = 'ops-copy-target';
@@ -316,7 +316,7 @@ async function run() {
     await waitForNoEntry(page, movedPath);
     const trashItem = await findTrashItem(rootId, movedPath);
 
-    await page.getByRole('button', { name: /回收站/ }).first().click();
+    await page.locator('[data-file-manager-view-switcher]').getByRole('tab', { name: '回收站' }).click();
     await page.locator('[data-file-manager-trash-manager]').waitFor({ timeout: 30_000 });
     await page.locator(trashItemSelector(trashItem.trashPath)).waitFor({ timeout: 30_000 });
     await page.locator(`${trashItemSelector(trashItem.trashPath)} [data-file-manager-trash-restore]`).click();
