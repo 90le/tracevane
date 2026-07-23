@@ -3,6 +3,7 @@ import * as React from "react";
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { resolveApiUrl } from "@/lib/runtime";
 import type { FileEntrySummary, FilesReadPayload } from "../../../../../types/files";
 
 export type FileSurfacePreviewKind = "image" | "video" | "audio" | "pdf" | "binary";
@@ -535,7 +536,7 @@ function PdfPreviewFrame({ src, title }: { src: string; title: string }) {
 function buildFileDownloadUrl(rootId: string, path: string, attachment = false): string {
   const search = new URLSearchParams({ rootId, path });
   if (attachment) search.set("download", "1");
-  return `/api/files/download?${search.toString()}`;
+  return resolveApiUrl(`/api/files/download?${search.toString()}`);
 }
 
 function previewKindLabel(kind: FileSurfacePreviewKind): string {

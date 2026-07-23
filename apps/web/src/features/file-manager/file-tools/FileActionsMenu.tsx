@@ -28,6 +28,7 @@ import {
 } from "@/design/ui/dialog";
 import { Input } from "@/design/ui/input";
 import { dryRunFileTransfer, dryRunUnarchiveFile, transferFiles } from "@/lib/api/files";
+import { resolveApiUrl } from "@/lib/runtime";
 import { toast } from "@/design/ui/sonner";
 import type {
   FilesTransferConflictPolicy,
@@ -219,7 +220,7 @@ export function FileActionsMenu({
       `/api/files/download?rootId=${encodeURIComponent(rootId)}` +
       `&path=${encodeURIComponent(target.path)}` +
       `&download=1`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(resolveApiUrl(url), "_blank", "noopener,noreferrer");
     closeAll();
   }, [target, rootId, closeAll]);
 

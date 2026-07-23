@@ -94,3 +94,15 @@ test("file manager routes files through unified online surface", () => {
   assert.doesNotMatch(packageJson, /docs:render/);
   assert.doesNotMatch(packageJson, /markdown-visual-editor|fallback-preview|html-editor|upload-preview|preview-resilience/);
 });
+
+test("file manager direct download URLs honor the mounted API base path", () => {
+  for (const relativePath of [
+    "apps/web/src/shared/file-surface/FileSurfacePreviewPanel.tsx",
+    "apps/web/src/features/file-manager/file-tools/FileActionsMenu.tsx",
+    "apps/web/src/features/file-manager/FileManagerPage.tsx",
+  ]) {
+    const source = read(relativePath);
+    assert.match(source, /resolveApiUrl/);
+    assert.doesNotMatch(source, /window\.open\(\s*`\/api\/files\//);
+  }
+});
