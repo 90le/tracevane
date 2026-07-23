@@ -2438,9 +2438,10 @@ test("model gateway imports Codex model cache budgets during startup repair", ()
   const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const codexDir = path.join(root, ".codex");
+  const cacheFetchedAt = new Date().toISOString();
   fs.mkdirSync(codexDir, { recursive: true });
   fs.writeFileSync(path.join(codexDir, "models_cache.json"), JSON.stringify({
-    fetched_at: "2026-07-12T04:00:28.645Z",
+    fetched_at: cacheFetchedAt,
     etag: "cache-etag",
     client_version: "0.144.0",
     models: [{
@@ -2501,7 +2502,7 @@ test("model gateway imports Codex model cache budgets during startup repair", ()
   const persisted = raw.providers.find((item) => item.id === "codex-cache-sync");
   assert.equal(persisted.models.models.find((model) => model.id === "gpt-5.6-terra")?.contextWindow, 372000);
   assert.equal(persisted.metadata.codexModelCatalogSource, "codex-model-cache");
-  assert.equal(persisted.metadata.codexModelCatalogFetchedAt, "2026-07-12T04:00:28.645Z");
+  assert.equal(persisted.metadata.codexModelCatalogFetchedAt, cacheFetchedAt);
   assert.equal(persisted.metadata.codexModelCatalogClientVersion, "0.144.0");
 
   const staleCache = JSON.parse(fs.readFileSync(path.join(codexDir, "models_cache.json"), "utf8"));
@@ -9656,7 +9657,7 @@ test("model gateway daemon service management executes selected supervisor comma
         : []),
       ...(selected.commands.install || []),
       ...(selected.commands.start || []),
-      ...(selected.supervisor === "scheduled-task"
+      ...(selected.supervisor !== "launchd-user"
         ? selected.commands.status || []
         : []),
     ];
@@ -9890,7 +9891,10 @@ test("model gateway stop returns structured persistent stopped state", async () 
   assert.equal(stopped.serviceManager.checked, true);
   assert.equal(stopped.serviceManager.reachable, true);
   assert.equal(stopped.serviceManager.lastError, null);
-  assert.equal(harness.shutdownChecks, 2);
+  assert.equal(
+    harness.shutdownChecks,
+    stopped.plan.selectedTemplate.supervisor === "scheduled-task" ? 2 : 0,
+  );
   assert.deepEqual(
     calls.map(({ command, args }) => ({ command, args })),
     expected.map(({ command, args }) => ({ command, args })),
@@ -9978,10 +9982,11 @@ test("model gateway ensure-running repairs a platform-neutral stale template", a
         ...(selected.commands.start || []),
         ...(selected.commands.status || []),
       ]
-    : [
-      ...(selected.commands.repair || []),
-      ...(selected.commands.restart || []),
-    ];
+      : [
+        ...(selected.commands.repair || []),
+        ...(selected.commands.restart || []),
+        ...(selected.commands.status || []),
+      ];
   const expected = [
     ...(selected.commands.status || []),
     ...expectedLifecycle,
@@ -10047,10 +10052,11 @@ test("model gateway ensure-running executes one repair and restart sequence for 
         ...(selected.commands.start || []),
         ...(selected.commands.status || []),
       ]
-    : [
-      ...(selected.commands.repair || []),
-      ...(selected.commands.restart || []),
-    ];
+      : [
+        ...(selected.commands.repair || []),
+        ...(selected.commands.restart || []),
+        ...(selected.commands.status || []),
+      ];
   const expected = [
     ...(selected.commands.status || []),
     ...expectedLifecycle,
@@ -10111,7 +10117,7 @@ test("model gateway ensure-running installs then starts a missing persistent ser
         : []),
       ...(selected.commands.install || []),
       ...(selected.commands.start || []),
-      ...(selected.supervisor === "scheduled-task"
+      ...(selected.supervisor !== "launchd-user"
         ? selected.commands.status || []
         : []),
     ];
