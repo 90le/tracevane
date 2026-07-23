@@ -16,6 +16,7 @@ import {
   computeReconnectDelayMs,
   createTerminalTransportFallbackChain,
   isGatewayFallbackEligible,
+  resolveTerminalTransportChannel,
 } from "./terminalTransportChain.ts";
 
 function createMockFactory(name, created) {
@@ -185,4 +186,12 @@ test("buildCompatChannelNotice keeps reason and adds actionable guidance", () =>
 
   const fallback = buildCompatChannelNotice({ kind: "network", message: "" });
   assert.match(fallback.detail, /网关通道不可用/, "empty reason gets a sane default");
+});
+
+test("OpenClaw gateway exposure selects immediate SSE output", () => {
+  assert.equal(resolveTerminalTransportChannel("gateway-rpc", true), "sse");
+  assert.equal(resolveTerminalTransportChannel(undefined, true), "sse");
+  assert.equal(resolveTerminalTransportChannel("raw-ws", true), "raw-ws");
+  assert.equal(resolveTerminalTransportChannel(undefined, false), "raw-ws");
+  assert.equal(resolveTerminalTransportChannel("disabled", true), "disabled");
 });

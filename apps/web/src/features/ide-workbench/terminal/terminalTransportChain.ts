@@ -31,6 +31,25 @@ export const TERMINAL_RECONNECT_MAX_ATTEMPTS = 5;
 export const TERMINAL_RECONNECT_BASE_DELAY_MS = 1_000;
 export const TERMINAL_RECONNECT_MAX_DELAY_MS = 15_000;
 
+export type TerminalRealtimeTransportSetting =
+  | "gateway-rpc"
+  | "raw-ws"
+  | "disabled";
+
+/**
+ * OpenClaw gateway events are host-scheduled and can delay interactive PTY
+ * output. Its same-origin HTTP/SSE stream is flushed immediately, so gateway
+ * exposure uses that channel while standalone mode keeps the raw WebSocket.
+ */
+export function resolveTerminalTransportChannel(
+  configured: TerminalRealtimeTransportSetting | undefined,
+  gatewayExposure: boolean,
+): "sse" | "raw-ws" | "disabled" {
+  const setting = configured ?? (gatewayExposure ? "gateway-rpc" : "raw-ws");
+  if (setting === "disabled") return "disabled";
+  return setting === "gateway-rpc" ? "sse" : "raw-ws";
+}
+
 /**
  * Exponential backoff for abnormal-close re-attach: 1s → 2s → 4s → 8s → 15s
  * (capped). `attemptIndex` is zero-based (first retry waits 1s).
