@@ -24,6 +24,31 @@ const REQUIRED_MANAGER_FIELDS = [
   "supervisor",
 ];
 
+const WINDOWS_PLAN_ARTIFACT_SUFFIXES = [
+  "\\AppData\\Roaming\\OpenClaw\\Tracevane",
+  "\\AppData\\Roaming\\OpenClaw\\Tracevane\\TracevaneFixture.xml",
+];
+
+function isLeakedWindowsPlanArtifact(name) {
+  return name.includes("\\tracevane-manager-")
+    && WINDOWS_PLAN_ARTIFACT_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+function cleanupLeakedWindowsPlanArtifacts() {
+  if (process.platform === "win32") return;
+  for (const entry of fs.readdirSync(process.cwd(), { withFileTypes: true })) {
+    if (!isLeakedWindowsPlanArtifact(entry.name)) continue;
+    fs.rmSync(path.join(process.cwd(), entry.name), {
+      force: true,
+      recursive: true,
+    });
+  }
+}
+
+test.before(cleanupLeakedWindowsPlanArtifacts);
+test.afterEach(cleanupLeakedWindowsPlanArtifacts);
+test.after(cleanupLeakedWindowsPlanArtifacts);
+
 function fixtureDefinition(root) {
   return {
     id: "model-gateway",
