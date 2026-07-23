@@ -79,6 +79,62 @@ function ensureNoStagedChanges() {
   }
 }
 
+function readLocalGitConfig(key) {
+  try {
+    return {
+      present: true,
+      value: execFileSync('git', ['config', '--local', '--get', key], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      }).replace(/\r?\n$/, ''),
+    };
+  } catch (error) {
+    if (error?.status === 1) return { present: false, value: '' };
+    throw error;
+  }
+}
+
+function writeLocalGitConfig(key, snapshot) {
+  if (snapshot.present) {
+    execFileSync('git', ['config', '--local', key, snapshot.value], {
+      cwd: process.cwd(),
+      stdio: 'ignore',
+    });
+    return;
+  }
+  try {
+    execFileSync('git', ['config', '--local', '--unset-all', key], {
+      cwd: process.cwd(),
+      stdio: 'ignore',
+    });
+  } catch (error) {
+    if (error?.status !== 5) throw error;
+  }
+}
+
+function configureSmokeGitIdentity() {
+  const previousName = readLocalGitConfig('user.name');
+  const previousEmail = readLocalGitConfig('user.email');
+  const restore = () => {
+    writeLocalGitConfig('user.name', previousName);
+    writeLocalGitConfig('user.email', previousEmail);
+  };
+  try {
+    execFileSync('git', ['config', '--local', 'user.name', 'Tracevane Smoke'], {
+      cwd: process.cwd(),
+      stdio: 'ignore',
+    });
+    execFileSync('git', ['config', '--local', 'user.email', 'tracevane-smoke@example.com'], {
+      cwd: process.cwd(),
+      stdio: 'ignore',
+    });
+  } catch (error) {
+    restore();
+    throw error;
+  }
+  return restore;
+}
+
 function resetSmokeCommitIfNeeded(subject) {
   try {
     const latestSubject = execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: process.cwd(), encoding: 'utf8' }).trim();
@@ -120,6 +176,7 @@ async function run() {
     try { window.localStorage.setItem(key, JSON.stringify(layout)); } catch { /* ignore */ }
   }, { key: `tracevane.ide-workbench.layout.${rootId || 'pending-root'}`, layout: createDefaultWorkbenchLayout(repoParentRelativePath) });
   const logs = [];
+  let restoreGitIdentity = () => {};
   page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
   page.on('pageerror', (error) => logs.push(`[pageerror] ${error.stack || error.message}`));
 
@@ -145,6 +202,7 @@ async function run() {
 
     await page.locator('[data-ide-source-control-commit-message]').fill(commitSubject);
     if (await commitButton.isDisabled()) throw new Error('Commit button should be enabled with staged changes and a message');
+    restoreGitIdentity = configureSmokeGitIdentity();
     await commitButton.click();
 
     await page.waitForFunction(
@@ -164,10 +222,14 @@ async function run() {
     console.error(logs.join('\n'));
     throw error;
   } finally {
-    await browser.close();
-    resetSmokeCommitIfNeeded(commitSubject);
-    await cleanup(rootId, [gitFilePath]);
-    ensureNoStagedChanges();
+    try {
+      await browser.close();
+      resetSmokeCommitIfNeeded(commitSubject);
+      await cleanup(rootId, [gitFilePath]);
+      ensureNoStagedChanges();
+    } finally {
+      restoreGitIdentity();
+    }
   }
 }
 
