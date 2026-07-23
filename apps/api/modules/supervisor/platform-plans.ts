@@ -26,14 +26,18 @@ function escapeXml(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function quoteSystemdToken(value: string): string {
-  return `"${value
+function escapeSystemdValue(value: string): string {
+  return value
     .replace(/%/g, "%%")
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"')
     .replace(/\n/g, "\\n")
     .replace(/\r/g, "\\r")
-    .replace(/\t/g, "\\t")}"`;
+    .replace(/\t/g, "\\t");
+}
+
+function quoteSystemdToken(value: string): string {
+  return `"${escapeSystemdValue(value)}"`;
 }
 
 function quoteSystemdExecToken(value: string): string {
@@ -113,7 +117,7 @@ function buildSystemdTemplate(
     "",
     "[Service]",
     "Type=simple",
-    `WorkingDirectory=${quoteSystemdToken(definition.workingDirectory)}`,
+    `WorkingDirectory=${escapeSystemdValue(definition.workingDirectory)}`,
     `ExecStart=${[process.execPath, ...args].map(quoteSystemdExecToken).join(" ")}`,
     "Restart=on-failure",
     "RestartSec=5",

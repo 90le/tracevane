@@ -731,13 +731,10 @@ test("not installed + install stops session, atomically writes, registers, start
     const rename = fileOps.find(([operation]) => operation === "rename");
     assert.ok(write);
     assert.ok(rename);
-    assert.equal(path.dirname(write[1]), path.dirname(plan.configPath));
+    assert.equal(path.win32.dirname(write[1]), path.win32.dirname(plan.configPath));
     assert.notEqual(write[1], plan.configPath);
     assert.deepEqual(rename.slice(1), [write[1], plan.configPath]);
-    assert.deepEqual(
-      fs.readdirSync(path.dirname(plan.configPath)),
-      [path.basename(plan.configPath)],
-    );
+    assert.equal(fs.existsSync(write[1]), false);
   } finally {
     await manager.dispose();
     fs.rmSync(root, { recursive: true, force: true });
@@ -1562,6 +1559,75 @@ test("systemd uninstall reloads only after the unit file is removed", async () =
       "Stop user service",
       "Disable user service",
       "Reload user systemd units",
+    ]);
+    assert.equal(fs.existsSync(plan.configPath), false);
+  } finally {
+    await manager.dispose();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("inactive malformed systemd unit uninstalls without stop", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-manager-systemd-malformed-"));
+  const definition = fixtureDefinition(root);
+  const plan = createSupervisorPlan(definition, "linux", root);
+  fs.mkdirSync(path.dirname(plan.configPath), { recursive: true });
+  fs.writeFileSync(
+    plan.configPath,
+    plan.template.replace(
+      /^WorkingDirectory=.*$/m,
+      `WorkingDirectory="${definition.workingDirectory}"`,
+    ),
+    "utf8",
+  );
+  const order = [];
+  const fileSystem = recordingFileSystem([]);
+  const originalUnlink = fileSystem.unlink;
+  fileSystem.unlink = async (...args) => {
+    order.push("unlink");
+    return originalUnlink(...args);
+  };
+  const { session } = createFakeSession();
+  const manager = createServiceManager({
+    platform: "linux",
+    homeDir: root,
+    session,
+    fs: fileSystem,
+    runner: async (command) => {
+      order.push(`command:${command.label}`);
+      if (command.args.includes("is-active")) {
+        return commandResult(command, { stdout: "inactive\n" });
+      }
+      if (command.args.includes("is-enabled")) {
+        return commandResult(command, { stdout: "enabled\n" });
+      }
+      if (command.args.includes("stop")) {
+        return commandResult(command, {
+          ok: false,
+          exitCode: 1,
+          stderr: "Unit has a bad unit file setting.",
+          errorCode: "unknown",
+        });
+      }
+      return commandResult(command);
+    },
+    probe: async () => false,
+  });
+
+  try {
+    const response = await manager.manage(definition, {
+      action: "uninstall",
+      mode: "persistent",
+      apply: true,
+    });
+
+    assert.equal(response.ok, true);
+    assert.deepEqual(order, [
+      "command:Check user service active state",
+      "command:Check user service enabled state",
+      "command:Disable user service",
+      "unlink",
+      "command:Reload user systemd units",
     ]);
     assert.equal(fs.existsSync(plan.configPath), false);
   } finally {
@@ -4378,9 +4444,11 @@ test("atomic template write cleans temporary files after write or rename failure
       assert.equal(response.templateWritten, false, failureStage);
       assert.equal(response.manager.errorCode, "template-invalid", failureStage);
       assert.equal(fs.existsSync(plan.configPath), false, failureStage);
-      assert.deepEqual(
-        fs.readdirSync(path.dirname(plan.configPath)),
-        [],
+      const write = fileOps.find(([operation]) => operation === "writeFile");
+      assert.ok(write);
+      assert.equal(
+        fs.existsSync(write[1]),
+        false,
         `${failureStage}: temporary file cleanup`,
       );
       assert.equal(

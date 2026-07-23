@@ -54,6 +54,11 @@ test("systemd plans preserve literal dollar paths with CJK, spaces, percent, and
     plan.template,
     new RegExp(`^ExecStart=${escapeRegExp(expectedExecStart)}$`, "m"),
   );
+  assert.match(
+    plan.template,
+    /^WorkingDirectory=\/opt\/\$\{NAME\}\/项目 %% workers$/m,
+  );
+  assert.doesNotMatch(plan.template, /^WorkingDirectory="/m);
   assert.match(plan.template, /\$\$\{NAME\}/);
   assert.match(plan.template, /%%/);
   assert.match(plan.template, /\\"quote\\"/);
