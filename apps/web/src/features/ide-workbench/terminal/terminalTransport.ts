@@ -3,6 +3,7 @@ import {
   createTerminalWebSocketUrl,
   parseTerminalEvent,
   type CreateWorkbenchTerminalOptions,
+  type WorkbenchTerminalEvent,
 } from "./terminalClient";
 import { createSseTerminalTransport } from "./terminalSseTransport";
 import {
