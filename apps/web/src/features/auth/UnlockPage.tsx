@@ -5,6 +5,7 @@ import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
 import { Input } from "@/design/ui/input";
 import { isApiError } from "@/lib/api/errors";
+import { resolveApiUrl } from "@/lib/runtime";
 
 import { unlockWithCredential, type AuthStatusPayload } from "./api";
 
@@ -55,7 +56,7 @@ export function UnlockPage({ status }: { status: AuthStatusPayload }) {
         <div className="grid justify-items-center gap-2.5 text-center">
           <span className="grid size-12 place-items-center rounded-md border border-line-2 bg-panel-2 shadow-sm">
             <img
-              src="/brand/tracevane-mark.svg"
+              src={resolveApiUrl("/brand/tracevane-mark.svg")}
               alt="Tracevane"
               className="size-8"
               draggable={false}

@@ -106,3 +106,22 @@ test("file manager direct download URLs honor the mounted API base path", () => 
     assert.doesNotMatch(source, /window\.open\(\s*`\/api\/files\//);
   }
 });
+
+test("desktop favorites manager is pinned to the right viewport edge", () => {
+  const chrome = read("apps/web/src/features/file-manager/FileManagerChrome.tsx");
+  assert.match(
+    chrome,
+    /const left\s*=\s*window\.innerWidth\s*-\s*panelWidth\s*-\s*viewportGap/,
+  );
+});
+
+test("brand logos honor the mounted application base path", () => {
+  for (const relativePath of [
+    "apps/web/src/app/AppShell.tsx",
+    "apps/web/src/features/auth/UnlockPage.tsx",
+  ]) {
+    const source = read(relativePath);
+    assert.match(source, /resolveApiUrl/);
+    assert.doesNotMatch(source, /src="\/brand\/tracevane-mark\.svg"/);
+  }
+});

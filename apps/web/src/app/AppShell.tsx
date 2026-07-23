@@ -13,6 +13,7 @@ import {
 
 import { cn } from "@/design/lib/utils";
 import { Button } from "@/design/ui/button";
+import { resolveApiUrl } from "@/lib/runtime";
 import {
   Sidebar,
   SidebarFooter,
@@ -116,7 +117,7 @@ function WorkspaceBrand() {
       )}
     >
       <img
-        src="/brand/tracevane-mark.svg"
+        src={resolveApiUrl("/brand/tracevane-mark.svg")}
         alt="Tracevane"
         className="size-8 shrink-0 rounded-md shadow-sm"
         draggable={false}
@@ -276,7 +277,7 @@ function MobileDrawerBrand() {
   return (
     <div className="flex min-w-0 items-center gap-2.5">
       <img
-        src="/brand/tracevane-mark.svg"
+        src={resolveApiUrl("/brand/tracevane-mark.svg")}
         alt="Tracevane"
         className="size-8 shrink-0 rounded-md shadow-sm"
         draggable={false}
