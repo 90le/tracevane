@@ -12,19 +12,26 @@ export function resolveWritableSmokeDirectory(summary, uniqueName) {
     throw new Error('No file-manager root is available');
   }
 
-  const relativeHome = path.relative(
-    path.resolve(root.absolutePath),
-    path.resolve(os.homedir()),
-  );
-  if (path.isAbsolute(relativeHome) || relativeHome === '..' || relativeHome.startsWith(`..${path.sep}`)) {
-    throw new Error(`User home is outside the selected file-manager root: ${os.homedir()}`);
+  const rootPath = path.resolve(root.absolutePath);
+  const basePath = [
+    process.env.TRACEVANE_SMOKE_TEMP_DIR,
+    os.homedir(),
+  ].find((candidate) => {
+    if (!candidate) return false;
+    const relative = path.relative(rootPath, path.resolve(candidate));
+    return !path.isAbsolute(relative)
+      && relative !== '..'
+      && !relative.startsWith(`..${path.sep}`);
+  });
+  if (!basePath) {
+    throw new Error(`No writable smoke directory is inside the selected file-manager root: ${root.absolutePath}`);
   }
 
-  const homePath = portablePath(relativeHome);
+  const relativeBase = portablePath(path.relative(rootPath, path.resolve(basePath)));
   const directoryName = portablePath(uniqueName);
   return {
     root,
     rootId,
-    directoryPath: homePath ? `${homePath}/${directoryName}` : directoryName,
+    directoryPath: relativeBase ? `${relativeBase}/${directoryName}` : directoryName,
   };
 }

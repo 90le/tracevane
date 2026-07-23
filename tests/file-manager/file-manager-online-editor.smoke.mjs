@@ -211,6 +211,20 @@ async function clickMinimizedDockAction(page, name) {
   await dock.getByRole('button', { name, exact: true }).click();
 }
 
+async function clearFileManagerSelection(page) {
+  const list = page.locator('[data-file-manager-list]').first();
+  const selected = Number(await list.getAttribute('data-file-manager-selection-count') || 0);
+  if (selected === 0) return;
+  await page.locator('[data-file-manager-bulk-desktop]')
+    .getByRole('button', { name: '取消选择', exact: true })
+    .click();
+  await page.waitForFunction(
+    () => Number(document.querySelector('[data-file-manager-list]')?.getAttribute('data-file-manager-selection-count') || 0) === 0,
+    null,
+    { timeout: 30_000 },
+  );
+}
+
 async function openEditorMenuSection(page, selector) {
   const section = page.locator(`[data-file-online-editor-action-menu] ${selector}`);
   const isOpen = await section.evaluate((node) => node.closest('details')?.open ?? true);
@@ -483,6 +497,7 @@ async function run() {
     const visibleFilterAfterEditor = page.locator('input[placeholder="搜索当前目录"]:visible').first();
     if (await visibleFilterAfterEditor.count()) await visibleFilterAfterEditor.fill('');
     await refreshFileList(page);
+    await clearFileManagerSelection(page);
     await page.waitForSelector(`[data-file-manager-entry-path="${cssAttr(firstPath)}"]`, { timeout: 30_000 });
     await page.locator(`[data-file-manager-entry-path="${cssAttr(firstPath)}"] input[type="checkbox"]`).first().check({ force: true });
     await page.waitForFunction(
