@@ -654,6 +654,68 @@ test(
   },
 );
 
+test(
+  "stopOwnedProcess accepts EPERM after the POSIX group leader has exited",
+  { skip: process.platform === "win32" ? "POSIX process groups only" : false },
+  async (t) => {
+    const originalKill = process.kill;
+    const pid = 2_147_000_001;
+    const child = {
+      exitCode: 0,
+      kill() {
+        throw new Error("the exited child must not be signalled directly");
+      },
+      pid,
+      signalCode: null,
+    };
+    process.kill = (targetPid, signal) => {
+      assert.equal(targetPid, -pid);
+      const error = new Error(`kill ${signal ?? 0} EPERM`);
+      error.code = "EPERM";
+      throw error;
+    };
+    t.after(() => {
+      process.kill = originalKill;
+    });
+
+    await stopOwnedProcess(child);
+  },
+);
+
+test(
+  "stopOwnedProcess falls back to the POSIX group leader after group EPERM",
+  { skip: process.platform === "win32" ? "POSIX process groups only" : false },
+  async (t) => {
+    const originalKill = process.kill;
+    const pid = 2_147_000_002;
+    const directSignals = [];
+    const child = {
+      exitCode: null,
+      kill(signal) {
+        directSignals.push(signal);
+        this.signalCode = signal;
+        return true;
+      },
+      pid,
+      signalCode: null,
+    };
+    process.kill = (targetPid, signal) => {
+      if (targetPid === pid && signal === 0) return true;
+      assert.equal(targetPid, -pid);
+      const error = new Error(`kill ${signal ?? 0} EPERM`);
+      error.code = "EPERM";
+      throw error;
+    };
+    t.after(() => {
+      process.kill = originalKill;
+    });
+
+    await stopOwnedProcess(child);
+
+    assert.deepEqual(directSignals, ["SIGTERM"]);
+  },
+);
+
 test("withServer cleans up before exiting on SIGINT", async (t) => {
   const port = await getFreePort();
   const serverStatePath = nextStatePath("signal-server");

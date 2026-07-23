@@ -99,13 +99,13 @@ function processIsAlive(pid) {
   }
 }
 
-function processGroupIsAlive(pid) {
+function processGroupCanBeSignaled(pid) {
   try {
     process.kill(-pid, 0);
     return true;
   } catch (error) {
     if (error?.code === "ESRCH") return false;
-    if (error?.code === "EPERM") return true;
+    if (error?.code === "EPERM") return false;
     throw error;
   }
 }
@@ -259,9 +259,9 @@ async function stopWindowsProcess(child, pid) {
 }
 
 async function stopPosixProcess(child, pid) {
-  const ownsProcessGroup = processGroupIsAlive(pid);
+  const ownsProcessGroup = processGroupCanBeSignaled(pid);
   const isAlive = ownsProcessGroup
-    ? () => processGroupIsAlive(pid)
+    ? () => processGroupCanBeSignaled(pid)
     : () => !childHasExited(child) && processIsAlive(pid);
 
   if (!isAlive()) return;
