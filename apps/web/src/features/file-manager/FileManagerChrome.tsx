@@ -1190,10 +1190,7 @@ function FavoriteBookmarkManager({
       180,
       Math.min(panelMaxHeight, Math.max(availableHeight, 0)),
     );
-    const left = Math.max(
-      viewportGap,
-      Math.min(rect.right - panelWidth, window.innerWidth - panelWidth - viewportGap),
-    );
+    const left = window.innerWidth - panelWidth - viewportGap;
     const preferredTop = openBelow
       ? rect.bottom + gapFromTrigger
       : rect.top - gapFromTrigger - panelHeight;
