@@ -114,7 +114,7 @@ function accountTemplate(platform: "feishu" | "octo"): ChannelConnectorAccount {
     id,
     platform,
     displayName: platform === "feishu" ? "新飞书机器人" : "新 Octo 账号",
-    lifecycle: "draft",
+    lifecycle: platform === "octo" ? "enabled" : "draft",
     externalAccountId: null,
     botId: null,
     credentials: {},
@@ -451,7 +451,11 @@ function AccountEditor({
       });
     } else if (draft.platform === "octo") {
       octoSmoke.mutate({ action: "register", binding }, {
-        onSuccess: (result) => setPreflight({ ok: result.transport.ok === true, message: result.transport.error || `HTTP ${result.transport.statusCode ?? "ok"}` }),
+        onSuccess: (result) => {
+          const ok = result.transport.ok === true;
+          setPreflight({ ok, message: result.transport.error || `HTTP ${result.transport.statusCode ?? "ok"}` });
+          if (ok) setDraft((current) => ({ ...current, lifecycle: "enabled" }));
+        },
         onError: (error) => setPreflight({ ok: false, message: error.message }),
       });
     }
@@ -606,7 +610,7 @@ function AccountEditor({
           </section>
 
           <section className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
-            <Button type="button" variant="outline" size="sm" disabled={!credentialsReady || smokePending || secretsLoading} onClick={runSmoke}>{smokePending ? <Loader2 className="animate-spin" /> : <Zap />}验证平台凭据</Button>
+            <Button type="button" variant="outline" size="sm" disabled={!credentialsReady || smokePending || secretsLoading} onClick={runSmoke}>{smokePending ? <Loader2 className="animate-spin" /> : <Zap />}{draft.platform === "octo" ? "验证并启用" : "验证平台凭据"}</Button>
             {preflight && <Badge variant={preflight.ok ? "ok" : "warn"}>{preflight.ok ? "凭据验证通过" : "验证失败"} · {preflight.message}</Badge>}
             {enabled && !preflight?.ok && <span className="text-xs text-subtle">保存成功不代表已能收消息；启用后还需在运行中心验证真实入站。</span>}
           </section>

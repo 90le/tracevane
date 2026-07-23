@@ -117,6 +117,16 @@ test("channel account editor owns credentials, default target, exceptions, and a
   assert.match(accounts, /未界面化扩展字段/);
 });
 
+test("Octo verification enables the account for its persistent WebSocket", () => {
+  const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
+  assert.match(accounts, /lifecycle:\s*platform === "octo" \? "enabled" : "draft"/);
+  assert.match(
+    accounts,
+    /if \(ok\) setDraft\(\(current\) => \(\{ \.\.\.current, lifecycle: "enabled" \}\)\);/,
+  );
+  assert.match(accounts, /验证并启用/);
+});
+
 test("channel account plan opens only after planning succeeds", () => {
   const accounts = read(`${VIEWS_DIR}/V3AccountsView.tsx`);
   assert.doesNotMatch(accounts, /setPlanOpen\(true\);\s*planMutation\.mutate/);
