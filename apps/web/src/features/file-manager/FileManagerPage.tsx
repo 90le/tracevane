@@ -13,6 +13,7 @@ import {
   useFilesSummaryQuery,
 } from "@/lib/query/files";
 import { toast } from "@/design/ui/sonner";
+import { resolveApiUrl } from "@/lib/runtime";
 import { LoadingState } from "@/shared/states/LoadingState";
 import {
   OperationHistoryPanel,
@@ -2523,7 +2524,7 @@ function downloadSelectedArchive(
   const params = new URLSearchParams({ rootId, name: defaultArchiveName() });
   for (const selectedPath of selectedPaths) params.append("path", selectedPath);
   window.open(
-    `/api/files/download-archive?${params.toString()}`,
+    resolveApiUrl(`/api/files/download-archive?${params.toString()}`),
     "_blank",
     "noopener,noreferrer",
   );
